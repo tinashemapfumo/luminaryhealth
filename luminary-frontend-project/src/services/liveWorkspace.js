@@ -271,6 +271,81 @@ export const auditFromApi = (row) => ({
   at: row.created_at,
 });
 
+const asTime = (value, fallback = '') => String(value || fallback).slice(0, 5);
+
+export const settingsFromApi = (payload, fallback = {}) => {
+  const profile = payload.practice || {};
+  const hours = payload.hours || {};
+  const security = payload.security || {};
+  const integrations = payload.integrations || {};
+
+  return {
+    profile: {
+      ...(fallback.profile || {}),
+      name: profile.name || fallback.profile?.name || '',
+      short: profile.short_name || fallback.profile?.short || '',
+      addressLine: profile.address_line || '',
+      city: profile.city || fallback.profile?.city || '',
+      phone: profile.phone || '',
+      email: profile.email || '',
+      primaryCurrency: profile.primary_currency || fallback.profile?.primaryCurrency || 'USD',
+      secondaryCurrency: profile.secondary_currency || '',
+      usdRate: profile.usd_rate ?? '',
+    },
+    providers: (payload.providers || []).map((provider) => ({
+      id: provider.id,
+      name: provider.display_name,
+      speciality: provider.job_title || 'Clinician',
+      registration: provider.registration_number || '',
+      registrationExpires: provider.registration_expires || '',
+      active: provider.active !== false,
+    })),
+    rooms: (payload.rooms || []).map((room) => ({
+      id: room.id,
+      name: room.name,
+      kind: room.kind,
+      active: room.active !== false,
+    })),
+    hours: {
+      ...(fallback.hours || {}),
+      opensAt: asTime(hours.opensAt, fallback.hours?.opensAt),
+      closesAt: asTime(hours.closesAt, fallback.hours?.closesAt),
+      slotMinutes: String(hours.slotMinutes ?? fallback.hours?.slotMinutes ?? 15),
+      openDays: hours.openDays || fallback.hours?.openDays || [],
+    },
+    schemes: (payload.schemes || []).map((scheme) => ({
+      id: scheme.id,
+      payerId: scheme.payer_id || null,
+      name: scheme.name,
+      rate: Number(scheme.reimburse_percent ?? 0),
+      requiresPreAuth: !!scheme.requires_preauth,
+      active: scheme.active !== false,
+    })),
+    services: (payload.tariffs || []).map((tariff) => ({
+      code: tariff.code,
+      description: tariff.description,
+      price: Number(tariff.price ?? 0),
+      active: tariff.active !== false,
+      currency: tariff.currency,
+    })),
+    integrations: {
+      nh263ProviderNumber: integrations.nh263ProviderNumber || '',
+      nh263Endpoint: integrations.nh263Endpoint || '',
+      nh263Connected: Boolean(integrations.nh263ProviderNumber && integrations.nh263Endpoint),
+      smsSender: integrations.smsSenderId || '',
+      smsGateway: integrations.smsGateway || '',
+      smsConnected: Boolean(integrations.smsSenderId && integrations.smsGateway),
+    },
+    security: {
+      ...(fallback.security || {}),
+      idleTimeoutMinutes: String(security.idleTimeoutMinutes ?? fallback.security?.idleTimeoutMinutes ?? 15),
+      minimumPasswordLength: security.minimumPasswordLength ?? fallback.security?.minimumPasswordLength ?? 12,
+      breakGlassEnabled: security.breakGlassEnabled ?? fallback.security?.breakGlassEnabled ?? true,
+      enforceRegistrationExpiry: security.enforceRegistration ?? fallback.security?.enforceRegistrationExpiry ?? true,
+    },
+  };
+};
+
 /**
  * Remaining live module reads.
  *
@@ -284,6 +359,7 @@ export function useLiveWorkspaceData({ enabled = isLive(), onError } = {}) {
   const [claims, setClaims] = useState([]);
   const [messages, setMessages] = useState([]);
   const [auditLog, setAuditLog] = useState([]);
+  const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(enabled);
 
   const reload = useCallback(async () => {
@@ -298,9 +374,19 @@ export function useLiveWorkspaceData({ enabled = isLive(), onError } = {}) {
         if (error.status !== 403) onError?.(error.message);
       }
     };
+    const loadOne = async (work, setter, mapper) => {
+      try {
+        const row = await work();
+        setter(mapper(row));
+      } catch (error) {
+        setter(null);
+        if (error.status !== 403) onError?.(error.message);
+      }
+    };
 
     try {
       await Promise.all([
+        loadOne(() => api.settings.get(), setSettings, (row) => row),
         load(() => api.appointments.list(), setAppointments, appointmentFromApi),
         load(() => api.billing.listInvoices(), setInvoices, invoiceFromApi),
         load(() => api.claims.list(), setClaims, claimFromApi),
@@ -329,5 +415,7 @@ export function useLiveWorkspaceData({ enabled = isLive(), onError } = {}) {
     setMessages,
     auditLog,
     setAuditLog,
+    settings,
+    setSettings,
   };
 }

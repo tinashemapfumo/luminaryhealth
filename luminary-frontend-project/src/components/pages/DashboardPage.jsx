@@ -14,7 +14,6 @@ import {
 import { PERMISSIONS, metricScopeByRole } from '../../config/access';
 import { buildMetrics, insightCards, tasks } from '../../data/reporting';
 import { patientStatusTone } from '../../data/registry';
-import { providerNames } from '../../data/scheduling';
 import { visitStatusTone } from '../../data/clinical';
 import { StatusPill } from '../shared/StatusPill';
 import { OceanWaveDecoration } from '../ui';
@@ -30,7 +29,9 @@ const metricIcons = {
 };
 
 export default function DashboardPage() {
-  const { access, roleInfo, currentRole, currentDate, currency, practice, todaysSchedule, visitStatuses, practiceInvoices, practiceClaims, practicePatients, setActiveView, setSelectedAppointment, openDialog, notify, showPermissions, setShowPermissions } = useWorkspace();
+  const { access, roleInfo, currentRole, currentDate, currency, practice, todaysSchedule, visitStatuses, practiceInvoices, practiceClaims, practicePatients, configuredProviders, configuredRooms, setActiveView, setSelectedAppointment, openDialog, notify, showPermissions, setShowPermissions } = useWorkspace();
+  const defaultProvider = configuredProviders[0] || 'Unassigned';
+  const defaultRoom = configuredRooms[0] || 'Unassigned';
 
   return (
     <div className="space-y-6">
@@ -151,7 +152,7 @@ export default function DashboardPage() {
             {access.can.scheduleVisit && (
               <button
                 type="button"
-                onClick={() => openDialog('appointment', { provider: providerNames[0], room: 'Room 1', mode: 'In-person' })}
+                onClick={() => openDialog('appointment', { provider: defaultProvider, room: defaultRoom, mode: 'In-person' })}
                 className="lh-primary-button px-3 py-2 text-sm"
               >
                 <Plus size={14} />

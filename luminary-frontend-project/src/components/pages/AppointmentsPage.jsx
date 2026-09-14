@@ -9,6 +9,8 @@ import { useWorkspace } from '../../lib/workspace';
 
 export default function AppointmentsPage() {
   const { access, configuredProviders, configuredRooms, practiceSchedule, todaysSchedule, selectedAppointment, setSelectedAppointment, moveAppointment, openDialog, exportCsv, visitStatuses, advanceVisitStatus, markNoShow, cancelVisit, doctorIdentity, billVisit, practiceInvoices } = useWorkspace();
+  const defaultProvider = configuredProviders[0] || 'Unassigned';
+  const defaultRoom = configuredRooms[0] || 'Unassigned';
 
   if (!selectedAppointment) {
     return (
@@ -59,7 +61,7 @@ export default function AppointmentsPage() {
             Export day sheet
           </button>
           {access.can.scheduleVisit && (
-            <button type="button" onClick={() => openDialog('appointment', { provider: configuredProviders[0], room: 'Room 1', mode: 'In-person', duration: '30', day: 0 })} className="lh-primary-button">
+            <button type="button" onClick={() => openDialog('appointment', { provider: defaultProvider, room: defaultRoom, mode: 'In-person', duration: '30', day: 0 })} className="lh-primary-button">
               <Plus size={14} />
               Schedule visit
             </button>
@@ -79,8 +81,8 @@ export default function AppointmentsPage() {
           onBookSlot={(slot) =>
             openDialog('appointment', {
               time: slot.time,
-              provider: slot.provider || configuredProviders[0],
-              room: slot.room || 'Room 1',
+              provider: slot.provider || defaultProvider,
+              room: slot.room || defaultRoom,
               day: slot.day ?? 0,
               duration: '30',
               mode: 'In-person',

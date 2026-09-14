@@ -66,7 +66,7 @@ import {
 
 import { AI_TABS } from '../data/intelligence';
 import { PATIENT_FILE_TABS, navItems, roleAccess } from '../config/access';
-import { ROOMS, initialSchedule, providerNames } from '../data/scheduling';
+import { initialSchedule } from '../data/scheduling';
 import { StatusPill } from './shared/StatusPill';
 import { ReceiptDocument } from './shared/ReceiptDocument';
 import { PatientPicker } from './shared/PatientPicker';
@@ -84,7 +84,7 @@ import {
 import { initialPatientRows, patientStatusTone } from '../data/registry';
 import { usePatientDirectory, createBodyFromForm, patchFromChanges, documentFromApi, formatBytes } from '../services/patients';
 import { api, isLive } from '../services/api';
-import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi } from '../services/liveWorkspace';
+import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi, settingsFromApi } from '../services/liveWorkspace';
 
 /** Fallback for a user with no job title recorded. */
 const ROLE_LABELS = {
@@ -108,6 +108,45 @@ const EMPTY_PATIENT = {
   memberNo: '',
   coverPlan: 'Self-pay',
 };
+
+const liveSettingsShell = (practice) => ({
+  profile: {
+    name: practice.name || '',
+    short: practice.short || '',
+    addressLine: '',
+    city: practice.location || '',
+    phone: '',
+    email: '',
+    primaryCurrency: 'USD',
+    secondaryCurrency: '',
+    usdRate: '',
+  },
+  providers: [],
+  rooms: [],
+  hours: {
+    opensAt: '08:00',
+    closesAt: '17:00',
+    slotMinutes: '15',
+    openDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+  },
+  schemes: [],
+  services: [],
+  integrations: {
+    nh263ProviderNumber: '',
+    nh263Endpoint: '',
+    nh263Connected: false,
+    smsSender: '',
+    smsGateway: '',
+    smsConnected: false,
+  },
+  security: {
+    idleTimeoutMinutes: '15',
+    minimumPasswordLength: 12,
+    breakGlassEnabled: true,
+    breakGlassRequiresReason: true,
+    enforceRegistrationExpiry: true,
+  },
+});
 
 const PRICING_MODES = ['Standard price', 'Adjust standard price', 'Custom price'];
 const PRICE_OVERRIDE_REASONS = [
@@ -886,7 +925,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       next: 'Not scheduled',
       balance: 0,
       status: 'New',
-      provider: form.provider || providerNames[0],
+      provider: form.provider || defaultProviderName,
       memberNo: form.memberNo?.trim() || 'Self-pay',
     };
 
@@ -962,8 +1001,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       time: origin === 'walk_in' ? new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : form.time,
       patient: form.patient,
       type: form.type?.trim() || (origin === 'walk_in' ? 'Walk-in' : 'Consultation'),
-      provider: origin === 'walk_in' ? 'Unassigned' : (form.provider || providerNames[0]),
-      room: form.room || 'Room 1',
+      provider: origin === 'walk_in' ? 'Unassigned' : (form.provider || defaultProviderName),
+      room: form.room || defaultRoomName,
       mode: form.mode || 'In-person',
       origin,
     };
@@ -1956,15 +1995,18 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const [allSettings, setAllSettings] = usePersistentState('settings', defaultSettings);
   const [directory, setDirectory] = usePersistentState('users', seedUsers);
 
-  const practiceSettings =
-    allSettings[currentUser.practiceId] ||
-    defaultSettings[currentUser.practiceId] ||
-    Object.values(defaultSettings).find(
-      (candidate) =>
-        candidate.profile.name === practice.name ||
-        candidate.profile.short === practice.short
-    ) ||
-    Object.values(defaultSettings)[0];
+  const practiceSettings = live
+    ? settingsFromApi(liveWorkspace.settings || {}, liveSettingsShell(practice))
+    : (
+      allSettings[currentUser.practiceId] ||
+      defaultSettings[currentUser.practiceId] ||
+      Object.values(defaultSettings).find(
+        (candidate) =>
+          candidate.profile.name === practice.name ||
+          candidate.profile.short === practice.short
+      ) ||
+      Object.values(defaultSettings)[0]
+    );
   const settings = {
     ...practiceSettings,
     profile: {
@@ -1995,7 +2037,19 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     setAllSettings((prev) => ({ ...prev, [currentUser.practiceId]: next }));
     recordAudit({ user: currentUser, action: 'Configuration changed', subject: practice.short, severity: AUDIT.NOTICE });
   };
-  const practiceUsers = directory.filter((u) => u.practiceId === currentUser.practiceId);
+  const practiceUsers = live
+    ? [{
+        id: currentUser.id,
+        practiceId: currentUser.practiceId,
+        role: currentUser.role,
+        name: currentUser.name,
+        fullName: currentUser.fullName || currentUser.name,
+        initials: currentUser.initials,
+        jobTitle: currentUser.jobTitle,
+        email: currentUser.email,
+        active: true,
+      }]
+    : directory.filter((u) => u.practiceId === currentUser.practiceId);
   const updateUser = (userId, changes) =>
     setDirectory((prev) => prev.map((u) => (u.id === userId ? { ...u, ...changes } : u)));
 
@@ -2003,6 +2057,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   // deactivate a room here and it disappears from the calendar.
   const configuredProviders = activeProviderNames(settings);
   const configuredRooms = activeRoomNames(settings);
+  const defaultProviderName = configuredProviders[0] || 'Unassigned';
+  const defaultRoomName = configuredRooms[0] || 'Unassigned';
 
   /**
    * The service catalogue and the tariff schedules behind it.
@@ -2786,8 +2842,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }));
 
     const actions = [
-      access.can.addPatient && { kind: 'Action', label: 'Register new patient', hint: 'Opens the intake form', run: () => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: providerNames[0], consentComms: true }) },
-      access.can.scheduleVisit && { kind: 'Action', label: 'Schedule a visit', hint: 'Opens the booking form', run: () => openDialog('appointment', { provider: providerNames[0], room: 'Room 1', mode: 'In-person' }) },
+      access.can.addPatient && { kind: 'Action', label: 'Register new patient', hint: 'Opens the intake form', run: () => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProviderName, consentComms: true }) },
+      access.can.scheduleVisit && { kind: 'Action', label: 'Schedule a visit', hint: 'Opens the booking form', run: () => openDialog('appointment', { provider: defaultProviderName, room: defaultRoomName, mode: 'In-person' }) },
       access.can.orderServices && { kind: 'Action', label: 'Order a service', hint: 'ECG, bloods, imaging', run: () => openDialog('order', { quantity: '1', priority: 'Routine' }) },
       access.can.createInvoice && { kind: 'Action', label: 'Raise an invoice', hint: 'Opens the billing form', run: () => openDialog('invoice') },
       access.can.recordPayment && { kind: 'Action', label: 'Look up a patient account', hint: 'Search for a statement and settle it', run: () => openStatement('') },
@@ -3713,7 +3769,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 <Input value={form.dependantCode || ''} onChange={setField('dependantCode')} placeholder="00" />
               </Field>
               <Field label="Assigned provider" required>
-                <Select value={form.provider || providerNames[0]} onChange={setField('provider')} options={providerNames} />
+                <Select value={form.provider || defaultProviderName} onChange={setField('provider')} options={configuredProviders.length ? configuredProviders : ['Unassigned']} />
               </Field>
             </div>
           </fieldset>
@@ -3868,10 +3924,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             <Select value={form.duration || '30'} onChange={setField('duration')} options={['15', '30', '45', '60', '90']} />
           </Field>
           <Field label="Provider">
-            <Select value={(form.origin || 'scheduled') === 'walk_in' ? 'Unassigned' : (form.provider || providerNames[0])} onChange={setField('provider')} options={(form.origin || 'scheduled') === 'walk_in' ? ['Unassigned', ...providerNames] : providerNames} />
+            <Select value={(form.origin || 'scheduled') === 'walk_in' ? 'Unassigned' : (form.provider || defaultProviderName)} onChange={setField('provider')} options={(form.origin || 'scheduled') === 'walk_in' ? ['Unassigned', ...configuredProviders] : (configuredProviders.length ? configuredProviders : ['Unassigned'])} />
           </Field>
           <Field label="Room">
-            <Select value={form.room || 'Room 1'} onChange={setField('room')} options={ROOMS} />
+            <Select value={form.room || defaultRoomName} onChange={setField('room')} options={configuredRooms.length ? configuredRooms : ['Unassigned']} />
           </Field>
           <Field label="Visit type">
             <Input value={form.type || ''} onChange={setField('type')} placeholder="e.g. Follow-up" />
@@ -4653,7 +4709,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             <Textarea
               value={breakGlassReason}
               onChange={(e) => setBreakGlassReason(e.target.value)}
-              placeholder="e.g. Covering Dr. Singh's list while he is on leave; patient presented acutely."
+              placeholder="e.g. Covering another clinician's list while they are on leave; patient presented acutely."
             />
           </Field>
           <p className="text-xs text-muted">

@@ -1,7 +1,6 @@
 import React from 'react';
 import { ArrowUpDown, GitMerge, Plus, Search, AlertTriangle } from 'lucide-react';
 import PatientFile from '../PatientFile';
-import { providerNames } from '../../data/scheduling';
 import { patientStatusTone } from '../../data/registry';
 import { carePlansByPatient, labResultsByPatient, prescriptionsByPatient } from '../../data/clinical';
 import { Button, EmptyState, Field, Modal, Select, Textarea } from '../ui';
@@ -9,7 +8,8 @@ import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function PatientsPage() {
-  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, notesForPatient, openNoteForVisit, setOpenNoteId, patientTab, setPatientTab, currency, openDialog, setActiveView, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients } = useWorkspace();
+  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, notesForPatient, openNoteForVisit, setOpenNoteId, patientTab, setPatientTab, currency, openDialog, setActiveView, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
+  const defaultProvider = configuredProviders[0] || 'Unassigned';
   const [mergeOpen, setMergeOpen] = React.useState(false);
   const [mergeSourceId, setMergeSourceId] = React.useState('');
   const [mergeReason, setMergeReason] = React.useState('');
@@ -238,7 +238,21 @@ export default function PatientsPage() {
       },
     };
 
-    const patientData = patientDetails[selectedPatient.name] || patientDetails['Ruvimbo Moyo'];
+    const patientData = patientDetails[selectedPatient.name] || {
+      age: patientRecords[selectedPatient.id]?.age || 'Not recorded',
+      gender: patientRecords[selectedPatient.id]?.sex || 'Not recorded',
+      phone: patientRecords[selectedPatient.id]?.phone || 'Not recorded',
+      email: patientRecords[selectedPatient.id]?.email || 'Not recorded',
+      insurance: selectedPatient.coverPlan || selectedPatient.insurance || 'Not recorded',
+      risk: 'Not assessed',
+      lastVisit: selectedPatient.lastVisit || 'Not recorded',
+      nextVisit: selectedPatient.next || 'Not scheduled',
+      conditions: ['Not recorded'],
+      medications: ['Not recorded'],
+      allergies: ['Not recorded'],
+      notes: 'No clinical summary has been recorded for this patient yet.',
+      timeline: [],
+    };
 
     // Registry search spans the practice, never other tenants. A clinician's
     // own list is the default; searching wider is allowed but opening a chart
@@ -294,7 +308,7 @@ export default function PatientsPage() {
               />
             </div>
             {access.can.addPatient && (
-              <button type="button" onClick={() => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: providerNames[0], consentComms: true })} className="lh-primary-button">
+              <button type="button" onClick={() => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProvider, consentComms: true })} className="lh-primary-button">
                 <Plus size={14} />
                 New patient
               </button>
@@ -616,8 +630,8 @@ export default function PatientsPage() {
                     <p className="mt-2 text-md font-medium text-ink">{patientData.nextVisit}</p>
                   </div>
                   {[
-                    { label: 'Annual review', date: 'Jun 25', provider: 'Dr. Chen' },
-                    { label: 'Medication review', date: 'Jul 09', provider: 'Dr. Park' },
+                    { label: 'Annual review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
+                    { label: 'Medication review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
                   ].map((appointment) => (
                     <div key={appointment.label} className="rounded border border-line bg-white p-3">
                       <p className="text-base font-medium text-ink">{appointment.label}</p>

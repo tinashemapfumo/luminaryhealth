@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, isLive, ApiError } from './api';
 
 /**
- * The patient directory, live or seeded.
+ * The live patient directory.
  *
  * This is the seam the workspace was built around. Every module — appointments,
  * billing, claims, clinical, communications — derives its rows from the patient
@@ -244,7 +244,7 @@ export function patchFromChanges(before, after) {
 }
 
 /**
- * Owns the directory in live mode and stays out of the way in demo mode.
+ * Owns the directory in live mode.
  *
  * Returns the same shape either way, so the shell holds one pair of collections
  * rather than branching on mode everywhere it reads them.

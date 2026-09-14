@@ -5,14 +5,14 @@
  * deliberate — that file stays readable as a contract, this one holds the
  * mechanics of talking to a server, and neither grows the other's concerns.
  *
- * ## Two modes, decided once at build time
+ * ## Live-only build
  *
- * `VITE_API_URL` unset means **demo mode**: no server, seeded data, everything
+ * `VITE_API_URL` is required: no server means no workspace.
  * in memory. That is not a fallback for a failed request — a clinical system
  * that silently substitutes fabricated records when the network drops would be
  * dangerous. It is a separate mode, chosen up front, and the workspace says
  * which one it is running in. The standalone single-file build has no server by
- * definition, so demo mode is what keeps it working.
+ * Production builds fail if that URL is missing.
  *
  * ## The token
  *
@@ -24,8 +24,8 @@
 
 const BASE = (import.meta.env?.VITE_API_URL ?? '').replace(/\/+$/, '');
 
-/** Demo mode is the absence of a configured API, decided at build time. */
-export const isLive = () => BASE.length > 0;
+/** The workspace is live-only; this remains for callers that branch on mode. */
+export const isLive = () => true;
 
 const TOKEN_KEY = 'luminary:token';
 
@@ -78,9 +78,9 @@ export const onSessionExpired = (fn) => {
 };
 
 export async function request(method, path, { body, query, token } = {}) {
-  if (!isLive()) {
-    throw new ApiError('No API is configured; this build runs on seeded demo data.', {
-      code: 'demo_mode',
+  if (!BASE) {
+    throw new ApiError('Luminary API URL is not configured for this build.', {
+      code: 'api_url_missing',
     });
   }
 

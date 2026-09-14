@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build && npm run serve:dist",
+    "prebuild": "node scripts/verify-live-build-env.mjs",
     "build": "vite build",
     "build:standalone": "vite build --config vite.standalone.config.js && node scripts/inline-standalone.mjs",
     "serve:dist": "node scripts/serve-dist.mjs",

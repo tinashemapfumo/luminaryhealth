@@ -52,6 +52,7 @@ const schema = z.object({
    */
   MESSAGING_DISPATCH: z.enum(['true', 'false']).optional(),
   MESSAGING_DISPATCH_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  SHOW_TEST_PRACTICES: z.enum(['true', 'false']).default('false'),
   STT_PROVIDER: z.enum(['mock', 'openai']).default('mock'),
   STT_API_KEY: z.string().optional(),
   STT_MODEL: z.string().default('gpt-4o-mini-transcribe'),
@@ -83,6 +84,7 @@ export const config = {
     ? parsed.data.MESSAGING_DISPATCH === 'true'
     : parsed.data.NODE_ID !== 'cloud',
   messagingDispatchIntervalMs: parsed.data.MESSAGING_DISPATCH_INTERVAL_MS,
+  showTestPractices: parsed.data.SHOW_TEST_PRACTICES === 'true',
   sttProvider: parsed.data.STT_PROVIDER,
   sttApiKey: parsed.data.STT_API_KEY,
   sttModel: parsed.data.STT_MODEL,

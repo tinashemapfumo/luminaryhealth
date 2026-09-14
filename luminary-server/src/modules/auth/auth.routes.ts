@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withoutTenant, withTenant } from '../../platform/db.js';
 import { authService } from './auth.service.js';
 import { Unauthorized } from '../../platform/errors.js';
+import { config } from '../../platform/config.js';
 
 const signInBody = z.object({
   // Stated explicitly rather than inferred from the account, so a wrong-tenant
@@ -63,7 +64,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         `SELECT id, name, short_name, city, plan
            FROM luminary.practice
           WHERE deleted_at IS NULL
+            AND ($1::boolean OR (
+              id::text NOT IN (
+                '11111111-1111-1111-1111-111111111111',
+                '22222222-2222-2222-2222-222222222222',
+                '33333333-3333-3333-3333-333333333333'
+              )
+              AND name !~* '^(scenario|test|demo)'
+              AND short_name !~* '^(scenario|test|demo|s[0-9])'
+            ))
           ORDER BY name`,
+        [config.showTestPractices],
       );
       return rows;
     }),

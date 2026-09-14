@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "migrate": "node --import tsx scripts/migrate.ts",
     "migrate:env": "node --env-file=.env --import tsx scripts/migrate.ts",
+    "bootstrap:practice": "node --env-file=.env --import tsx scripts/bootstrap-live-practice.ts",
     "seed:passwords": "node --import tsx scripts/seed-passwords.ts",
     "seed:test-roles": "node --import tsx scripts/seed-test-roles.ts",
     "lint": "eslint src --ext .ts --max-warnings 0",

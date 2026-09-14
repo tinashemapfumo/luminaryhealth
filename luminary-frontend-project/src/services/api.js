@@ -28,6 +28,7 @@ const BASE = (import.meta.env?.VITE_API_URL ?? '').replace(/\/+$/, '');
 export const isLive = () => true;
 
 const TOKEN_KEY = 'luminary:token';
+let memoryToken = null;
 
 /** sessionStorage throws in private mode and when site data is blocked. */
 const safely = (fn, fallback = null) => {
@@ -38,13 +39,15 @@ const safely = (fn, fallback = null) => {
   }
 };
 
-export const getToken = () => safely(() => window.sessionStorage.getItem(TOKEN_KEY));
-export const setToken = (token) =>
+export const getToken = () => safely(() => window.sessionStorage.getItem(TOKEN_KEY), null) || memoryToken;
+export const setToken = (token) => {
+  memoryToken = token || null;
   safely(() =>
     token
       ? window.sessionStorage.setItem(TOKEN_KEY, token)
       : window.sessionStorage.removeItem(TOKEN_KEY),
   );
+};
 
 /**
  * A failed request, carrying what the caller needs to react rather than only a
@@ -135,7 +138,7 @@ export async function request(method, path, { body, query, token } = {}) {
   return payload;
 }
 
-const get = (path, query) => request('GET', path, { query });
+const get = (path, query, options = {}) => request('GET', path, { query, ...options });
 const post = (path, body) => request('POST', path, { body });
 const patch = (path, body) => request('PATCH', path, { body });
 const put = (path, body) => request('PUT', path, { body });
@@ -158,7 +161,7 @@ export const api = {
       post('/auth/session', { practiceId, email, password }),
     signOut: () => del('/auth/session'),
     unlock: (password) => post('/auth/unlock', { password }),
-    me: () => get('/auth/me'),
+    me: (token) => get('/auth/me', undefined, token ? { token } : undefined),
   },
 
   patients: {

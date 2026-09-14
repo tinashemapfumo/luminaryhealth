@@ -113,7 +113,7 @@ function App() {
     try {
       const { token } = await api.auth.signIn(practiceId, email, password)
       setToken(token)
-      const { user, practice } = await api.auth.me()
+      const { user, practice } = await api.auth.me(token)
       setLockedUser(null)
       setSession({ user, practice, since: new Date().toISOString() })
       return { ok: true }

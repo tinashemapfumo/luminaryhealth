@@ -15,9 +15,12 @@ const required = (name: string): string => {
 const optional = (name: string, fallback: string): string =>
   process.env[name]?.trim() || fallback;
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl =
+  process.env.BOOTSTRAP_DATABASE_URL ||
+  process.env.MIGRATION_DATABASE_URL ||
+  process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error('DATABASE_URL is required');
+  console.error('BOOTSTRAP_DATABASE_URL, MIGRATION_DATABASE_URL, or DATABASE_URL is required');
   process.exit(1);
 }
 

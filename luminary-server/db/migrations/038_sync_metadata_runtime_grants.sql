@@ -9,7 +9,7 @@
 SET search_path = luminary, public;
 
 GRANT SELECT, INSERT, UPDATE ON luminary.sync_change TO luminary_app;
-GRANT USAGE, SELECT ON SEQUENCE luminary.sync_change_seq TO luminary_app;
+GRANT USAGE, SELECT ON SEQUENCE luminary.sync_change_seq_seq TO luminary_app;
 
 GRANT SELECT, INSERT, UPDATE ON luminary.sync_peer TO luminary_app;
 GRANT SELECT, INSERT, UPDATE ON luminary.sync_conflict TO luminary_app;

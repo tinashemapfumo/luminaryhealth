@@ -1,6 +1,7 @@
 import React, { Component, useCallback, useEffect, useRef, useState } from 'react'
 import WorkspaceShell from './components/LuminaryDemo'
 import LoginScreen from './components/LoginScreen'
+import AcceptInvitationScreen from './components/AcceptInvitationScreen'
 import { api, isLive, setToken, getToken, onSessionExpired } from './services/api'
 
 /** Clinical workstations are shared. Lock the session rather than trusting the room. */
@@ -49,6 +50,11 @@ function App() {
   const [session, setSession] = useState(null)
   const [lockedUser, setLockedUser] = useState(null)
   const [restoring, setRestoring] = useState(isLive() && Boolean(getToken()))
+  const [inviteToken, setInviteToken] = useState(() => {
+    const url = new URL(window.location.href)
+    const pathToken = url.pathname.startsWith('/invite/') ? url.pathname.split('/invite/')[1] : ''
+    return url.searchParams.get('invite') || url.searchParams.get('token') || pathToken || ''
+  })
   const idleTimer = useRef(null)
 
   const record = useCallback(() => {}, [])
@@ -162,12 +168,21 @@ function App() {
     setLockedUser(null)
   }
 
+  const clearInvitation = () => {
+    window.history.replaceState(null, '', '/')
+    setInviteToken('')
+  }
+
   if (restoring) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas">
         <p className="text-base text-muted">Restoring your session...</p>
       </div>
     )
+  }
+
+  if (!session && inviteToken) {
+    return <AcceptInvitationScreen token={decodeURIComponent(inviteToken)} onComplete={clearInvitation} />
   }
 
   if (!session) {

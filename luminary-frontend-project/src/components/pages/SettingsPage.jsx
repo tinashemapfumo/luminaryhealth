@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle, Building2, CalendarClock, Check, DoorOpen,
+  AlertTriangle, Building2, CalendarClock, Check, Copy, DoorOpen,
   Plug, ShieldCheck, Stethoscope, Trash2, UserPlus, Users, Wallet,
 } from 'lucide-react';
-import { Field, Input, Select, Button, EmptyState } from '../ui';
+import { Field, Input, Select, Button, EmptyState, Modal } from '../ui';
 import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 import { WEEKDAYS, CURRENCIES, SLOT_LENGTHS, IDLE_TIMEOUTS, expiringRegistrations } from '../../data/practiceSettings';
@@ -22,6 +22,7 @@ const TABS = [
 ];
 
 const ROLE_LABELS = { admin: 'Administrator', doctor: 'Doctor', nurse: 'Nurse', manager: 'Practice manager', receptionist: 'Receptionist' };
+const INVITABLE_ROLES = ['doctor', 'nurse', 'manager', 'receptionist'];
 
 function Section({ title, detail, children, action }) {
   return (
@@ -149,6 +150,10 @@ export default function SettingsPage() {
   const [syncStatus, setSyncStatus] = useState(null);
   const [auditSummary, setAuditSummary] = useState(null);
   const [expiringLive, setExpiringLive] = useState([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteDraft, setInviteDraft] = useState({ fullName: '', email: '', role: 'receptionist', jobTitle: '' });
+  const [inviteResult, setInviteResult] = useState(null);
   const settings = liveSettings || workspaceSettings;
   const practiceUsers = liveUsers || workspaceUsers;
   const canConfigure = access.can.manageConfiguration;
@@ -293,6 +298,49 @@ export default function SettingsPage() {
   const field = (group, key) => (event) => patch(group, { [key]: event.target.value });
   const lapsing = expiringRegistrations(settings);
 
+  const openInvite = () => {
+    setInviteDraft({ fullName: '', email: '', role: 'receptionist', jobTitle: '' });
+    setInviteResult(null);
+    setInviteOpen(true);
+  };
+
+  const inviteLink = inviteResult?.token
+    ? `${window.location.origin}/?invite=${encodeURIComponent(inviteResult.token)}`
+    : '';
+
+  const copyInviteLink = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      notify('Invitation link copied');
+    } catch {
+      notify('Copy failed. Select the link and copy it manually.');
+    }
+  };
+
+  const submitInvite = async () => {
+    if (!canManageUsers || inviteBusy) return;
+    if (!inviteDraft.fullName.trim()) return notify('Enter the user name');
+    if (!inviteDraft.email.trim()) return notify('Enter the user email');
+    setInviteBusy(true);
+    try {
+      const result = await api.users.invite({
+        fullName: inviteDraft.fullName.trim(),
+        email: inviteDraft.email.trim(),
+        role: inviteDraft.role,
+        jobTitle: inviteDraft.jobTitle.trim() || undefined,
+      });
+      setInviteResult(result);
+      await refreshAdmin();
+      notify(`Invitation created for ${result.invitation.email}`);
+    } catch (error) {
+      notify(error.message || 'Could not invite user');
+    } finally {
+      setInviteBusy(false);
+    }
+    return undefined;
+  };
+
   /** Separation of duty: an administrator may assign roles but never grant
    *  themselves clinical or financial authority. */
   const changeRole = (user, role) => {
@@ -370,6 +418,7 @@ export default function SettingsPage() {
   };
 
   return (
+    <>
     <div className="space-y-6">
       <div className="lh-page-hero">
         <h1 className="lh-page-title">Settings</h1>
@@ -468,7 +517,7 @@ export default function SettingsPage() {
           title="Users"
           detail="Accounts that can sign in to this practice. Deactivate rather than delete, because removing a user would break the audit trail that references them."
           action={canManageUsers && (
-            <Button variant="secondary" type="button" onClick={() => notify('Email invitations arrive with the backend. Credentials cannot be issued client side')}>
+            <Button variant="secondary" type="button" onClick={openInvite}>
               <UserPlus size={13} /> Invite user
             </Button>
           )}
@@ -903,5 +952,63 @@ export default function SettingsPage() {
         </div>
       </div>
     </div>
+
+      <Modal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title={inviteResult ? 'Invitation created' : 'Invite user'}
+        subtitle={inviteResult ? 'This link is shown once. Send it to the user through a trusted channel.' : 'The invited user chooses their own password.'}
+        footer={inviteResult ? (
+          <Button type="button" onClick={() => setInviteOpen(false)}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" type="button" onClick={() => setInviteOpen(false)}>Cancel</Button>
+            <Button type="button" onClick={submitInvite} disabled={inviteBusy}>
+              {inviteBusy ? 'Creating...' : 'Create invite'}
+            </Button>
+          </>
+        )}
+      >
+        {inviteResult ? (
+          <div className="space-y-3.5">
+            <Field label="Invite link">
+              <div className="flex gap-2">
+                <Input readOnly value={inviteLink} onFocus={(event) => event.target.select()} />
+                <Button variant="secondary" type="button" onClick={copyInviteLink} aria-label="Copy invite link">
+                  <Copy size={13} />
+                </Button>
+              </div>
+            </Field>
+            <Field label="Expires">
+              <Input readOnly value={new Date(inviteResult.invitation.expires_at).toLocaleString()} />
+            </Field>
+          </div>
+        ) : (
+          <div className="grid gap-3.5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Field label="Full name" required>
+                <Input value={inviteDraft.fullName} onChange={(event) => setInviteDraft((draft) => ({ ...draft, fullName: event.target.value }))} />
+              </Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label="Work email" required>
+                <Input type="email" value={inviteDraft.email} onChange={(event) => setInviteDraft((draft) => ({ ...draft, email: event.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Role" required>
+              <Select
+                value={inviteDraft.role}
+                onChange={(event) => setInviteDraft((draft) => ({ ...draft, role: event.target.value }))}
+                options={INVITABLE_ROLES}
+                render={(role) => ROLE_LABELS[role]}
+              />
+            </Field>
+            <Field label="Job title">
+              <Input value={inviteDraft.jobTitle} onChange={(event) => setInviteDraft((draft) => ({ ...draft, jobTitle: event.target.value }))} />
+            </Field>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }

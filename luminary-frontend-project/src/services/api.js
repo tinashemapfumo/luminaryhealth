@@ -287,6 +287,7 @@ export const api = {
   users: {
     list: () => get('/users'),
     invite: (invitation) => post('/users/invitations', invitation),
+    acceptInvitation: (acceptance) => post('/users/invitations/accept', acceptance),
     setRole: (id, role) => put(`/users/${id}/role`, { role }),
     setActive: (id, active) => put(`/users/${id}/active`, { active }),
     offboarding: (id) => get(`/users/${id}/offboarding`),

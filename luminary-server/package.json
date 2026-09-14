@@ -1,0 +1,48 @@
+{
+  "name": "luminary-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Luminary Health API \u2014 runs identically in cloud and on a practice's local server",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --import tsx scripts/migrate.ts",
+    "seed:passwords": "node --import tsx scripts/seed-passwords.ts",
+    "seed:test-roles": "node --import tsx scripts/seed-test-roles.ts",
+    "lint": "eslint src --ext .ts --max-warnings 0",
+    "contract:permissions": "tsx scripts/contract-permissions.ts",
+    "verify:integration": "tsx scripts/verify-integration.ts",
+    "verify:claims": "tsx scripts/verify-claims.ts",
+    "verify:scenario013": "node --import tsx scripts/scenario013-smoke.mjs",
+    "verify:scenario014": "node --import tsx scripts/scenario014-smoke.mjs",
+    "verify:scenario015": "node --import tsx scripts/scenario015-smoke.mjs",
+    "verify:scenario016": "node --import tsx scripts/scenario016-smoke.mjs",
+    "verify:scenario017": "node --import tsx scripts/scenario017-smoke.mjs",
+    "verify:scenario018": "node --import tsx scripts/scenario018-smoke.mjs",
+    "verify:dictation": "node --import tsx scripts/doctor-dictation-smoke.mjs",
+    "report:suspicious-national-ids": "node scripts/report-suspicious-national-ids.mjs",
+    "verify:scenario007": "node scripts/scenario007-smoke.mjs"
+  },
+  "dependencies": {
+    "@fastify/cors": "^9.0.1",
+    "argon2": "^0.31.2",
+    "fastify": "^4.26.0",
+    "pg": "^8.11.3",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

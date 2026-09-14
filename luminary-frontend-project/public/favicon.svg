@@ -1,0 +1,9 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="40" height="40" rx="9" fill="#ffffff"/>
+  <g transform="translate(8.5,1) skewX(-14)">
+    <rect x="0" y="3" width="20" height="20" rx="6" fill="#2ed3d6"/>
+    <rect x="6" y="11" width="20" height="20" rx="6" fill="#1466e0" style="mix-blend-mode:multiply"/>
+  </g>
+  <rect x="15.8" y="13" width="3.6" height="11" rx="1.1" fill="#ffffff"/>
+  <rect x="12" y="16.7" width="11" height="3.6" rx="1.1" fill="#ffffff"/>
+</svg>

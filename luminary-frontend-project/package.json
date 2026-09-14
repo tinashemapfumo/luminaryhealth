@@ -1,0 +1,43 @@
+{
+  "name": "luminary-health-frontend",
+  "version": "1.0.0",
+  "description": "Luminary Health PMS workspace frontend",
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && npm run serve:dist",
+    "build": "vite build",
+    "build:standalone": "vite build --config vite.standalone.config.js && node scripts/inline-standalone.mjs",
+    "serve:dist": "node scripts/serve-dist.mjs",
+    "preview": "vite preview",
+    "lint": "eslint src --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "verify:money": "node scripts/verify-money.mjs",
+    "verify:render": "node scripts/verify-render.mjs",
+    "verify": "npm run lint && npm run verify:tokens && npm run verify:contrast && npm run verify:money && npm run verify:catalogue && npm run verify:import && npm run verify:render && npm run verify:menus && npm run build",
+    "verify:live": "node scripts/verify-live.mjs",
+    "verify:live-render": "node scripts/verify-live-render.mjs",
+    "verify:menus": "node scripts/verify-header-menus.mjs",
+    "verify:tokens": "node scripts/verify-tokens.mjs",
+    "verify:contrast": "node scripts/verify-contrast.mjs",
+    "verify:catalogue": "node scripts/verify-catalogue.mjs",
+    "verify:import": "node scripts/verify-import.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.263.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "read-excel-file": "^9.3.10"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.15",
+    "@types/react-dom": "^18.2.7",
+    "@vitejs/plugin-react": "^4.0.3",
+    "autoprefixer": "^10.4.14",
+    "eslint": "^8.45.0",
+    "eslint-plugin-react": "^7.32.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "jsdom": "^24.1.3",
+    "postcss": "^8.4.24",
+    "tailwindcss": "^3.3.0",
+    "vite": "^4.4.5"
+  }
+}

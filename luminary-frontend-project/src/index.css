@@ -1,0 +1,838 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -----------------------------------------------------------------------------
+ * The palette lives in tailwind.config.js. These three exist only because the
+ * page chrome below is plain CSS with no class to hang a utility on, and they
+ * are kept deliberately few: the previous seventeen were used three times
+ * between them, and three of the unused ones had drifted from the values
+ * actually shipping — including a grey that failed contrast.
+ * -------------------------------------------------------------------------- */
+:root {
+  --canvas: #f7fafe;
+  --ink: #10233f;
+  --brand: #0872de;
+  --luminary-bg-soft: #f2f7fd;
+  --luminary-surface: rgba(255, 255, 255, 0.94);
+  --luminary-border: rgba(49, 93, 137, 0.11);
+  --luminary-transition: 150ms cubic-bezier(.2,.8,.2,1);
+}
+
+/* -----------------------------------------------------------------------------
+ * Layering
+ *
+ * Every value in the app, in one place, because getting this wrong has now cost
+ * two bugs — an account menu whose trigger sat under its own backdrop, and the
+ * same menu rendering behind the page content.
+ *
+ *   0   page content ................ no z-index; the default
+ *   20  header ...................... must outrank content, must not reach modals
+ *   30  menu backdrop ............... inside the header, catches outside clicks
+ *   40  menu triggers and dropdowns . inside the header, above its backdrop
+ *   50  modal overlay
+ *   55  command palette
+ *   60  toast ....................... always visible, over everything
+ *
+ * The trap: `backdrop-blur` creates a stacking context. Anything blurred — the
+ * header, the patient context bar, and every .lh-card, .lh-metric and
+ * .lh-page-hero below — confines its children's z-index to itself. A dropdown
+ * inside a blurred header cannot escape it by raising its own z-index; only the
+ * blurred ancestor's z-index decides where the whole subtree lands. That is why
+ * the header carries one and its dropdowns' 30/40 are purely internal.
+ * -------------------------------------------------------------------------- */
+
+@layer components {
+  .lh-page-hero {
+    @apply p-0;
+  }
+
+  .lh-page-kicker {
+    @apply text-xs font-medium text-muted;
+  }
+
+  .lh-page-title {
+    @apply mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-ink;
+  }
+
+  .lh-page-subtitle {
+    @apply mt-1 max-w-3xl text-sm leading-5 text-body;
+  }
+
+  .lh-card {
+    @apply rounded-lg border border-line/70 bg-white/[0.9] shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)] backdrop-blur;
+  }
+
+  .lh-card-pad {
+    @apply rounded-lg border border-line/70 bg-white/[0.9] p-4 shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)] backdrop-blur;
+  }
+
+  .lh-card-soft {
+    @apply rounded-md border border-line bg-surface/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.74)];
+  }
+
+  .lh-metric {
+    @apply rounded-lg border border-line/70 bg-white/[0.92] p-3.5 shadow-[0_7px_22px_-20px_rgba(33,97,156,0.18)] backdrop-blur;
+  }
+
+  .lh-metric-icon {
+    @apply flex h-8 w-8 items-center justify-center rounded-md border border-line bg-brand-soft text-brand-deep;
+  }
+
+  .lh-primary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .lh-secondary-button {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white/90 px-3 py-2 text-xs font-semibold text-ink transition hover:border-brand-edge hover:bg-white;
+  }
+
+  .lh-icon-button {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white/90 text-brand transition hover:border-brand-edge hover:bg-white;
+  }
+
+  .lh-list-row {
+    @apply rounded-md border border-line bg-white/80 transition hover:border-brand-edge hover:bg-brand-soft/60 hover:shadow-[0_8px_24px_-22px_rgba(33,97,156,0.28)];
+  }
+
+  .lh-list-row-active {
+    @apply border-brand-edge bg-brand-soft shadow-[0_10px_28px_-24px_rgba(8,114,222,0.45)];
+  }
+
+  .lh-table-shell {
+    @apply overflow-x-auto rounded-lg border border-line/80 bg-white/95 shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)];
+  }
+
+  .lh-table-head {
+    @apply bg-surface/80 text-muted;
+  }
+
+  .lh-section-label {
+    @apply text-2xs font-semibold uppercase tracking-[0.01em] text-muted;
+  }
+
+  .lh-status-strip {
+    @apply inline-flex items-center gap-2 rounded-lg border border-line bg-white/[0.78] px-3 py-2 text-xs font-medium shadow-[0_8px_24px_-22px_rgba(33,97,156,0.22)] backdrop-blur;
+  }
+
+  .lh-chat-user {
+    @apply bg-brand text-white shadow-[0_12px_30px_-22px_rgba(8,114,222,0.45)];
+  }
+
+  .lh-chat-ai {
+    @apply border border-line bg-surface text-ink-soft shadow-[0_8px_24px_-22px_rgba(33,97,156,0.22)];
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, #f8fbff 0%, #f5f9fe 52%, #f1f7fd 100%);
+}
+
+body.lh-dark {
+  --canvas: #07111f;
+  --ink: #edf6ff;
+  --brand: #62b3ff;
+  --luminary-bg-soft: #0d1a2b;
+  --luminary-surface: rgba(13, 28, 46, 0.92);
+  --luminary-border: rgba(151, 184, 218, 0.18);
+  background:
+    linear-gradient(180deg, #081322 0%, #0b1828 52%, #0f1e30 100%);
+  color: var(--ink);
+}
+
+body.lh-dark .lh-app {
+  color: var(--ink);
+}
+
+body.lh-dark .text-ink,
+body.lh-dark .text-ink-soft,
+body.lh-dark .text-shell-on {
+  color: #edf6ff !important;
+}
+
+body.lh-dark .text-body {
+  color: #bed0e3 !important;
+}
+
+body.lh-dark .text-muted,
+body.lh-dark .text-faint,
+body.lh-dark .text-shell-muted {
+  color: #8fa4bb !important;
+}
+
+body.lh-dark .text-brand,
+body.lh-dark .text-brand-deep {
+  color: #86c7ff !important;
+}
+
+body.lh-dark .text-success {
+  color: #6ee4ad !important;
+}
+
+body.lh-dark .text-warning-deep,
+body.lh-dark .text-warning {
+  color: #ffd37a !important;
+}
+
+body.lh-dark .text-danger,
+body.lh-dark .text-danger-deep {
+  color: #ff8fa1 !important;
+}
+
+body.lh-dark .bg-canvas {
+  background-color: #07111f !important;
+}
+
+body.lh-dark [class*="bg-white"] {
+  background-color: rgba(13, 28, 46, 0.88) !important;
+}
+
+body.lh-dark [class*="bg-surface"] {
+  background-color: rgba(16, 34, 55, 0.88) !important;
+}
+
+body.lh-dark [class*="bg-wash"],
+body.lh-dark [class*="bg-brand-soft"],
+body.lh-dark [class*="bg-teal-soft"] {
+  background-color: rgba(28, 70, 104, 0.64) !important;
+}
+
+body.lh-dark [class*="bg-success-soft"] {
+  background-color: rgba(24, 111, 80, 0.28) !important;
+}
+
+body.lh-dark [class*="bg-warning-soft"],
+body.lh-dark [class*="bg-warning-wash"] {
+  background-color: rgba(147, 98, 20, 0.28) !important;
+}
+
+body.lh-dark [class*="bg-danger-soft"] {
+  background-color: rgba(151, 48, 64, 0.28) !important;
+}
+
+body.lh-dark [class*="border-line"],
+body.lh-dark [class*="border-edge"],
+body.lh-dark [class*="border-brand-edge"] {
+  border-color: rgba(151, 184, 218, 0.2) !important;
+}
+
+body.lh-dark .lh-card,
+body.lh-dark .lh-card-pad,
+body.lh-dark .lh-metric,
+body.lh-dark .lh-table-shell,
+body.lh-dark .lh-status-strip {
+  background: rgba(11, 24, 39, 0.9) !important;
+  border-color: rgba(151, 184, 218, 0.17) !important;
+  box-shadow: 0 18px 45px -34px rgba(0, 0, 0, 0.86);
+}
+
+body.lh-dark .lh-card-soft,
+body.lh-dark .lh-chat-ai {
+  background: rgba(16, 34, 55, 0.86) !important;
+  border-color: rgba(151, 184, 218, 0.17) !important;
+  color: #dbe8f5 !important;
+}
+
+body.lh-dark .lh-secondary-button,
+body.lh-dark .lh-icon-button,
+body.lh-dark .lh-list-row {
+  background-color: rgba(13, 28, 46, 0.86) !important;
+  border-color: rgba(151, 184, 218, 0.2) !important;
+  color: #edf6ff !important;
+}
+
+body.lh-dark .lh-list-row:hover,
+body.lh-dark .lh-list-row-active {
+  background-color: rgba(30, 77, 116, 0.64) !important;
+  border-color: rgba(98, 179, 255, 0.42) !important;
+}
+
+body.lh-dark .lh-table-head,
+body.lh-dark thead tr {
+  background-color: rgba(18, 39, 62, 0.92) !important;
+}
+
+body.lh-dark tbody tr {
+  border-color: rgba(151, 184, 218, 0.14) !important;
+}
+
+body.lh-dark input,
+body.lh-dark select,
+body.lh-dark textarea {
+  background-color: rgba(10, 22, 36, 0.92) !important;
+  border-color: rgba(151, 184, 218, 0.24) !important;
+  color: #edf6ff !important;
+}
+
+body.lh-dark input::placeholder,
+body.lh-dark textarea::placeholder {
+  color: #7f94ac;
+}
+
+body.lh-dark option {
+  background-color: #0b1828;
+  color: #edf6ff;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Figures must align in columns — currency, counts, percentages, dates. */
+table,
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Keyboard users need to see where they are. Mouse users never see this. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #edf5fc;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bad4ea;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8fb8dc;
+}
+
+body.lh-dark ::-webkit-scrollbar-track {
+  background: #0b1828;
+}
+
+body.lh-dark ::-webkit-scrollbar-thumb {
+  background: #345a7b;
+}
+
+body.lh-dark ::-webkit-scrollbar-thumb:hover {
+  background: #4c789d;
+}
+
+::selection {
+  background: rgba(33, 136, 245, 0.16);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #bad4ea #edf5fc;
+}
+
+body.lh-dark * {
+  scrollbar-color: #345a7b #0b1828;
+}
+
+/* ---------------------------------------------------------------------------
+ * Printing a receipt.
+ *
+ * The receipt document sits in the tree at all times and is invisible until a
+ * print is actually asked for. The alternative — restyling the workspace with
+ * a media query — means the thing that reaches the printer is a layout nobody
+ * ever looked at, assembled out of rules written for a screen.
+ *
+ * Scoped to a body class rather than applied to every print, so `Ctrl+P` on
+ * the reports page still prints the reports page.
+ * ------------------------------------------------------------------------ */
+
+.lh-print-doc {
+  display: none;
+}
+
+.lh-print-invoice-doc {
+  display: none;
+}
+
+.lh-print-prescription-doc {
+  display: none;
+}
+
+@media print {
+  body.lh-printing-receipt .lh-app {
+    display: none !important;
+  }
+
+  body.lh-printing-receipt .lh-print-doc {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  @page {
+    size: A5;
+    margin: 12mm;
+  }
+
+  /* The office copy goes below the patient copy on the same sheet, separated
+     by a cut line rather than a page break — two sheets for one payment is
+     how a practice runs out of paper on a Friday afternoon. */
+  .lh-receipt-copy + .lh-receipt-copy {
+    margin-top: 10mm;
+    padding-top: 10mm;
+    border-top: 1px dashed #999;
+  }
+
+  .lh-receipt-copy {
+    break-inside: avoid;
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+
+  body.lh-printing-invoice * {
+    visibility: hidden;
+  }
+
+  body.lh-printing-invoice .lh-print-invoice-doc,
+  body.lh-printing-invoice .lh-print-invoice-doc * {
+    visibility: visible;
+  }
+
+  body.lh-printing-invoice .lh-print-invoice-doc {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 12mm;
+    color: #000;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  body.lh-printing-prescription * {
+    visibility: hidden;
+  }
+
+  body.lh-printing-prescription .lh-print-prescription-doc,
+  body.lh-printing-prescription .lh-print-prescription-doc * {
+    visibility: visible;
+  }
+
+  body.lh-printing-prescription .lh-print-prescription-doc {
+    display: block;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 12mm;
+    color: #000;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+}
+
+/* Laid out unconditionally rather than inside the print block, so the document
+   can be inspected on screen during development by toggling one class. */
+.lh-receipt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 3mm;
+  border-bottom: 1.5pt solid #000;
+}
+
+.lh-receipt-practice {
+  font-size: 13pt;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lh-receipt-meta {
+  font-size: 8.5pt;
+  color: #333;
+}
+
+.lh-receipt-stamp {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.lh-receipt-title {
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.lh-receipt-copy-label {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #444;
+}
+
+.lh-receipt-details {
+  margin-top: 4mm;
+}
+
+.lh-receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6mm;
+  padding: 0.9mm 0;
+}
+
+.lh-receipt-row dt {
+  color: #444;
+}
+
+.lh-receipt-row dd {
+  font-weight: 600;
+  text-align: right;
+}
+
+.lh-receipt-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 4mm;
+  padding: 2.5mm 0;
+  border-top: 1pt solid #000;
+  border-bottom: 1pt solid #000;
+}
+
+.lh-receipt-amount strong {
+  font-size: 15pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.lh-receipt-note {
+  margin-top: 2.5mm;
+  font-size: 8.5pt;
+  color: #333;
+}
+
+.lh-receipt-table {
+  width: 100%;
+  margin-top: 3.5mm;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+
+.lh-receipt-table th {
+  text-align: left;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #444;
+  border-bottom: 0.5pt solid #999;
+  padding-bottom: 1mm;
+}
+
+.lh-receipt-table th + th,
+.lh-receipt-table td + td {
+  text-align: right;
+}
+
+.lh-receipt-table td {
+  padding-top: 1.2mm;
+  font-variant-numeric: tabular-nums;
+}
+
+.lh-receipt-balance {
+  margin-top: 3.5mm;
+  font-size: 10.5pt;
+}
+
+.lh-receipt-foot {
+  margin-top: 8mm;
+}
+
+.lh-receipt-sign span {
+  display: block;
+  width: 55mm;
+  border-bottom: 0.5pt solid #000;
+}
+
+.lh-receipt-sign p {
+  margin-top: 1mm;
+  font-size: 8pt;
+  color: #444;
+}
+
+.lh-receipt-small {
+  margin-top: 4mm;
+  font-size: 7.5pt;
+  color: #555;
+}
+
+.lh-invoice-print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 5mm;
+  border-bottom: 1.5pt solid #000;
+}
+
+.lh-invoice-print-brand {
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+.lh-invoice-print-meta,
+.lh-invoice-print-label {
+  font-size: 8.5pt;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.lh-invoice-print-stamp {
+  text-align: right;
+}
+
+.lh-invoice-print-title {
+  font-size: 15pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.lh-invoice-print-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr 0.9fr;
+  gap: 8mm;
+  margin-top: 6mm;
+  font-size: 10pt;
+  line-height: 1.45;
+}
+
+.lh-invoice-print-strong {
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.lh-invoice-print-table {
+  width: 100%;
+  margin-top: 8mm;
+  border-collapse: collapse;
+  font-size: 9.5pt;
+}
+
+.lh-invoice-print-table th {
+  padding: 2mm 0;
+  border-bottom: 1pt solid #000;
+  text-align: left;
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #444;
+}
+
+.lh-invoice-print-table td {
+  padding: 2.5mm 0;
+  border-bottom: 0.5pt solid #bbb;
+  vertical-align: top;
+}
+
+.lh-invoice-print-table th:nth-child(n+3),
+.lh-invoice-print-table td:nth-child(n+3) {
+  text-align: right;
+}
+
+.lh-invoice-print-table td span {
+  display: block;
+  margin-top: 1mm;
+  font-size: 8pt;
+  color: #555;
+}
+
+.lh-invoice-print-totals {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 7mm;
+}
+
+.lh-invoice-print-totals dl {
+  width: 72mm;
+  font-size: 10pt;
+}
+
+.lh-invoice-print-totals div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8mm;
+  padding: 1.2mm 0;
+}
+
+.lh-invoice-print-totals dd {
+  font-weight: 600;
+}
+
+.lh-invoice-print-balance {
+  margin-top: 2mm;
+  padding-top: 2mm !important;
+  border-top: 1pt solid #000;
+  font-size: 12pt;
+}
+
+.lh-prescription-print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 5mm;
+  border-bottom: 1.5pt solid #000;
+}
+
+.lh-prescription-print-brand {
+  font-size: 16pt;
+  font-weight: 700;
+}
+
+.lh-prescription-print-meta,
+.lh-prescription-print-label {
+  font-size: 8.5pt;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.lh-prescription-print-stamp {
+  text-align: right;
+}
+
+.lh-prescription-print-title {
+  font-size: 15pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.lh-prescription-print-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8mm;
+  margin-top: 6mm;
+  font-size: 10pt;
+  line-height: 1.45;
+}
+
+.lh-prescription-print-strong {
+  font-size: 12pt;
+  font-weight: 700;
+}
+
+.lh-prescription-print-rx {
+  display: grid;
+  grid-template-columns: 16mm 1fr;
+  gap: 5mm;
+  margin-top: 10mm;
+  padding: 6mm 0;
+  border-top: 1pt solid #000;
+  border-bottom: 1pt solid #000;
+}
+
+.lh-prescription-print-symbol {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 24pt;
+  font-weight: 700;
+}
+
+.lh-prescription-print-medication {
+  font-size: 18pt;
+  font-weight: 700;
+}
+
+.lh-prescription-print-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4mm 8mm;
+  margin-top: 5mm;
+  font-size: 10pt;
+}
+
+.lh-prescription-print-details dt {
+  font-size: 8pt;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #444;
+}
+
+.lh-prescription-print-details dd {
+  margin-top: 0.8mm;
+  font-weight: 600;
+}
+
+.lh-prescription-print-note {
+  margin-top: 6mm;
+  font-size: 10pt;
+  line-height: 1.45;
+}
+
+.lh-prescription-print-foot {
+  margin-top: 16mm;
+}
+
+.lh-prescription-print-sign span {
+  display: block;
+  width: 70mm;
+  border-bottom: 0.5pt solid #000;
+}
+
+.lh-prescription-print-sign p {
+  margin-top: 1mm;
+  font-size: 8pt;
+  color: #444;
+}
+
+.lh-prescription-print-small {
+  margin-top: 5mm;
+  font-size: 7.5pt;
+  color: #555;
+}

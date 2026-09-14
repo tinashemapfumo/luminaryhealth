@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+build/
+.ssrcheck/
+
+# Local environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+*.err.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local uploaded files and runtime storage
+luminary-server/client-files/
+luminary-server/client-files-local-node/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+

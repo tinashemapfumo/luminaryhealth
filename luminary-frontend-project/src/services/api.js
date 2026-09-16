@@ -123,10 +123,10 @@ export async function request(method, path, { body, query, token } = {}) {
   }
 
   if (!response.ok) {
-    // A 401 on any call means the session is gone — expired, revoked, or the
-    // machine was signed out elsewhere. The shell must return to sign-in rather
-    // than leave a workspace on screen that can no longer load anything.
-    if (response.status === 401) expiryListeners.forEach((fn) => fn());
+    // A 401 only means "session expired" when this request actually presented
+    // a session token. Public or pre-login checks can also receive 401, and
+    // those should not make the shell flash a signed-out/session-expired state.
+    if (response.status === 401 && auth) expiryListeners.forEach((fn) => fn());
 
     throw new ApiError(payload?.message ?? 'Something went wrong', {
       status: response.status,

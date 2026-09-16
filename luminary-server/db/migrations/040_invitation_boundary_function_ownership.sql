@@ -40,8 +40,8 @@ AS $$
     12);
 $$;
 
-ALTER FUNCTION luminary.resolve_invitation(text) OWNER TO postgres;
-ALTER FUNCTION luminary.password_policy(uuid) OWNER TO postgres;
+ALTER FUNCTION luminary.resolve_invitation(text) OWNER TO CURRENT_USER;
+ALTER FUNCTION luminary.password_policy(uuid) OWNER TO CURRENT_USER;
 
 REVOKE ALL ON FUNCTION luminary.resolve_invitation(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION luminary.password_policy(uuid) FROM PUBLIC;

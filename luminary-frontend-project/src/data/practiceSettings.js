@@ -22,12 +22,12 @@ export const IDLE_TIMEOUTS = ['5', '10', '15', '30', '60'];
 export const defaultSettings = {
   'PRC-001': {
     profile: {
-      name: 'Harare Central Clinic',
-      short: 'Harare Central',
+      name: 'Harare Family Health Demo',
+      short: 'Harare Demo',
       addressLine: '18 Josiah Tongogara Avenue, Avondale',
       city: 'Harare',
       phone: '+263 24 270 1100',
-      email: 'reception@hararecentral.co.zw',
+      email: 'reception@demo.luminaryhealth.test',
       // Zimbabwe is heavily dollarised: practices quote in USD and collect in
       // either, on the same day. `usdRate` stays "1 USD = n ZWL" whichever way
       // round the pair is configured, so the rate means one thing everywhere.
@@ -83,57 +83,6 @@ export const defaultSettings = {
       breakGlassEnabled: true,
       breakGlassRequiresReason: true,
       minimumPasswordLength: 12,
-      enforceRegistrationExpiry: true,
-    },
-  },
-
-  'PRC-002': {
-    profile: {
-      name: 'Bulawayo Family Practice',
-      short: 'Bulawayo Family',
-      addressLine: '7 Banff Road, Hillside',
-      city: 'Bulawayo',
-      phone: '+263 29 288 4410',
-      email: 'reception@bulawayofamily.co.zw',
-      primaryCurrency: 'USD',
-      secondaryCurrency: 'ZWL',
-      usdRate: 32.5,
-    },
-    providers: [
-      { id: 'USR-101', name: 'Dr. Ncube', speciality: 'Family Medicine', registration: 'HPCZ-GP-7731', registrationExpires: '2027-01-31', active: true },
-    ],
-    rooms: [
-      { id: 'R1', name: 'Consulting room', kind: 'Consulting', active: true },
-      { id: 'R2', name: 'Treatment room', kind: 'Procedure', active: true },
-    ],
-    hours: {
-      opensAt: '08:30',
-      closesAt: '16:00',
-      slotMinutes: '20',
-      openDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-    },
-    schemes: [
-      { id: 'SCH-A', name: 'NH263 Plan A', rate: 90, requiresPreAuth: false, active: true },
-      { id: 'SCH-SELF', name: 'Self-pay', rate: 0, requiresPreAuth: false, active: true },
-    ],
-    services: [
-      { code: '99213', description: 'Office visit, established patient', price: 25, active: true },
-      { code: '99203', description: 'New patient consultation', price: 40, active: true },
-    ],
-    integrations: {
-      nh263ProviderNumber: 'PRV-BYO-020114',
-      nh263Endpoint: 'https://switch.nh263.co.zw/v2',
-      nh263Connected: true,
-      smsSender: 'BYO-FAMILY',
-      smsGateway: 'Twilio',
-      smsConnected: false,
-      whatsappConnected: false,
-    },
-    security: {
-      idleTimeoutMinutes: '10',
-      breakGlassEnabled: true,
-      breakGlassRequiresReason: true,
-      minimumPasswordLength: 10,
       enforceRegistrationExpiry: true,
     },
   },

@@ -260,10 +260,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   // Selections are held as ids and resolved against the practice's own
   // collections further down, once those exist. Seeding them with
   // `initialSchedule[0]` and `initialInvoices[0]` pinned every user to the same
-  // two PRC-001 records, so a Bulawayo user opening Billing was shown a Harare
-  // patient — the list beside it was correctly scoped, the detail panel was
-  // not. Null means "nothing chosen yet"; the resolver picks the first record
-  // this user is actually entitled to see.
+  // records. Null means "nothing chosen yet"; the resolver picks the first
+  // record this user is actually entitled to see.
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [patientSearch, setPatientSearch] = useState('');

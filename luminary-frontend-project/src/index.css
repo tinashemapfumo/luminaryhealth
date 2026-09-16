@@ -1062,12 +1062,23 @@ body.lh-dark * {
   font-weight: 700;
 }
 
+.lh-prescription-print-alerts {
+  display: grid;
+  grid-template-columns: 0.85fr 1.15fr;
+  gap: 6mm;
+  margin-top: 6mm;
+  padding: 3mm;
+  border: 0.75pt solid #000;
+  font-size: 8.75pt;
+  line-height: 1.4;
+}
+
 .lh-prescription-print-rx {
   display: grid;
   grid-template-columns: 16mm 1fr;
   gap: 5mm;
-  margin-top: 10mm;
-  padding: 6mm 0;
+  margin-top: 7mm;
+  padding: 5mm 0;
   border-top: 1pt solid #000;
   border-bottom: 1pt solid #000;
 }
@@ -1110,7 +1121,11 @@ body.lh-dark * {
 }
 
 .lh-prescription-print-foot {
-  margin-top: 16mm;
+  display: grid;
+  grid-template-columns: 1fr 36mm;
+  gap: 8mm;
+  align-items: end;
+  margin-top: 12mm;
 }
 
 .lh-prescription-print-sign span {
@@ -1125,7 +1140,21 @@ body.lh-dark * {
   color: #444;
 }
 
+.lh-prescription-print-stamp-box {
+  height: 24mm;
+  border: 0.75pt solid #777;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 2mm;
+  font-size: 7.5pt;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .lh-prescription-print-small {
+  grid-column: 1 / -1;
   margin-top: 5mm;
   font-size: 7.5pt;
   color: #555;

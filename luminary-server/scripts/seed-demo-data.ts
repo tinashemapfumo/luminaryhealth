@@ -17,6 +17,19 @@ const NODE_ID = process.env.NODE_ID || 'demo';
 const DEMO_PASSWORD = process.env.LUMINARY_DEMO_PASSWORD || process.env.LUMINARY_TEST_PASSWORD || 'LuminaryDemo2026!';
 const id = (group: string, n: number) => `33333333-3333-4333-${group}-${String(n).padStart(12, '0')}`;
 type Row = Record<string, unknown>;
+const jsonColumns = new Set([
+  'provider_identifiers',
+  'vitals',
+  'diagnoses',
+  'responses',
+  'submission_snapshot',
+  'validation_result',
+  'metadata',
+  'normalized_result',
+  'messages',
+  'goals',
+  'interventions',
+]);
 
 const users = [
   ['a001', 1, 'admin@demo.luminaryhealth.test', 'Tariro Mbeki', 'TM', 'Practice administrator', 'admin', false, null],
@@ -82,7 +95,7 @@ const upsert = async (table: string, row: Row, conflict = 'id'): Promise<void> =
   const updates = keys.filter((key) => key !== conflict).map((key) => `"${key}" = EXCLUDED."${key}"`).join(', ');
   await client.query(
     `INSERT INTO luminary.${table} (${columns}) VALUES (${params}) ON CONFLICT ("${conflict}") DO UPDATE SET ${updates}`,
-    keys.map((key) => row[key]),
+    keys.map((key) => (jsonColumns.has(key) ? JSON.stringify(row[key] ?? null) : row[key])),
   );
 };
 

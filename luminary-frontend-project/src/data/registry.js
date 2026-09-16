@@ -10,10 +10,6 @@ export const initialPatientRows = [
   { name: 'Kudzai Machingura', id: 'PT-4450', practiceId: 'PRC-001', lastVisit: 'Aug 09', next: 'Today 15:00', balance: 40, status: 'Review', provider: 'Dr. Singh', memberNo: 'NH263-009910-02' },
   { name: 'Tendai Moyo', id: 'PT-3388', practiceId: 'PRC-001', lastVisit: 'Aug 21', next: 'Today 16:00', balance: 175, status: 'Overdue', provider: 'Dr. Ahmed', memberNo: 'NH263-012090-00' },
 
-  // Bulawayo Family Practice — a separate tenant. These must never appear to
-  // a Harare Central user, in any module, search, or export.
-  { name: 'Sipho Nkomo', id: 'PT-8801', practiceId: 'PRC-002', lastVisit: 'Aug 24', next: 'Today 10:00', balance: 45, status: 'Active', provider: 'Dr. Ncube', memberNo: 'NH263-020114-00' },
-  { name: 'Linda Sibanda', id: 'PT-8802', practiceId: 'PRC-002', lastVisit: 'Aug 12', next: 'Not scheduled', balance: 0, status: 'Follow-up', provider: 'Dr. Ncube', memberNo: 'NH263-020887-00' },
 ];
 
 // `day` is an offset from today (0 = today), so the week grid has somewhere to

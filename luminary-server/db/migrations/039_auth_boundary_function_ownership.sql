@@ -50,8 +50,8 @@ AS $$
      AND revoked_at IS NULL;
 $$;
 
-ALTER FUNCTION luminary.resolve_session(text) OWNER TO postgres;
-ALTER FUNCTION luminary.revoke_session(text) OWNER TO postgres;
+ALTER FUNCTION luminary.resolve_session(text) OWNER TO CURRENT_USER;
+ALTER FUNCTION luminary.revoke_session(text) OWNER TO CURRENT_USER;
 
 REVOKE ALL ON FUNCTION luminary.resolve_session(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION luminary.revoke_session(text) FROM PUBLIC;

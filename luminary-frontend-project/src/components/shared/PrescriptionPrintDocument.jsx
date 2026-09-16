@@ -13,6 +13,21 @@ const field = (value, fallback = 'Not recorded') => {
   return value;
 };
 
+const listField = (items, fallback = 'Not recorded') => {
+  if (!Array.isArray(items) || items.length === 0) return fallback;
+  return items.filter(Boolean).join('; ') || fallback;
+};
+
+const ageFromDob = (dob) => {
+  if (!dob) return '';
+  const date = new Date(dob);
+  if (Number.isNaN(date.getTime())) return '';
+  const today = new Date();
+  const years = today.getFullYear() - date.getFullYear()
+    - (today < new Date(today.getFullYear(), date.getMonth(), date.getDate()) ? 1 : 0);
+  return years >= 0 ? `${years} years` : '';
+};
+
 function PracticeHeader({ practice = fallbackPractice }) {
   const details = [
     practice.addressLine,
@@ -39,10 +54,23 @@ function PracticeHeader({ practice = fallbackPractice }) {
 export function PrescriptionPrintDocument({ prescription, patient, practice }) {
   if (!prescription || !patient) return null;
 
-  const medication = [prescription.drug, prescription.strength].filter(Boolean).join(' ');
+  const medication = [
+    prescription.drug || prescription.medication || prescription.name,
+    prescription.strength,
+    prescription.form,
+  ].filter(Boolean).join(' ');
   const prescriber = prescription.prescriber || prescription.provider || prescription.doctor;
   const issued = prescription.issuedAt || prescription.issued || prescription.date || prescription.lastFilled;
   const pharmacy = prescription.pharmacy;
+  const directions = [
+    prescription.dose,
+    prescription.route,
+    prescription.directions || prescription.frequency,
+  ].filter(Boolean).join(' | ');
+  const quantity = prescription.quantity || prescription.dispenseQuantity || prescription.daysSupply;
+  const duration = prescription.duration || prescription.daysSupply;
+  const indication = prescription.indication || prescription.diagnosis || patient.conditions?.[0];
+  const substitution = prescription.substitutionAllowed === false ? 'Do not substitute' : prescription.substitutionAllowed === true ? 'Substitution allowed' : 'Per pharmacist judgement';
 
   return (
     <div className="lh-print-prescription-doc" aria-hidden="true">
@@ -52,19 +80,34 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
         <div>
           <p className="lh-prescription-print-label">Patient</p>
           <p className="lh-prescription-print-strong">{patient.name}</p>
-          <p>{field(patient.id)}</p>
-          <p>{field(patient.dob, 'DOB not recorded')}</p>
+          <p>ID: {field(patient.id)}</p>
+          <p>DOB: {field(patient.dob, 'Not recorded')}{ageFromDob(patient.dob) ? ` | ${ageFromDob(patient.dob)}` : ''}</p>
+          <p>Sex: {field(patient.sex)}</p>
+          {patient.phone && <p>Phone: {patient.phone}</p>}
         </div>
         <div>
           <p className="lh-prescription-print-label">Prescription ID</p>
           <p className="lh-prescription-print-strong">{field(prescription.id)}</p>
           <p>Status: {field(prescription.status)}</p>
           <p>Issued: {field(issued)}</p>
+          <p>Indication: {field(indication)}</p>
         </div>
         <div>
           <p className="lh-prescription-print-label">Prescriber</p>
           <p className="lh-prescription-print-strong">{field(prescriber)}</p>
-          <p>{field(pharmacy, 'Pharmacy not recorded')}</p>
+          <p>Registration: {field(prescription.prescriberRegistration || prescription.licenseNo)}</p>
+          <p>{field(pharmacy, 'Dispense at patient pharmacy')}</p>
+        </div>
+      </section>
+
+      <section className="lh-prescription-print-alerts">
+        <div>
+          <p className="lh-prescription-print-label">Allergies</p>
+          <p>{patient.allergiesRecorded === false ? 'Not reviewed' : listField(patient.allergies, 'None known')}</p>
+        </div>
+        <div>
+          <p className="lh-prescription-print-label">Current medicines</p>
+          <p>{listField(patient.medications)}</p>
         </div>
       </section>
 
@@ -75,11 +118,15 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
           <dl className="lh-prescription-print-details">
             <div>
               <dt>Directions</dt>
-              <dd>{field(prescription.directions || prescription.frequency)}</dd>
+              <dd>{field(directions)}</dd>
             </div>
             <div>
-              <dt>Days supply</dt>
-              <dd>{field(prescription.daysSupply)}</dd>
+              <dt>Quantity</dt>
+              <dd>{field(quantity)}</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>{field(duration)}</dd>
             </div>
             <div>
               <dt>Refills</dt>
@@ -88,6 +135,10 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
             <div>
               <dt>Next refill</dt>
               <dd>{field(prescription.nextRefill)}</dd>
+            </div>
+            <div>
+              <dt>Substitution</dt>
+              <dd>{substitution}</dd>
             </div>
           </dl>
         </div>
@@ -105,6 +156,7 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
           <span />
           <p>Prescriber signature</p>
         </div>
+        <div className="lh-prescription-print-stamp-box">Practice stamp</div>
         <p className="lh-prescription-print-small">
           Printed from Luminary Health. Verify medicine, dose, patient identity, and prescriber before dispensing.
         </p>

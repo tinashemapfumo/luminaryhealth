@@ -1,0 +1,19 @@
+services:
+  api-demo:
+    build: .
+    image: luminary-server:online-demo
+    container_name: luminary-server-online-demo
+    env_file:
+      - env/online.demo.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      NODE_ID: cloud-demo
+      SHOW_TEST_PRACTICES: "true"
+      MESSAGING_DISPATCH: "false"
+      LUMINARY_ALLOW_PRODUCTION_TEST_SEED: "true"
+    ports:
+      - "4000:4000"
+    volumes:
+      - /var/lib/luminary-demo/client-files:/var/lib/luminary-demo/client-files
+    restart: unless-stopped

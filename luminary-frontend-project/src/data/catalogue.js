@@ -132,29 +132,6 @@ export const initialCatalogue = {
       aliases: ['Medication review', 'Script review', 'Repeat prescription'],
       notes: '',
     },
-  ],
-  'PRC-002': [
-    {
-      id: 'SVC-101', internalCode: 'CONS-EST', displayName: 'Consultation, established patient',
-      clinicalName: 'Follow-up consultation', billingDescription: 'Office visit, established patient',
-      category: 'Consultation', department: 'Family Medicine', serviceType: 'consultation',
-      defaultDuration: 15, defaultQuantity: 1, active: true, billable: true,
-      billingTrigger: 'ON_COMPLETION', defaultTariffCode: '99213',
-      price: always(25),
-      visitTypes: ['Follow up', 'Blood pressure review', 'Postoperative check'],
-      aliases: ['Office visit', 'GP consultation'],
-      notes: '',
-    },
-    {
-      id: 'SVC-102', internalCode: 'CONS-NEW', displayName: 'Consultation, new patient',
-      clinicalName: 'New patient consultation', billingDescription: 'New patient consultation',
-      category: 'Consultation', department: 'Family Medicine', serviceType: 'consultation',
-      defaultDuration: 30, defaultQuantity: 1, active: true, billable: true,
-      billingTrigger: 'ON_COMPLETION', defaultTariffCode: '99203',
-      price: always(40),
-      visitTypes: ['New patient consult'],
-      aliases: ['New patient', 'Initial consultation'],
-      notes: '',
-    },
-  ],
+  ]
 };
+

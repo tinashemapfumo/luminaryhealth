@@ -152,6 +152,42 @@ The online clean checker refuses common deployment mistakes:
 - placeholder API keys or database URLs
 - production test-seed override flags
 
+## Demo Online Deployment
+
+Use the demo repo/droplet only with a disposable demo database. Do not point
+`env/online.demo.env` at the clean production database.
+
+Create the online demo env file from the example:
+
+```bash
+cd luminary-server
+cp env/online.demo.env.example env/online.demo.env
+```
+
+Replace the placeholders in:
+
+```text
+luminary-server/env/online.demo.env
+luminary-frontend-project/.env.online-demo
+```
+
+At minimum, set:
+
+- `DATABASE_URL` to the demo database
+- `WEB_ORIGINS` to the deployed demo frontend origin
+- `VITE_API_URL` to the deployed demo API origin
+- `LUMINARY_DEMO_PASSWORD` to the demo password you want to use
+
+Then deploy the demo API:
+
+```bash
+cd luminary-server
+npm run deploy:online-demo
+```
+
+That command runs migrations, seeds/updates the demo data, and recreates the
+online demo API container from `compose.online.demo.yaml`.
+
 ## Frontend
 
 Tracked examples:

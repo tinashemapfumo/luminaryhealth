@@ -24,14 +24,6 @@ export const initialPayers = [
       { id: 'PLN-C', name: 'NH263 Plan C', reimbursePercent: 80, requiresPreAuth: false, active: true },
     ],
   },
-  {
-    id: 'PAY-NH263-BYO',
-    name: 'NH263',
-    practiceId: 'PRC-002',
-    plans: [
-      { id: 'PLN-A', name: 'NH263 Plan A', reimbursePercent: 90, requiresPreAuth: false, active: true },
-    ],
-  },
 ];
 
 /**

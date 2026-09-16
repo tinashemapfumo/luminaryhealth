@@ -26,7 +26,7 @@ services:
       PORT: "4001"
       DATABASE_URL: postgres://luminary_app:luminary_demo@db-demo:5432/luminary_demo
       CLIENT_FILE_STORAGE_PATH: /app/client-files
-      WEB_ORIGINS: http://127.0.0.1:5175,http://localhost:5175
+      WEB_ORIGINS: http://127.0.0.1:5174,http://localhost:5174,http://127.0.0.1:5175,http://localhost:5175
       SHOW_TEST_PRACTICES: "true"
     depends_on:
       db-demo:

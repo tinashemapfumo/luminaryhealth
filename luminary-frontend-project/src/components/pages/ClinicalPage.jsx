@@ -1,20 +1,43 @@
-import React from 'react';
-import { CalendarDays, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { CalendarDays, Printer, ShieldCheck } from 'lucide-react';
 import EncounterNote from '../EncounterNote';
 import { NOTE_STATUS } from '../../data/encounters';
 import { labResultsByPatient, prescriptionsByPatient, visitStatusTone } from '../../data/clinical';
 import { Button, EmptyState } from '../ui';
 import { StatusPill } from '../shared/StatusPill';
+import PrescriptionPrintDocument from '../shared/PrescriptionPrintDocument';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function ClinicalPage() {
   const {
-    access, roleInfo, doctorIdentity, patientRecords,
+    access, roleInfo, doctorIdentity, patientRecords, practice,
     openNote, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage,
     applyDictationEncounter,
     todaysSchedule, practiceEncounters, practicePatients, practiceQueue,
     openNoteForVisit, visitStatuses, notify, setActiveView,
   } = useWorkspace();
+  const [prescriptionToPrint, setPrescriptionToPrint] = useState(null);
+  const [prescriptionPatient, setPrescriptionPatient] = useState(null);
+
+  const printPrescription = (prescription) => {
+    const registryPatient = practicePatients.find((patient) => patient.name === prescription.patient);
+    const record = registryPatient ? patientRecords[registryPatient.id] : null;
+    setPrescriptionToPrint({
+      ...prescription,
+      prescriber: prescription.prescriber || prescription.provider || doctorIdentity,
+    });
+    setPrescriptionPatient(record || registryPatient || { name: prescription.patient });
+    window.setTimeout(() => {
+      const clear = () => document.body.classList.remove('lh-printing-prescription');
+      window.addEventListener('afterprint', clear, { once: true });
+      document.body.classList.add('lh-printing-prescription');
+      try {
+        window.print();
+      } finally {
+        clear();
+      }
+    }, 0);
+  };
 
   const renderClinicalWorkspace = () => {
     // A doctor's list is their own patients; everyone else sees the whole clinic.
@@ -208,13 +231,24 @@ export default function ClinicalPage() {
                         <p className="text-xs text-muted">{rx.drug} {rx.strength} · {rx.refills} refills left</p>
                       </div>
                       {access.can.prescribe ? (
-                        <button
-                          type="button"
-                          onClick={() => notify(`Repeat authorised for ${rx.patient}, ${rx.drug}`)}
-                          className="rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
-                        >
-                          Authorise
-                        </button>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => printPrescription(rx)}
+                            title={`Print prescription ${rx.id}`}
+                            aria-label={`Print prescription ${rx.id}`}
+                            className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:bg-wash hover:text-brand"
+                          >
+                            <Printer size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => notify(`Repeat authorised for ${rx.patient}, ${rx.drug}`)}
+                            className="rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
+                          >
+                            Authorise
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-2xs uppercase tracking-[0.08em] text-muted">Prescriber only</span>
                       )}
@@ -316,5 +350,10 @@ export default function ClinicalPage() {
         />
       );
     }
-    return renderClinicalWorkspace();
+    return (
+      <>
+        <PrescriptionPrintDocument prescription={prescriptionToPrint} patient={prescriptionPatient} practice={practice} />
+        {renderClinicalWorkspace()}
+      </>
+    );
 }

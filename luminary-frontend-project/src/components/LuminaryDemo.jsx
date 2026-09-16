@@ -32,7 +32,7 @@ import AIPage from './pages/AIPage';
 import SettingsPage from './pages/SettingsPage';
 import { useHashRoute, navigate, buildHash, parseHash, toSlug, fromSlug } from '../lib/router';
 import { initialGrants, AUDIT, RELATIONSHIP, practices as seededPractices, users as seedUsers } from '../data/organisation';
-import { defaultSettings, activeProviderNames, activeRoomNames } from '../data/practiceSettings';
+import { defaultSettings, activeRoomNames } from '../data/practiceSettings';
 import { initialCatalogue, triggerLabel, BILLING_TRIGGERS } from '../data/catalogue';
 import { initialTariffs, initialPayers, planByName } from '../data/tariffs';
 import { initialOrders, ORDER_STATUS, orderStatusTone, ORDER_PRIORITIES } from '../data/orders';
@@ -1019,9 +1019,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
 
     if (live) {
       const patient = practicePatients.find((p) => p.name === appointment.patient);
-      const providerId = origin === 'walk_in' ? null : (patient?.providerId || currentUser.id);
+      const providerId = origin === 'walk_in' ? null : providerIdForName(appointment.provider);
       if (!patient?.patientId || (origin === 'scheduled' && !providerId)) {
-        setFormErrors({ patient: 'Cannot resolve the live patient or provider for this booking.' });
+        setFormErrors({
+          ...errors,
+          ...(patient?.patientId ? {} : { patient: 'Cannot resolve the live patient for this booking.' }),
+          ...(origin === 'scheduled' && !providerId ? { provider: 'Select an active provider.' } : {}),
+        });
         return;
       }
       try {
@@ -2053,7 +2057,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
 
   // Configuration now drives the app rather than sitting in a settings screen:
   // deactivate a room here and it disappears from the calendar.
-  const configuredProviders = activeProviderNames(settings);
+  const configuredProviderRecords = (settings?.providers || []).filter((provider) => provider.active !== false);
+  const configuredProviders = configuredProviderRecords.map((provider) => provider.name);
+  const providerIdForName = (name) =>
+    configuredProviderRecords.find((provider) => provider.name === name)?.id || null;
   const configuredRooms = activeRoomNames(settings);
   const defaultProviderName = configuredProviders[0] || 'Unassigned';
   const defaultRoomName = configuredRooms[0] || 'Unassigned';
@@ -4006,7 +4013,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           <Field label="Duration" hint="Shown to scale on the calendar">
             <Select value={form.duration || '30'} onChange={setField('duration')} options={['15', '30', '45', '60', '90']} />
           </Field>
-          <Field label="Provider">
+          <Field label="Provider" error={formErrors.provider}>
             <Select value={(form.origin || 'scheduled') === 'walk_in' ? 'Unassigned' : (form.provider || defaultProviderName)} onChange={setField('provider')} options={(form.origin || 'scheduled') === 'walk_in' ? ['Unassigned', ...configuredProviders] : (configuredProviders.length ? configuredProviders : ['Unassigned'])} />
           </Field>
           <Field label="Room">

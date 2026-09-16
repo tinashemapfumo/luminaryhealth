@@ -123,7 +123,7 @@ export default function DashboardPage() {
           panels below are replaced with a system-oriented view. Naming who is
           booked in today is patient data, even without a diagnosis attached. */}
       {!access.can.viewPatientDirectory && (
-        <div className="lh-card-pad">
+        <div className="lh-card-pad lh-side-panel">
           <div className="flex items-start gap-3">
             <ShieldCheck size={16} className="mt-0.5 shrink-0 text-brand" />
             <div>
@@ -139,7 +139,7 @@ export default function DashboardPage() {
       )}
 
       {access.can.viewPatientDirectory && (
-      <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.7fr)]">
         <div className="lh-card-pad">
           <div className="flex items-center justify-between border-b border-line pb-4">
             <div>
@@ -186,7 +186,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="lh-side-panel space-y-6">
           <div className="lh-card-pad">
             <div className="flex items-center justify-between">
               <p className="lh-section-label">Practice pulse</p>
@@ -228,7 +228,7 @@ export default function DashboardPage() {
 
 
       {access.can.viewPatientDirectory && (
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
         <div className="lh-card-pad">
           <div className="mb-4 flex items-center justify-between">
             <div>

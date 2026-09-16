@@ -115,6 +115,10 @@
     @apply inline-flex items-center gap-2 rounded-lg border border-line bg-white/[0.78] px-3 py-2 text-xs font-medium shadow-[0_8px_24px_-22px_rgba(33,97,156,0.22)] backdrop-blur;
   }
 
+  .lh-side-panel {
+    min-width: 0;
+  }
+
   .lh-chat-user {
     @apply bg-brand text-white shadow-[0_12px_30px_-22px_rgba(8,114,222,0.45)];
   }
@@ -212,6 +216,10 @@ body.lh-dark [class*="bg-surface"] {
   background-color: rgba(16, 34, 55, 0.88) !important;
 }
 
+body.lh-dark [class*="bg-line"] {
+  background-color: rgba(151, 184, 218, 0.16) !important;
+}
+
 body.lh-dark [class*="bg-wash"],
 body.lh-dark [class*="bg-brand-soft"],
 body.lh-dark [class*="bg-teal-soft"] {
@@ -237,6 +245,10 @@ body.lh-dark [class*="border-brand-edge"] {
   border-color: rgba(151, 184, 218, 0.2) !important;
 }
 
+body.lh-dark [class*="border-white"] {
+  border-color: rgba(237, 246, 255, 0.24) !important;
+}
+
 body.lh-dark .lh-card,
 body.lh-dark .lh-card-pad,
 body.lh-dark .lh-metric,
@@ -254,6 +266,18 @@ body.lh-dark .lh-chat-ai {
   color: #dbe8f5 !important;
 }
 
+@media (min-width: 1536px) {
+  .lh-side-panel {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 9rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.25rem;
+    scrollbar-gutter: stable;
+  }
+}
+
 body.lh-dark .lh-secondary-button,
 body.lh-dark .lh-icon-button,
 body.lh-dark .lh-list-row {
@@ -266,6 +290,11 @@ body.lh-dark .lh-list-row:hover,
 body.lh-dark .lh-list-row-active {
   background-color: rgba(30, 77, 116, 0.64) !important;
   border-color: rgba(98, 179, 255, 0.42) !important;
+}
+
+body.lh-dark .rounded-full.bg-line,
+body.lh-dark .rounded-md.bg-line {
+  color: #dbe8f5 !important;
 }
 
 body.lh-dark .lh-table-head,
@@ -396,6 +425,10 @@ body.lh-dark * {
   display: none;
 }
 
+.lh-print-statement-doc {
+  display: none;
+}
+
 .lh-print-prescription-doc {
   display: none;
 }
@@ -407,12 +440,28 @@ body.lh-dark * {
 
   body.lh-printing-receipt .lh-print-doc {
     display: block;
+    page: receipt;
     color: #000;
     background: #fff;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
-  @page {
+  @page receipt {
+    size: A5;
+    margin: 12mm;
+  }
+
+  @page invoice {
+    size: A4;
+    margin: 14mm;
+  }
+
+  @page statement {
+    size: A4;
+    margin: 14mm;
+  }
+
+  @page prescription {
     size: A5;
     margin: 12mm;
   }
@@ -443,10 +492,34 @@ body.lh-dark * {
 
   body.lh-printing-invoice .lh-print-invoice-doc {
     display: block;
+    page: invoice;
     position: absolute;
     inset: 0 auto auto 0;
     width: 100%;
-    padding: 12mm;
+    min-height: calc(297mm - 28mm);
+    padding: 0;
+    color: #000;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  body.lh-printing-statement * {
+    visibility: hidden;
+  }
+
+  body.lh-printing-statement .lh-print-statement-doc,
+  body.lh-printing-statement .lh-print-statement-doc * {
+    visibility: visible;
+  }
+
+  body.lh-printing-statement .lh-print-statement-doc {
+    display: block;
+    page: statement;
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    min-height: calc(297mm - 28mm);
+    padding: 0;
     color: #000;
     background: #fff;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -463,6 +536,7 @@ body.lh-dark * {
 
   body.lh-printing-prescription .lh-print-prescription-doc {
     display: block;
+    page: prescription;
     position: absolute;
     inset: 0 auto auto 0;
     width: 100%;
@@ -615,19 +689,27 @@ body.lh-dark * {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8mm;
-  padding-bottom: 5mm;
-  border-bottom: 1.5pt solid #000;
+  padding-bottom: 6mm;
+  border-bottom: 1.25pt solid #000;
 }
 
 .lh-invoice-print-brand {
-  font-size: 16pt;
+  font-size: 18pt;
   font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .lh-invoice-print-meta,
 .lh-invoice-print-label {
-  font-size: 8.5pt;
+  font-size: 8pt;
   color: #444;
+}
+
+.lh-invoice-print-meta {
+  margin-top: 1mm;
+}
+
+.lh-invoice-print-label {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -637,47 +719,75 @@ body.lh-dark * {
 }
 
 .lh-invoice-print-title {
-  font-size: 15pt;
+  font-size: 16pt;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
+}
+
+.lh-invoice-print-number {
+  margin-top: 1mm;
+  font-size: 9pt;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .lh-invoice-print-grid {
   display: grid;
-  grid-template-columns: 1.2fr 0.9fr 0.9fr;
+  grid-template-columns: 1.25fr 0.85fr 0.9fr;
   gap: 8mm;
-  margin-top: 6mm;
-  font-size: 10pt;
+  margin-top: 7mm;
+  padding-bottom: 5mm;
+  border-bottom: 0.5pt solid #bbb;
+  font-size: 9pt;
   line-height: 1.45;
 }
 
 .lh-invoice-print-strong {
-  font-size: 12pt;
+  margin-top: 1.5mm;
+  font-size: 11pt;
   font-weight: 700;
 }
 
 .lh-invoice-print-table {
   width: 100%;
-  margin-top: 8mm;
+  margin-top: 7mm;
   border-collapse: collapse;
-  font-size: 9.5pt;
+  table-layout: fixed;
+  font-size: 8.75pt;
+}
+
+.lh-invoice-print-service-col {
+  width: auto;
+}
+
+.lh-invoice-print-code-col {
+  width: 24mm;
+}
+
+.lh-invoice-print-qty-col {
+  width: 13mm;
+}
+
+.lh-invoice-print-money-col {
+  width: 30mm;
 }
 
 .lh-invoice-print-table th {
-  padding: 2mm 0;
+  padding: 0 2mm 2mm 0;
   border-bottom: 1pt solid #000;
   text-align: left;
-  font-size: 8pt;
+  font-size: 7.5pt;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #444;
 }
 
 .lh-invoice-print-table td {
-  padding: 2.5mm 0;
+  padding: 2.75mm 2mm 2.75mm 0;
   border-bottom: 0.5pt solid #bbb;
   vertical-align: top;
+  word-break: normal;
 }
 
 .lh-invoice-print-table th:nth-child(n+3),
@@ -685,40 +795,224 @@ body.lh-dark * {
   text-align: right;
 }
 
+.lh-invoice-print-table th:last-child,
+.lh-invoice-print-table td:last-child {
+  padding-right: 0;
+}
+
 .lh-invoice-print-table td span {
   display: block;
   margin-top: 1mm;
-  font-size: 8pt;
+  font-size: 7.5pt;
+  line-height: 1.35;
   color: #555;
 }
 
 .lh-invoice-print-totals {
   display: flex;
   justify-content: flex-end;
-  margin-top: 7mm;
+  margin-top: 8mm;
 }
 
 .lh-invoice-print-totals dl {
-  width: 72mm;
-  font-size: 10pt;
+  width: 76mm;
+  font-size: 9pt;
 }
 
 .lh-invoice-print-totals div {
   display: flex;
   justify-content: space-between;
   gap: 8mm;
-  padding: 1.2mm 0;
+  padding: 1.35mm 0;
+  border-bottom: 0.35pt solid #ddd;
 }
 
 .lh-invoice-print-totals dd {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .lh-invoice-print-balance {
   margin-top: 2mm;
   padding-top: 2mm !important;
   border-top: 1pt solid #000;
+  border-bottom: 0 !important;
   font-size: 12pt;
+}
+
+.lh-invoice-print-foot {
+  margin-top: 12mm;
+  padding-top: 3mm;
+  border-top: 0.5pt solid #bbb;
+  font-size: 7.5pt;
+  color: #555;
+}
+
+.lh-statement-print-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8mm;
+  padding-bottom: 6mm;
+  border-bottom: 1.25pt solid #000;
+}
+
+.lh-statement-print-brand {
+  font-size: 18pt;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.lh-statement-print-meta,
+.lh-statement-print-label {
+  font-size: 8pt;
+  color: #444;
+}
+
+.lh-statement-print-meta {
+  margin-top: 1mm;
+}
+
+.lh-statement-print-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.lh-statement-print-stamp {
+  text-align: right;
+}
+
+.lh-statement-print-title {
+  font-size: 15pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.lh-statement-print-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 0.8fr 0.6fr;
+  gap: 8mm;
+  margin-top: 7mm;
+  padding-bottom: 5mm;
+  border-bottom: 0.5pt solid #bbb;
+  font-size: 9pt;
+  line-height: 1.45;
+}
+
+.lh-statement-print-strong {
+  margin-top: 1.5mm;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.lh-statement-print-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3mm;
+  margin-top: 7mm;
+  font-size: 8.5pt;
+}
+
+.lh-statement-print-summary div {
+  border: 0.5pt solid #ccc;
+  padding: 2.5mm;
+}
+
+.lh-statement-print-summary span {
+  display: block;
+  font-size: 7.5pt;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.lh-statement-print-summary strong {
+  display: block;
+  margin-top: 1mm;
+  font-size: 10pt;
+  font-variant-numeric: tabular-nums;
+}
+
+.lh-statement-print-balance {
+  border-color: #000 !important;
+}
+
+.lh-statement-print-table,
+.lh-statement-print-open-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8pt;
+}
+
+.lh-statement-print-table {
+  margin-top: 7mm;
+}
+
+.lh-statement-print-table th:nth-child(1) {
+  width: 20mm;
+}
+
+.lh-statement-print-table th:nth-child(2) {
+  width: 20mm;
+}
+
+.lh-statement-print-table th:nth-child(3) {
+  width: 27mm;
+}
+
+.lh-statement-print-table th:nth-child(n+5) {
+  width: 23mm;
+}
+
+.lh-statement-print-table th,
+.lh-statement-print-open-table th {
+  padding: 0 1.5mm 1.8mm 0;
+  border-bottom: 1pt solid #000;
+  text-align: left;
+  font-size: 7pt;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #444;
+}
+
+.lh-statement-print-table td,
+.lh-statement-print-open-table td {
+  padding: 2mm 1.5mm 2mm 0;
+  border-bottom: 0.4pt solid #bbb;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.lh-statement-print-table th:nth-child(n+5),
+.lh-statement-print-table td:nth-child(n+5),
+.lh-statement-print-open-table th:last-child,
+.lh-statement-print-open-table td:last-child {
+  text-align: right;
+}
+
+.lh-statement-print-open {
+  margin-top: 8mm;
+}
+
+.lh-statement-print-open-table {
+  margin-top: 2mm;
+}
+
+.lh-statement-print-note {
+  margin-top: 2mm;
+  font-size: 8pt;
+  color: #555;
+}
+
+.lh-statement-print-foot {
+  margin-top: 10mm;
+  padding-top: 3mm;
+  border-top: 0.5pt solid #bbb;
+  font-size: 7.5pt;
+  color: #555;
 }
 
 .lh-prescription-print-head {

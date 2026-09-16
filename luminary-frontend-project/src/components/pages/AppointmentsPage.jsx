@@ -69,7 +69,7 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
         <ScheduleCalendar
           appointments={practiceSchedule}
           providers={configuredProviders}
@@ -92,7 +92,7 @@ export default function AppointmentsPage() {
           restrictToProvider={access.ownPatientsOnly ? doctorIdentity : null}
         />
 
-        <div className="lh-card-pad">
+        <div className="lh-card-pad lh-side-panel">
           <p className="lh-section-label">Visit details</p>
 
           <div className="lh-card-soft mt-4 p-4">

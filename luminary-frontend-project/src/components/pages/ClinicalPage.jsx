@@ -87,7 +87,7 @@ export default function ClinicalPage() {
           ))}
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid min-w-0 items-start gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
           {/* Today's list — the doctor's actual working queue */}
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
@@ -234,8 +234,8 @@ export default function ClinicalPage() {
   const renderClinicalLegacy = () => (
     <div className="space-y-6">
 
-      <div className="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="lh-card-pad">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+        <div className="lh-card-pad lh-side-panel">
           <div className="flex items-center justify-between">
             <p className="lh-section-label">Care coordination</p>
             <button type="button" onClick={() => setActiveView('appointments')} className="text-xs font-medium uppercase tracking-[0.12em] text-brand hover:underline">Open schedule</button>
@@ -257,7 +257,7 @@ export default function ClinicalPage() {
           </div>
         </div>
 
-        <div className="lh-card-pad">
+        <div className="lh-card-pad lh-side-panel">
           <p className="lh-section-label">Today’s plan</p>
           <div className="mt-4 space-y-4">
             {[{ label: 'Signed notes', value: '96%' }, { label: 'Medication review', value: '89%' }, { label: 'Care plans in sync', value: '94%' }].map((item) => (

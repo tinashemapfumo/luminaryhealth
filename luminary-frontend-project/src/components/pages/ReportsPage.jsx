@@ -460,7 +460,7 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
         <ReportTable reportId={definition.id} columns={report.columns} rows={rows} statusKey={report.statusKey} />
         <ReportHighlights title={`${definition.label} breakdown`} highlights={report.highlights} rowCount={rows.length} />
       </div>
@@ -552,7 +552,7 @@ function ReportHighlights({ title, highlights, rowCount }) {
   const max = Math.max(...highlights.map((item) => item.value), 1);
 
   return (
-    <aside className="lh-card-pad">
+    <aside className="lh-card-pad lh-side-panel">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.16em] text-muted">Breakdown</p>

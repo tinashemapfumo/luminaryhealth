@@ -1,10 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const envPath = path.resolve(process.cwd(), '.env');
+const modeIndex = process.argv.findIndex((arg) => arg === '--mode');
+const mode = modeIndex >= 0 ? process.argv[modeIndex + 1] : undefined;
+const modeEnvPaths = mode
+  ? [
+      path.resolve(process.cwd(), `.env.${mode}`),
+      path.resolve(process.cwd(), `.env.${mode}.local`),
+    ]
+  : [];
+
+if (mode && !modeEnvPaths.some((envPath) => fs.existsSync(envPath))) {
+  console.error(`Missing frontend environment for mode "${mode}". Create .env.${mode} from .env.${mode}.example first.`);
+  process.exit(1);
+}
+
+const envPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '.env.local'),
+  ...modeEnvPaths,
+].filter(Boolean);
 const env = { ...process.env };
 
-if (fs.existsSync(envPath)) {
+for (const envPath of envPaths) {
+  if (!fs.existsSync(envPath)) continue;
   const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
@@ -13,7 +32,7 @@ if (fs.existsSync(envPath)) {
     if (index === -1) continue;
     const key = trimmed.slice(0, index).trim();
     const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, '');
-    if (key && env[key] === undefined) env[key] = value;
+    if (key) env[key] = value;
   }
 }
 

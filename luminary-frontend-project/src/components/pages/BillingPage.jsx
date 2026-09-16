@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   FileText,
@@ -179,6 +179,7 @@ export default function BillingPage() {
     printReceipt,
     reprintReceipt,
     billingCurrency,
+    practice,
   } = useWorkspace();
 
   const [activeTab, setActiveTab] = useState('Overview');
@@ -269,14 +270,16 @@ export default function BillingPage() {
 
   const printInvoice = (invoice) => {
     setInvoiceModal(invoice);
-    const done = () => document.body.classList.remove('lh-printing-invoice');
+    const done = () => {
+      document.body.classList.remove('lh-printing-invoice');
+      window.removeEventListener('afterprint', done);
+    };
     window.addEventListener('afterprint', done, { once: true });
     document.body.classList.add('lh-printing-invoice');
-    try {
+    window.setTimeout(() => {
       window.print();
-    } finally {
-      done();
-    }
+      window.setTimeout(done, 1000);
+    }, 0);
   };
 
   const takePayment = (invoice) =>
@@ -407,6 +410,7 @@ export default function BillingPage() {
           currency={currency}
           outstandingOn={outstandingOn}
           today={today}
+          practice={practice}
         />
       )}
 
@@ -447,7 +451,16 @@ export default function BillingPage() {
       )}
 
       {receipt && (
-        <ReceiptBanner receipt={receipt} setReceipt={setReceipt} printReceipt={printReceipt} formatMoney={formatMoney} />
+        <ReceiptTray
+          receipt={receipt}
+          setReceipt={setReceipt}
+          printReceipt={printReceipt}
+          formatMoney={formatMoney}
+          onViewReceipts={() => {
+            setActiveTab('Receipts');
+            setReceiptsQuery(receipt.number || receipt.invoiceReference || '');
+          }}
+        />
       )}
 
       <InvoiceModal
@@ -470,7 +483,7 @@ export default function BillingPage() {
         onPrint={printReceiptFromModal}
         formatMoney={formatMoney}
       />
-      <InvoicePrintDocument invoice={invoiceModal} claim={claimForInvoice(invoiceModal)} formatMoney={formatMoney} />
+      <InvoicePrintDocument invoice={invoiceModal} claim={claimForInvoice(invoiceModal)} formatMoney={formatMoney} practice={practice} />
     </div>
   );
 }
@@ -700,7 +713,7 @@ function AccountsView({ accounts, query, setQuery, openAccount, formatMoney }) {
   );
 }
 
-function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, setQuery, range, customFrom, customTo, practiceInvoices, formatMoney, currency, outstandingOn, today }) {
+function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, setQuery, range, customFrom, customTo, practiceInvoices, formatMoney, currency, outstandingOn, today, practice }) {
   const selectedAccount = accounts.find((account) => account.patient === selectedPatient) || null;
   const filteredAccounts = accounts.filter((account) =>
     matchesQuery(query, account.patient, account.lastInvoice?.id, account.statement.outstanding, account.insurerExposure)
@@ -754,6 +767,19 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
   const collected = invoices.reduce((sum, invoice) => sum + paidSoFar(invoice.payments), 0);
   const adjusted = invoices.reduce((sum, invoice) => sum + adjustedTotal(invoice.adjustments), 0);
   const openInvoices = invoices.filter((invoice) => outstandingOn(invoice) > 0);
+  const rangeLabel = BILLING_RANGES.find((option) => option.key === range)?.label || 'Statement range';
+  const printStatement = () => {
+    const done = () => {
+      document.body.classList.remove('lh-printing-statement');
+      window.removeEventListener('afterprint', done);
+    };
+    window.addEventListener('afterprint', done, { once: true });
+    document.body.classList.add('lh-printing-statement');
+    window.setTimeout(() => {
+      window.print();
+      window.setTimeout(done, 1000);
+    }, 0);
+  };
 
   return (
     <div className="space-y-5">
@@ -766,7 +792,12 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
             <h2 className="text-xl font-semibold tracking-[-0.02em] text-ink">{selectedAccount.patient}</h2>
             <p className="mt-1 text-sm text-body">Patient account statement. No other patient accounts are shown in this view.</p>
           </div>
-          <StatusPill label={BILLING_RANGES.find((option) => option.key === range)?.label || 'Statement range'} tone="neutral" />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill label={rangeLabel} tone="neutral" />
+            <button type="button" onClick={printStatement} className="lh-secondary-button">
+              <Printer size={14} /> Print statement
+            </button>
+          </div>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-5">
           <Metric label="Invoice total" value={currency(billed)} detail="Gross billed value" />
@@ -777,7 +808,7 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <section className="grid min-w-0 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
         <div className="lh-card-pad">
           <div className="flex items-center justify-between gap-3">
             <h3 className="lh-section-label">Statement ledger</h3>
@@ -786,7 +817,7 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
           <LedgerTable rows={rows} formatMoney={formatMoney} />
         </div>
 
-        <div className="space-y-5">
+        <div className="lh-side-panel space-y-5">
           <section className="lh-card-pad">
             <h3 className="lh-section-label">Debt split</h3>
             <div className="mt-3 grid gap-2 text-sm">
@@ -816,7 +847,157 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
           </section>
         </div>
       </section>
+
+      <StatementPrintDocument
+        patient={selectedAccount.patient}
+        practice={practice}
+        statement={statement}
+        rows={rows}
+        openInvoices={openInvoices}
+        rangeLabel={rangeLabel}
+        billed={billed}
+        patientResponsibility={patientResponsibility}
+        collected={collected}
+        adjusted={adjusted}
+        insurerExposure={insurerExposure}
+        formatMoney={formatMoney}
+        currency={currency}
+        outstandingOn={outstandingOn}
+      />
     </div>
+  );
+}
+
+function StatementPrintDocument({
+  patient,
+  practice,
+  statement,
+  rows,
+  openInvoices,
+  rangeLabel,
+  billed,
+  patientResponsibility,
+  collected,
+  adjusted,
+  insurerExposure,
+  formatMoney,
+  outstandingOn,
+}) {
+  if (!statement) return null;
+  const practiceName = practice?.name || 'Luminary Health';
+  const practiceAddress = [practice?.addressLine, practice?.city].filter(Boolean).join(', ');
+  const practiceContact = [practice?.phone, practice?.email].filter(Boolean).join(' | ');
+  const generatedAt = new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' });
+  const money = (value) => formatMoney(value, statement.currency);
+  const printDate = (value) => {
+    if (!value || value === 'Undated') return 'Undated';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? String(value)
+      : date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+  };
+
+  return (
+    <article className="lh-print-statement-doc">
+      <header className="lh-statement-print-head">
+        <div>
+          <p className="lh-statement-print-brand">{practiceName}</p>
+          {practiceAddress && <p className="lh-statement-print-meta">{practiceAddress}</p>}
+          {practiceContact && <p className="lh-statement-print-meta">{practiceContact}</p>}
+        </div>
+        <div className="lh-statement-print-stamp">
+          <p className="lh-statement-print-title">Patient statement</p>
+          <p className="lh-statement-print-meta">Generated {generatedAt}</p>
+        </div>
+      </header>
+
+      <section className="lh-statement-print-grid">
+        <div>
+          <p className="lh-statement-print-label">Patient</p>
+          <p className="lh-statement-print-strong">{patient}</p>
+        </div>
+        <div>
+          <p className="lh-statement-print-label">Range</p>
+          <p>{rangeLabel}</p>
+        </div>
+        <div>
+          <p className="lh-statement-print-label">Currency</p>
+          <p>{statement.currency}</p>
+        </div>
+      </section>
+
+      <section className="lh-statement-print-summary">
+        <div><span>Invoice total</span><strong>{money(billed)}</strong></div>
+        <div><span>Patient portion</span><strong>{money(patientResponsibility)}</strong></div>
+        <div><span>Paid</span><strong>{money(collected)}</strong></div>
+        <div><span>Adjusted</span><strong>{money(adjusted)}</strong></div>
+        <div><span>Insurer outstanding</span><strong>{money(insurerExposure)}</strong></div>
+        <div className="lh-statement-print-balance"><span>Closing balance</span><strong>{money(statement.outstanding)}</strong></div>
+      </section>
+
+      <table className="lh-statement-print-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Reference</th>
+            <th>Detail</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length ? rows.map((row) => (
+            <tr key={`${row.type}-${row.ref}-${row.sort}`}>
+              <td>{printDate(row.date)}</td>
+              <td>{row.type}</td>
+              <td>{row.ref}</td>
+              <td>{row.detail}</td>
+              <td>{row.debit ? money(row.debit) : '-'}</td>
+              <td>{row.credit ? money(row.credit) : '-'}</td>
+              <td>{row.formattedBalance || money(row.balance || 0)}</td>
+            </tr>
+          )) : (
+            <tr>
+              <td colSpan={7}>No ledger entries in this range.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <section className="lh-statement-print-open">
+        <p className="lh-statement-print-label">Open invoices</p>
+        {openInvoices.length ? (
+          <table className="lh-statement-print-open-table">
+            <thead>
+              <tr>
+                <th>Invoice</th>
+                <th>Status</th>
+                <th>Due</th>
+                <th>Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openInvoices.map((invoice) => (
+                <tr key={invoice.id}>
+                  <td>{invoice.id}</td>
+                  <td>{invoice.claimStatus || invoice.status || 'Open'}</td>
+                  <td>{printDate(invoice.dueOn || invoice.dueDate)}</td>
+                  <td>{formatMoney(outstandingOn(invoice), invoice.currency || statement.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p className="lh-statement-print-note">No open invoices. This account is settled.</p>
+        )}
+      </section>
+
+      <footer className="lh-statement-print-foot">
+        <p>Generated by Luminary Health for {practiceName}. This statement reflects transactions recorded at print time.</p>
+      </footer>
+    </article>
   );
 }
 
@@ -958,7 +1139,7 @@ function InvoicesView({ invoices, selectedInvoice, openInvoice, takePayment, tak
   );
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
       <section className="lh-card-pad">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Invoices</h2>
@@ -983,7 +1164,7 @@ function InvoicesView({ invoices, selectedInvoice, openInvoice, takePayment, tak
         </div>
       </section>
 
-      <section className="lh-card-pad">
+      <section className="lh-card-pad lh-side-panel">
         {selectedInvoice ? (
           <InvoiceDetail
             invoice={selectedInvoice}
@@ -1192,7 +1373,7 @@ function InvoiceModal({ invoice, onClose, takePayment, takeAdjustment, can, curr
   );
 }
 
-function InvoicePrintDocument({ invoice, claim, formatMoney }) {
+function InvoicePrintDocument({ invoice, claim, formatMoney, practice }) {
   if (!invoice) return null;
   const invoiceCurrency = invoice.currency || 'USD';
   const payments = invoice.payments || [];
@@ -1204,17 +1385,27 @@ function InvoicePrintDocument({ invoice, claim, formatMoney }) {
   const provider = invoice.provider || claim?.provider || 'Not recorded';
   const serviceDate = invoice.serviceDate || claim?.serviceDate || invoice.issuedOn || invoice.date || 'Not recorded';
   const memberNo = invoice.memberNo || claim?.memberNo || 'Not recorded';
+  const practiceName = practice?.name || 'Luminary Health';
+  const practiceAddress = [practice?.addressLine, practice?.city].filter(Boolean).join(', ');
+  const practiceContact = [practice?.phone, practice?.email].filter(Boolean).join(' | ');
+  const formatDate = (value) => {
+    if (!value) return 'Not recorded';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: '2-digit' });
+  };
 
   return (
     <article className="lh-print-invoice-doc">
       <header className="lh-invoice-print-head">
         <div>
-          <p className="lh-invoice-print-brand">Luminary Health</p>
-          <p className="lh-invoice-print-meta">Patient invoice</p>
+          <p className="lh-invoice-print-brand">{practiceName}</p>
+          {practiceAddress && <p className="lh-invoice-print-meta">{practiceAddress}</p>}
+          {practiceContact && <p className="lh-invoice-print-meta">{practiceContact}</p>}
         </div>
         <div className="lh-invoice-print-stamp">
           <p className="lh-invoice-print-title">Invoice</p>
-          <p>{invoice.id}</p>
+          <p className="lh-invoice-print-number">{invoice.id}</p>
         </div>
       </header>
 
@@ -1227,26 +1418,32 @@ function InvoicePrintDocument({ invoice, claim, formatMoney }) {
         </div>
         <div>
           <p className="lh-invoice-print-label">Dates</p>
-          <p>Issued: {invoice.issuedOn || invoice.date}</p>
-          <p>Due: {invoice.dueOn || invoice.dueDate}</p>
-          <p>Service: {serviceDate}</p>
+          <p>Issued: {formatDate(invoice.issuedOn || invoice.date)}</p>
+          <p>Due: {formatDate(invoice.dueOn || invoice.dueDate)}</p>
+          <p>Service: {formatDate(serviceDate)}</p>
         </div>
         <div>
           <p className="lh-invoice-print-label">Claim</p>
-          <p>{invoice.claim}</p>
-          <p>{invoice.claimStatus}</p>
+          <p>{invoice.claim || 'Not recorded'}</p>
+          <p>{invoice.claimStatus || 'Draft'}</p>
           <p>Provider: {provider}</p>
         </div>
       </section>
 
       <table className="lh-invoice-print-table">
+        <colgroup>
+          <col className="lh-invoice-print-service-col" />
+          <col className="lh-invoice-print-code-col" />
+          <col className="lh-invoice-print-qty-col" />
+          <col className="lh-invoice-print-money-col" />
+          <col className="lh-invoice-print-money-col" />
+        </colgroup>
         <thead>
           <tr>
             <th>Service</th>
             <th>Code</th>
             <th>Qty</th>
-            <th>Medical aid</th>
-            <th>Patient</th>
+            <th>Patient due</th>
             <th>Amount</th>
           </tr>
         </thead>
@@ -1256,10 +1453,10 @@ function InvoicePrintDocument({ invoice, claim, formatMoney }) {
               <td>
                 <strong>{line.desc}</strong>
                 {line.priceChanged && <span>Price: {line.pricingMode}; reason: {line.priceReason || 'not recorded'}</span>}
+                <span>Medical aid estimate: {formatMoney(line.estimatedFunder ?? line.insurance ?? 0, invoiceCurrency)}</span>
               </td>
               <td>{line.code || '-'}</td>
               <td>{line.quantity || 1}</td>
-              <td>{formatMoney(line.estimatedFunder ?? line.insurance ?? 0, invoiceCurrency)}</td>
               <td>{formatMoney(line.estimatedPatient ?? Math.max(0, Number(line.gross ?? line.amount ?? 0) - Number(line.estimatedFunder ?? line.insurance ?? 0)), invoiceCurrency)}</td>
               <td>{formatMoney(line.gross ?? line.amount ?? 0, invoiceCurrency)}</td>
             </tr>
@@ -1276,6 +1473,10 @@ function InvoicePrintDocument({ invoice, claim, formatMoney }) {
           <div className="lh-invoice-print-balance"><dt>Balance due</dt><dd>{formatMoney(outstanding, invoiceCurrency)}</dd></div>
         </dl>
       </section>
+
+      <footer className="lh-invoice-print-foot">
+        <p>Generated by Luminary Health for {practiceName}. Amounts are shown in {invoiceCurrency}.</p>
+      </footer>
     </article>
   );
 }
@@ -1458,6 +1659,7 @@ function ReceiptModal({ payment, onClose, onPrint, formatMoney }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function ReceiptBanner({ receipt, setReceipt, printReceipt, formatMoney }) {
   return (
     <div className="rounded-lg border border-brand-edge bg-white/85 p-5 shadow-[0_14px_36px_-28px_rgba(20,102,224,0.55)]">
@@ -1485,6 +1687,61 @@ function ReceiptBanner({ receipt, setReceipt, printReceipt, formatMoney }) {
             Dismiss
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptTray({ receipt, setReceipt, printReceipt, formatMoney, onViewReceipts }) {
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    setCompact(false);
+    const timer = window.setTimeout(() => setCompact(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [receipt]);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[60] w-[min(420px,calc(100vw-2rem))] rounded-lg border border-brand-edge bg-white/95 p-3 shadow-[0_18px_44px_-18px_rgba(20,102,224,0.35)] backdrop-blur">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand-deep">
+          <Receipt size={16} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-brand">Receipt{receipt.number ? ` · ${receipt.number}` : ''}</p>
+          <p className="mt-1 truncate text-sm font-semibold text-ink">
+            {formatMoney(receipt.tendered.amount, receipt.tendered.currency)} received from {receipt.patient}
+          </p>
+          {!compact && (
+            <>
+              <p className="mt-1 text-xs text-body">{receipt.invoiceReference} · {methodLabel(receipt.method)} · taken by {receipt.receivedBy}</p>
+              {receipt.allocations?.length > 1 && (
+                <p className="mt-1 line-clamp-2 text-xs text-body">
+                  Applied {receipt.allocations.map((item) => `${formatMoney(item.amount, receipt.appliedToInvoice.currency)} to ${item.invoiceId}`).join(', ')}, oldest first.
+                </p>
+              )}
+            </>
+          )}
+          <p className="mt-1 text-xs font-medium text-ink">
+            {receipt.balanceRemaining > 0 ? `${formatMoney(receipt.balanceRemaining, receipt.appliedToInvoice.currency)} still outstanding` : 'Settled in full'}
+          </p>
+        </div>
+        <button type="button" onClick={() => setReceipt(null)} className="rounded px-1.5 py-1 text-xs font-medium text-muted hover:text-ink" aria-label="Dismiss receipt">
+          Dismiss
+        </button>
+      </div>
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <button type="button" onClick={onViewReceipts} className="lh-secondary-button px-3 py-1.5">
+          Receipts
+        </button>
+        <button type="button" onClick={printReceipt} className="lh-primary-button px-3 py-1.5">
+          <Printer size={13} /> Print
+        </button>
+        {compact && (
+          <button type="button" onClick={() => setCompact(false)} className="rounded px-2 py-1.5 text-xs font-medium text-body hover:text-ink">
+            Expand
+          </button>
+        )}
       </div>
     </div>
   );

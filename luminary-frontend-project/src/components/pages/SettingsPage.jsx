@@ -466,15 +466,15 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="h-max rounded-lg border border-line/60 bg-white/45 p-1.5 backdrop-blur lg:sticky lg:top-0">
-          <nav className="space-y-1">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
+        <aside className="h-max min-w-0 rounded-lg border border-line/60 bg-white/45 p-1.5 backdrop-blur xl:sticky xl:top-0">
+          <nav className="flex gap-1 overflow-x-auto xl:block xl:space-y-1">
             {TABS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setTab(item.id)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                className={`flex min-w-[190px] items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition xl:w-full ${
                   tab === item.id ? 'bg-brand-soft text-brand-deep shadow-[0_8px_22px_-18px_rgba(8,114,222,0.55)]' : 'text-body hover:bg-surface'
                 }`}
               >

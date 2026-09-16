@@ -10,6 +10,11 @@ build/
 .env
 .env.local
 .env.*.local
+luminary-server/env/*.env
+luminary-frontend-project/.env.local-clean
+luminary-frontend-project/.env.local-demo
+luminary-frontend-project/.env.online-clean
+luminary-frontend-project/.env.online-demo
 
 # Logs
 *.log
@@ -29,4 +34,3 @@ luminary-server/client-files-local-node/
 *.swo
 *~
 .DS_Store
-

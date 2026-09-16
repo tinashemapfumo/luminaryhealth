@@ -1,0 +1,40 @@
+services:
+  db-clean:
+    image: postgres:16-alpine
+    container_name: luminary-db-clean
+    environment:
+      POSTGRES_DB: luminary
+      POSTGRES_USER: luminary_app
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Set LOCAL_POSTGRES_PASSWORD in env/local.clean.env}
+    ports:
+      - "54320:5432"
+    volumes:
+      - luminary-db-clean:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U luminary_app -d luminary"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api-clean:
+    build: .
+    image: luminary-server:local-clean
+    container_name: luminary-server-clean
+    env_file:
+      - env/local.clean.env
+    environment:
+      PORT: "4000"
+      DATABASE_URL: postgres://luminary_app:${LOCAL_POSTGRES_PASSWORD:?Set LOCAL_POSTGRES_PASSWORD in env/local.clean.env}@db-clean:5432/luminary
+      CLIENT_FILE_STORAGE_PATH: /app/client-files
+      WEB_ORIGINS: http://127.0.0.1:5174,http://localhost:5174
+      SHOW_TEST_PRACTICES: "false"
+    depends_on:
+      db-clean:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./client-files-clean:/app/client-files
+
+volumes:
+  luminary-db-clean:

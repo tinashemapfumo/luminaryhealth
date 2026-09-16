@@ -4,7 +4,9 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const root = resolve(process.cwd(), 'dist');
 const host = process.env.HOST || '127.0.0.1';
-const preferredPort = Number(process.env.PORT || 5174);
+const portArgIndex = process.argv.findIndex((arg) => arg === '--port');
+const portArg = portArgIndex >= 0 ? process.argv[portArgIndex + 1] : undefined;
+const preferredPort = Number(portArg || process.env.PORT || 5174);
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',

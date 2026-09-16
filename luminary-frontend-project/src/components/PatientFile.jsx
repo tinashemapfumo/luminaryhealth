@@ -454,8 +454,8 @@ export default function PatientFile({
       ) : (
         <>
           {tab === 'Summary' && (
-            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="space-y-4">
+            <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+              <div className="lh-side-panel space-y-4">
                 <Panel title="Clinical summary" icon={Stethoscope}>
                   <p className="text-base leading-6 text-ink-soft">{record.notes || 'No summary recorded.'}</p>
                 </Panel>

@@ -37,7 +37,7 @@ export default function CommunicationsPage() {
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
         <div className="lh-card-pad">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -65,7 +65,7 @@ export default function CommunicationsPage() {
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="lh-side-panel space-y-6">
           <div className="lh-card-pad">
             <p className="lh-section-label">Active campaigns</p>
             <div className="mt-4 space-y-3">

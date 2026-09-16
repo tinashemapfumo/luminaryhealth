@@ -644,7 +644,7 @@ function ModuleActions({
 
 function SummaryPanel({ claim, patientClaims }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+    <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
       <InfoList
         title="Member and claim context"
         rows={[
@@ -658,7 +658,7 @@ function SummaryPanel({ claim, patientClaims }) {
           ['Tariff', claim.tariff || 'No tariff lines'],
         ]}
       />
-      <div className="rounded-lg border border-line bg-white p-4">
+      <div className="lh-side-panel rounded-lg border border-line bg-white p-4">
         <p className="text-sm font-semibold text-ink">Patient claim history</p>
         <div className="mt-3 space-y-2">
           {patientClaims.map((item) => (
@@ -744,8 +744,8 @@ function EmailPackPanel({
   const sent = claim.status === 'Email submitted';
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="space-y-4">
+    <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
+      <div className="min-w-0 space-y-4">
         <InfoList
           title="Email claim pack"
           rows={[

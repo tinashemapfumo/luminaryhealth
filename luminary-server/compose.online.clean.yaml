@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    image: luminary-server:online-clean
+    container_name: luminary-server-online-clean
+    env_file:
+      - env/online.clean.env
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      NODE_ID: cloud
+      SHOW_TEST_PRACTICES: "false"
+      MESSAGING_DISPATCH: "false"
+    ports:
+      - "4000:4000"
+    volumes:
+      - /var/lib/luminary/client-files:/var/lib/luminary/client-files
+    restart: unless-stopped

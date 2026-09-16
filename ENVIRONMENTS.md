@@ -11,7 +11,7 @@ files, Docker compose files, and separate databases.
 | Local clean | `http://127.0.0.1:4000` | `http://127.0.0.1:5174` | Empty/real local clinic data |
 | Local demo | `http://127.0.0.1:4001` | `http://127.0.0.1:5175` | Seeded disposable demo data |
 | Online clean | production API URL | production app URL | Real production data |
-| Online demo | demo API URL | demo app URL | Seeded disposable demo data |
+| Online demo | online API URL | `https://app.luminarytech.org` | Seeded disposable demo data |
 
 ## Backend
 
@@ -174,8 +174,8 @@ luminary-frontend-project/.env.online-demo
 At minimum, set:
 
 - `DATABASE_URL` to the demo database
-- `WEB_ORIGINS` to the deployed demo frontend origin
-- `VITE_API_URL` to the deployed demo API origin
+- `WEB_ORIGINS` to `https://app.luminarytech.org`
+- `VITE_API_URL` to the online API origin used by the deployed app
 - `LUMINARY_DEMO_PASSWORD` to the demo password you want to use
 
 Then deploy the demo API:

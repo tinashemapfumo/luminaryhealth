@@ -26,6 +26,12 @@ export function registerHttp(app: FastifyInstance): void {
     '/agent/conversations', '/agent/verify/start', '/agent/verify/confirm',
     '/agent/availability', '/agent/appointments', '/agent/appointments/reschedule',
     '/agent/appointments/upcoming', '/agent/intake', '/agent/status',
+    '/agent/insight/executive-summary', '/agent/insight/revenue',
+    '/agent/insight/claims', '/agent/insight/patients',
+    '/agent/insight/appointments', '/agent/insight/operations',
+    '/agent/reports/executive-summary', '/agent/reports/revenue',
+    '/agent/reports/claims', '/agent/reports/patients',
+    '/agent/reports/appointments', '/agent/reports/operations',
     '/integrations/nh263/webhook',
   ]);
 

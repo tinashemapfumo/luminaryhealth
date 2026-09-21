@@ -626,7 +626,7 @@ export const billingRepository = {
     return rows;
   },
 
-  async collectionsReport(client: PoolClient, opts: { from?: string; to?: string }) {
+  async collectionsSummary(client: PoolClient, opts: { from?: string; to?: string }) {
     const period = await this.reportingPeriod(client, opts);
     const params = [period.start_at, period.end_at];
     const baseWhere = `
@@ -679,23 +679,6 @@ export const billingRepository = {
          ORDER BY pay.currency, pay.method`,
       params,
     );
-    const actors = await client.query(
-      `SELECT pay.currency,
-                pay.received_by AS actor_id,
-                u.display_name AS actor_name,
-                COALESCE(sum(pay.amount * COALESCE(pay.fx_rate, 1)) FILTER (WHERE pay.amount > 0), 0) AS gross,
-                COALESCE(abs(sum(pay.amount * COALESCE(pay.fx_rate, 1)) FILTER (WHERE pay.amount < 0)), 0) AS reversals,
-                COALESCE(sum(pay.amount * COALESCE(pay.fx_rate, 1)), 0) AS net,
-                count(*)::int AS transaction_count
-          FROM luminary.payment pay
-          JOIN luminary.app_user u ON u.id = pay.received_by AND u.deleted_at IS NULL
-         WHERE ${baseWhere}
-         GROUP BY pay.currency, pay.received_by, u.display_name
-         ORDER BY pay.currency, u.display_name`,
-      params,
-    );
-    const transactions = await this.listPayments(client, { from: period.from, to: period.to, limit: 1000 });
-
     const currencies = totals.rows.map((row) => ({
       currency: row.currency,
       grossPatientPayments: Number(row.gross_patient_payments),
@@ -710,8 +693,6 @@ export const billingRepository = {
       reversalCount: Number(row.reversal_count),
       byResponsibilityBucket: buckets.rows.filter((item) => item.currency === row.currency).map(numberMoney),
       byMethod: methods.rows.filter((item) => item.currency === row.currency).map(numberMoney),
-      byActor: actors.rows.filter((item) => item.currency === row.currency).map(numberMoney),
-      transactions: transactions.filter((item) => item.currency === row.currency),
     }));
 
     return {
@@ -724,6 +705,67 @@ export const billingRepository = {
       timezone: period.timezone,
       currencyMode: currencies.length > 1 ? 'grouped' : 'single',
       currencies,
+    };
+  },
+
+  async collectionsReport(client: PoolClient, opts: { from?: string; to?: string }) {
+    const summary = await this.collectionsSummary(client, opts);
+    const params = [summary.period.startAt, summary.period.endAt];
+    const actors = await client.query(
+      `SELECT pay.currency,
+                pay.received_by AS actor_id,
+                u.display_name AS actor_name,
+                COALESCE(sum(pay.amount * COALESCE(pay.fx_rate, 1)) FILTER (WHERE pay.amount > 0), 0) AS gross,
+                COALESCE(abs(sum(pay.amount * COALESCE(pay.fx_rate, 1)) FILTER (WHERE pay.amount < 0)), 0) AS reversals,
+                COALESCE(sum(pay.amount * COALESCE(pay.fx_rate, 1)), 0) AS net,
+                count(*)::int AS transaction_count
+           FROM luminary.payment pay
+           JOIN luminary.app_user u ON u.id = pay.received_by AND u.deleted_at IS NULL
+          WHERE pay.practice_id = luminary.current_practice_id()
+            AND pay.deleted_at IS NULL
+            AND pay.received_at >= $1::timestamptz
+            AND pay.received_at < $2::timestamptz
+          GROUP BY pay.currency, pay.received_by, u.display_name
+          ORDER BY pay.currency, u.display_name`,
+      params,
+    );
+    const transactions = await this.listPayments(client, { from: summary.period.from, to: summary.period.to, limit: 1000 });
+
+    return {
+      ...summary,
+      currencies: summary.currencies.map((currency) => ({
+        ...currency,
+        byActor: actors.rows.filter((item) => item.currency === currency.currency).map(numberMoney),
+        transactions: transactions.filter((item) => item.currency === currency.currency),
+      })),
+    };
+  },
+
+  async agingSummary(client: PoolClient, asOf: string, timezone: string) {
+    const { rows } = await client.query(
+      `${collectionReceivableCte('$1::date')}
+       SELECT currency,
+              aging_bucket,
+              lower(debtor_type) AS responsibility_bucket,
+              count(*)::int AS invoices,
+              round(sum(amount_outstanding), 2)::float8 AS outstanding
+         FROM expanded
+        WHERE amount_outstanding > 0
+        GROUP BY currency, aging_bucket, debtor_type
+        ORDER BY currency, aging_bucket, debtor_type`,
+      [asOf],
+    );
+    return {
+      asOf,
+      timezone,
+      historicalAsOfSupported: false,
+      summary: rows.map((row) => ({
+        currency: row.currency,
+        agingBucket: row.aging_bucket,
+        responsibilityBucket: row.responsibility_bucket,
+        invoices: Number(row.invoices),
+        outstanding: Number(row.outstanding),
+      })),
     };
   },
 
@@ -1364,7 +1406,7 @@ function numberMoney<T extends Record<string, unknown>>(row: T): T {
   return converted as T;
 }
 
-function collectionReceivableCte(): string {
+function collectionReceivableCte(asOfExpression = 'current_date'): string {
   return `WITH receivables AS (
     SELECT i.id AS invoice_id,
            i.reference AS invoice_reference,
@@ -1423,12 +1465,12 @@ function collectionReceivableCte(): string {
   ),
   expanded AS (
     SELECT r.*, v.debtor_type, v.amount_outstanding,
-           GREATEST(current_date - r.aging_date, 0)::int AS age_days,
+           GREATEST(${asOfExpression} - r.aging_date, 0)::int AS age_days,
            CASE
-             WHEN current_date - r.aging_date <= 0  THEN 'current'
-             WHEN current_date - r.aging_date <= 30 THEN '1-30'
-             WHEN current_date - r.aging_date <= 60 THEN '31-60'
-             WHEN current_date - r.aging_date <= 90 THEN '61-90'
+             WHEN ${asOfExpression} - r.aging_date <= 0  THEN 'current'
+             WHEN ${asOfExpression} - r.aging_date <= 30 THEN '1-30'
+             WHEN ${asOfExpression} - r.aging_date <= 60 THEN '31-60'
+             WHEN ${asOfExpression} - r.aging_date <= 90 THEN '61-90'
              ELSE '90+'
            END AS aging_bucket
       FROM receivables r

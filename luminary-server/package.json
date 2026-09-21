@@ -45,6 +45,8 @@
     "lint": "eslint src --ext .ts --max-warnings 0",
     "contract:permissions": "tsx scripts/contract-permissions.ts",
     "verify:integration": "tsx scripts/verify-integration.ts",
+    "verify:executive-insight": "node --env-file=env/local.demo.env --import tsx scripts/verify-executive-insight.ts",
+    "test:insight": "tsx --test src/modules/executive-insight/*.test.ts",
     "verify:claims": "tsx scripts/verify-claims.ts",
     "verify:scenario013": "node --import tsx scripts/scenario013-smoke.mjs",
     "verify:scenario014": "node --import tsx scripts/scenario014-smoke.mjs",

@@ -273,6 +273,10 @@ export const api = {
     cancel: (id) => del(`/messages/${id}`),
   },
 
+  ai: {
+    askLuminary: (body) => post('/ai/ask-luminary', body),
+  },
+
   access: {
     listGrants: () => get('/access-grants'),
     createGrant: (grant) => post('/access-grants', grant),

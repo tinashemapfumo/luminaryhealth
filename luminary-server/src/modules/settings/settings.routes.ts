@@ -60,6 +60,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
             nh263Endpoint: config.nh263_endpoint,
             smsSenderId: config.sms_sender_id,
             smsGateway: config.sms_gateway,
+            executiveInsightWebhookUrl: config.executive_insight_webhook_url,
           }
         : undefined;
 
@@ -369,6 +370,8 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         nh263Endpoint: z.string().url().optional(),
         smsSenderId: z.string().max(11).optional(),
         smsGateway: z.string().optional(),
+        executiveInsightWebhookUrl: z.string().url().nullable().optional(),
+        executiveInsightWebhookSecret: z.string().min(16).max(500).nullable().optional(),
       }).parse(request.body);
 
       const actor = actorOf(request);
@@ -380,11 +383,16 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
              nh263_provider_number = COALESCE($1, nh263_provider_number),
              nh263_endpoint = COALESCE($2, nh263_endpoint),
              sms_sender_id = COALESCE($3, sms_sender_id),
-             sms_gateway = COALESCE($4, sms_gateway)
+             sms_gateway = COALESCE($4, sms_gateway),
+             executive_insight_webhook_url = CASE WHEN $5::boolean THEN $6 ELSE executive_insight_webhook_url END,
+             executive_insight_webhook_secret = CASE WHEN $7::boolean THEN $8 ELSE executive_insight_webhook_secret END
            WHERE practice_id = luminary.current_practice_id()
-           RETURNING nh263_provider_number, nh263_endpoint, sms_sender_id, sms_gateway`,
+           RETURNING nh263_provider_number, nh263_endpoint, sms_sender_id, sms_gateway,
+                     executive_insight_webhook_url`,
           [body.nh263ProviderNumber ?? null, body.nh263Endpoint ?? null,
-           body.smsSenderId ?? null, body.smsGateway ?? null],
+           body.smsSenderId ?? null, body.smsGateway ?? null,
+           Object.hasOwn(body, 'executiveInsightWebhookUrl'), body.executiveInsightWebhookUrl ?? null,
+           Object.hasOwn(body, 'executiveInsightWebhookSecret'), body.executiveInsightWebhookSecret ?? null],
         );
         await client.query(
           `SELECT luminary.write_audit('Changed integration settings', 'practice', NULL, NULL, NULL, 'alert')`,

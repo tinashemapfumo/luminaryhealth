@@ -35,6 +35,7 @@ check('the signing key handed to n8n is the hash, not the secret', integrationSi
 check('scopes are a closed set', [...INTEGRATION_SCOPES], [
   'messaging:inbound', 'messaging:status', 'messaging:send',
   'agent:converse', 'agent:schedule', 'agent:intake', 'agent:status',
+  'agent:insight', 'agent:report',
   'claims:status',
 ]);
 
@@ -122,6 +123,27 @@ check('clinical fields are not proposable by an assistant', /'allergies'|'condit
 console.log('\nScopes are split so one leaked key is not all of them');
 check('booking and intake are different scopes', INTEGRATION_SCOPES.includes('agent:schedule') && INTEGRATION_SCOPES.includes('agent:intake'), true);
 check('messaging scopes do not imply agent scopes', INTEGRATION_SCOPES.filter((s) => s.startsWith('messaging:')).some((s) => s.startsWith('agent:')), false);
+
+console.log('\nExecutive Insight is tenant-fixed and aggregate-only');
+const insightRoutes = await readFile(
+  new URL('../src/modules/executive-insight/executive-insight.routes.ts', import.meta.url), 'utf8',
+);
+const insightRepository = await readFile(
+  new URL('../src/modules/executive-insight/executive-insight.repository.ts', import.meta.url), 'utf8',
+);
+const reportingRequest = await readFile(
+  new URL('../src/modules/executive-insight/reporting-request.ts', import.meta.url), 'utf8',
+);
+check('Executive Insight has its own machine scope', INTEGRATION_SCOPES.includes('agent:insight'), true);
+check('canonical reporting has its own machine scope', INTEGRATION_SCOPES.includes('agent:report'), true);
+check('canonical routes require agent:report', insightRoutes.includes("register('/agent/reports', 'agent:report', domain)"), true);
+check('compatibility routes retain agent:insight', insightRoutes.includes("register('/agent/insight', 'agent:insight', domain)"), true);
+check('every report route passes its scope to the integration guard', insightRoutes.includes('preHandler: requireIntegration(scope)'), true);
+check('the reporting body rejects unknown tenant selectors', reportingRequest.includes('.strict()'), true);
+check('tenant context comes from the authenticated credential', insightRoutes.includes('practiceId: caller.practiceId'), true);
+check('the route never reads a practice id from the body', /body\.practiceId|body\.tenantId|body\.organisationId/.test(insightRoutes), false);
+check('aggregate queries explicitly use the tenant context', insightRepository.includes('practice_id = luminary.current_practice_id()'), true);
+check('report queries never select patient names', /full_name|patient_name|national_id|phone|email|diagnos|clinical_summary/i.test(insightRepository), false);
 
 if (failures > 0) {
   console.error(`\nx ${failures} integration rule(s) broken\n`);

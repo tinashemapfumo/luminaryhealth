@@ -93,6 +93,10 @@ export const ENDPOINTS = {
     cancel: { method: 'DELETE', path: '/messages/:id', permission: 'sendMessages', note: 'only while queued' },
   },
 
+  ai: {
+    askLuminary: { method: 'POST', path: '/ai/ask-luminary', permission: 'exportReports', body: ['question', 'conversationId?'] },
+  },
+
   users: {
     list: { method: 'GET', path: '/users', permission: 'manageUsers' },
     invite: { method: 'POST', path: '/users/invitations', permission: 'manageUsers' },

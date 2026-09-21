@@ -18,6 +18,7 @@ import { messagingRoutes } from './modules/messaging/messaging.routes.js';
 import { integrationsRoutes } from './modules/integrations/integrations.routes.js';
 import { agentRoutes } from './modules/agent/agent.routes.js';
 import { claimsRoutes } from './modules/claims/claims.routes.js';
+import { executiveInsightRoutes } from './modules/executive-insight/executive-insight.routes.js';
 
 /**
  * Application assembly.
@@ -78,6 +79,7 @@ export function buildApp(): FastifyInstance {
   void app.register(integrationsRoutes);
   void app.register(agentRoutes);
   void app.register(claimsRoutes);
+  void app.register(executiveInsightRoutes);
   void app.register(syncRoutes);
 
   return app;

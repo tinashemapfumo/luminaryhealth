@@ -518,6 +518,16 @@ export const billingService = {
     return billingRepository.collectionsReport(client, opts);
   },
 
+  async executiveCollections(client: PoolClient, opts: { from: string; to: string }) {
+    validateReportingDates(opts.from, opts.to);
+    return billingRepository.collectionsSummary(client, opts);
+  },
+
+  async executiveAging(client: PoolClient, asOf: string, timezone: string) {
+    if (!dateOnlyPattern.test(asOf)) throw new BadRequest('Use YYYY-MM-DD for asOf');
+    return billingRepository.agingSummary(client, asOf, timezone);
+  },
+
   async aging(client: PoolClient, actor: Actor, opts: { asOf?: string } = {}) {
     if (!can(actor.role, 'exportReports') && !can(actor.role, 'createInvoice')) {
       throw new Forbidden('Your role does not include revenue reporting');

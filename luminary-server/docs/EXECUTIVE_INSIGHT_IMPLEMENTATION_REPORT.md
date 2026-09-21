@@ -150,4 +150,126 @@ The fixture arithmetic remains covered: 428 versus 391 gives 9.46%, and 22,180 v
 
 The implementation is ready for controlled n8n integration. The strongest design choice is that n8n asks for named reports while Luminary owns all SQL and semantics. Reusing billing's collections and receivables calculations also removes the most dangerous class of reporting drift: a dashboard that disagrees with the operational ledger.
 
-The one issue I would address before broad production exposure is the environment role split. The application code now has explicit tenant filtering and signed credential isolation, but PostgreSQL RLS should remain an independent boundary in every deployed environment, including developer and staging stacks.
+The live demo now uses the intended role split. Local Compose and any future staging stacks should be brought to the same standard so PostgreSQL RLS remains an independent boundary everywhere.
+
+## Live demo deployment - 2026-09-21
+
+The implementation was deployed from commit `e0c8ac5` to the existing online-demo container. No parallel API service was created.
+
+| Check | Result |
+| --- | --- |
+| Public API base URL | `https://api.luminarytech.org` |
+| Public health | `GET /health` returned `200` with node `cloud-demo` |
+| Migration | `041_executive_insight_webhook.sql` applied at `2026-09-21 18:26:05 UTC` |
+| Migration identity | `luminary_migrator` against `luminary_demo` |
+| Runtime identity | `luminary_app` against `luminary_demo` |
+| Runtime role flags | Non-superuser and no `BYPASSRLS` |
+| Ownership | Luminary tables remain owned by `luminary_migrator` |
+| Role membership | `luminary_app` no longer inherits `luminary_migrator` |
+| Excess privileges | No schema create, patient delete, or patient truncate privilege |
+| RLS | No tenant context returned 0 patients; demo context returned its expected 21 |
+| Normal application check | Administrator session and `GET /auth/me` succeeded |
+| Protected route registration | Unsigned canonical report request returned `401`, not `404` |
+
+The migrator password was rotated and its URL is held in a root-only host file used only for migrations. It is not injected into the API container. A second migration run reported `Already up to date`.
+
+### Provisioned n8n credential
+
+- Practice: `Harare Family Health Demo`
+- Practice ID: `33333333-3333-4333-8333-000000000001`
+- Key ID: `lmk_KmeQHg9eRz_e`
+- Scope: exactly `agent:report`
+- Signing key: generated and supplied once to the operator; intentionally omitted here
+
+The temporary `agent:insight` credential used to prove wrong-scope behavior was revoked immediately after the test.
+
+### Public endpoint verification
+
+Using the exact body `{"period":"last_30_days","compare":"previous_period"}`, serialized once and used unchanged for both HMAC input and the HTTP body:
+
+| Endpoint | Result |
+| --- | --- |
+| `POST /agent/reports/executive-summary` | `200` |
+| `POST /agent/reports/revenue` | `200` |
+| `POST /agent/reports/claims` | `200` |
+| `POST /agent/reports/patients` | `200` |
+| `POST /agent/reports/appointments` | `200` |
+| `POST /agent/reports/operations` | `200` |
+
+Security checks against the public API:
+
+- Invalid signature returned `401`.
+- Correctly signed timestamp older than five minutes returned `401`.
+- Signed body containing `practiceId` returned `400`.
+- Valid credential lacking `agent:report` returned `403`.
+- The six aggregate responses contained no patient-identifying field names.
+- Practice selection remained credential-derived.
+
+### Ask Luminary n8n bridge
+
+The production workflow URL is configured per practice through authenticated `PATCH /settings/integrations`:
+
+```json
+{
+  "executiveInsightWebhookUrl": "https://the-activated-n8n-webhook",
+  "executiveInsightWebhookSecret": "a-practice-owned-secret-at-least-16-characters"
+}
+```
+
+These values are stored in:
+
+- `luminary.practice_settings.executive_insight_webhook_url`
+- `luminary.practice_settings.executive_insight_webhook_secret`
+
+The secret is write-only through the API and is never returned by settings reads. The online demo currently has no webhook URL configured; no old URL was present and no temporary URL was inserted.
+
+Luminary sends this exact JSON shape to the configured n8n webhook:
+
+```json
+{
+  "question": "The manager's question",
+  "conversationId": null,
+  "requestId": "Luminary request correlation ID"
+}
+```
+
+It sends `x-luminary-timestamp`, `x-luminary-signature`, and `x-luminary-request-id`. The webhook signature is lowercase hexadecimal HMAC-SHA256 over `timestamp + "." + exactRawBody`, using the per-practice webhook secret.
+
+n8n must return JSON with a required non-empty `answer`. It may also return:
+
+```json
+{
+  "answer": "Required narrative answer",
+  "sources": ["Revenue", "Claims"],
+  "conversationId": "optional-workflow-conversation-id",
+  "reportingPeriod": {
+    "label": "Last 30 days",
+    "from": "2026-08-23",
+    "to": "2026-09-21",
+    "comparisonLabel": "Previous period"
+  },
+  "metrics": [
+    {
+      "label": "Collected",
+      "value": "USD 22,180",
+      "previous": "USD 19,410",
+      "changePercent": 14.27,
+      "sentiment": "positive"
+    }
+  ],
+  "sections": [
+    {
+      "title": "What changed",
+      "body": "Optional section narrative",
+      "items": ["Optional bounded list item"]
+    }
+  ],
+  "followUps": ["Show the payment method breakdown"]
+}
+```
+
+Only `answer` is required. Luminary validates and bounds every optional field before returning it to the browser.
+
+### Remaining n8n step
+
+The reporting credential and public APIs are ready. The only workflow-specific blocker is importing and activating the production n8n Executive Insight workflow, then writing its production webhook URL and webhook signing secret to the demo practice settings. Until that is done, `POST /ai/ask-luminary` deliberately returns `503 agent_not_configured`.

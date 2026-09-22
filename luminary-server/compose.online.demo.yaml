@@ -12,8 +12,7 @@ services:
       SHOW_TEST_PRACTICES: "true"
       MESSAGING_DISPATCH: "false"
       LUMINARY_ALLOW_PRODUCTION_TEST_SEED: "true"
-    ports:
-      - "4000:4000"
+    network_mode: host
     volumes:
       - /var/lib/luminary-demo/client-files:/var/lib/luminary-demo/client-files
     restart: unless-stopped

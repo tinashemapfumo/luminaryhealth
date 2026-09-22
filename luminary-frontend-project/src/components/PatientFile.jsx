@@ -18,7 +18,7 @@ import {
   User,
   Upload,
 } from 'lucide-react';
-import { Field, Input, Select, Textarea, Button, EmptyState } from './ui';
+import { Field, Input, Select, Textarea, Button, EmptyState, Modal } from './ui';
 import PrescriptionPrintDocument from './shared/PrescriptionPrintDocument';
 import {
   ageFromDob,
@@ -95,6 +95,7 @@ export default function PatientFile({
   onSave,
   onUploadDocument,
   onDownloadDocument,
+  onExportPatient,
   canEdit,
   canPrescribe,
   can = {},
@@ -130,10 +131,39 @@ export default function PatientFile({
   const [documentKind, setDocumentKind] = useState('X-ray');
   const [documentNotes, setDocumentNotes] = useState('');
   const [prescriptionToPrint, setPrescriptionToPrint] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [exportPurpose, setExportPurpose] = useState('Provider transfer');
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
+  const [exportSections, setExportSections] = useState({
+    summary: Boolean(can.viewClinicalNotes), clinical: Boolean(can.viewClinicalNotes),
+    appointments: true, billing: false, documents: false,
+  });
   const fileInput = useRef(null);
 
   const completeness = useMemo(() => recordCompleteness(record), [record]);
   const age = ageFromDob(record.dob);
+
+  const submitExport = async () => {
+    const sections = Object.entries(exportSections).filter(([, enabled]) => enabled).map(([key]) => key);
+    setExportError('');
+    if (exportPurpose.trim().length < 3) return setExportError('Enter the purpose for this export');
+    if (sections.length === 0) return setExportError('Select at least one section');
+    setExporting(true);
+    try {
+      await onExportPatient({
+        purpose: exportPurpose.trim(), sections,
+        ...(exportFrom ? { dateFrom: exportFrom } : {}), ...(exportTo ? { dateTo: exportTo } : {}),
+      });
+      setExportOpen(false);
+    } catch (error) {
+      setExportError(error.message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const startEdit = () => {
     setDraft({
@@ -269,6 +299,11 @@ export default function PatientFile({
           </div>
 
           <div className="flex flex-col items-end gap-2.5">
+            {can.exportPatientRecord && (
+              <Button variant="secondary" type="button" onClick={() => setExportOpen(true)}>
+                <Download size={13} /> Export file
+              </Button>
+            )}
             {canEdit && !editing && (
               <Button variant="secondary" type="button" onClick={startEdit}>
                 <Pencil size={13} /> Edit record
@@ -1036,7 +1071,47 @@ export default function PatientFile({
           )}
         </>
       )}
-    </div>
+      </div>
+      <Modal
+        open={exportOpen}
+        onClose={() => !exporting && setExportOpen(false)}
+        title="Export Patient File"
+        subtitle={record.name}
+        footer={(
+          <>
+            <Button variant="secondary" type="button" onClick={() => setExportOpen(false)} disabled={exporting}>Cancel</Button>
+            <Button type="button" onClick={submitExport} disabled={exporting}>
+              <Download size={14} /> {exporting ? 'Preparing...' : 'Export'}
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <Field label="Purpose" required error={exportError}>
+            <Input value={exportPurpose} onChange={(event) => setExportPurpose(event.target.value)} maxLength={240} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="From"><Input type="date" value={exportFrom} onChange={(event) => setExportFrom(event.target.value)} /></Field>
+            <Field label="To"><Input type="date" value={exportTo} onChange={(event) => setExportTo(event.target.value)} /></Field>
+          </div>
+          <fieldset>
+            <legend className="text-sm font-medium text-ink">Sections</legend>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {[
+                ['summary','Patient summary',can.viewClinicalNotes], ['clinical','Clinical record',can.viewClinicalNotes],
+                ['appointments','Appointments',true], ['billing','Billing',can.readClaims],
+                ['documents','Original documents',can.viewClinicalNotes],
+              ].filter(([, , allowed]) => allowed).map(([key,label]) => (
+                <label key={key} className="flex items-center gap-2 rounded border border-line px-3 py-2 text-sm text-ink">
+                  <input type="checkbox" checked={Boolean(exportSections[key])}
+                    onChange={(event) => setExportSections((current) => ({ ...current, [key]: event.target.checked }))} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      </Modal>
     </>
   );
 }

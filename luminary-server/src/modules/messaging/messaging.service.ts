@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { can, type Role } from '../../platform/permissions.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../platform/errors.js';
+import { sameNumber } from '../../platform/phone.js';
 
 /**
  * Patient messaging.
@@ -82,6 +83,7 @@ export const messagingService = {
     input: {
       patientId?: string; to: string; channel: Channel;
       body: string; template?: string; credentialId: string; appointmentId?: string;
+      conversationId?: string; idempotencyKey?: string;
     },
   ) {
     if (!CHANNELS.includes(input.channel)) throw new BadRequest(`Unknown channel: ${input.channel}`);
@@ -90,16 +92,64 @@ export const messagingService = {
       throw new BadRequest('SMS is limited to 480 characters (three segments)');
     }
 
+    let patientId = input.patientId ?? null;
+    if (input.conversationId) {
+      const { rows: conversations } = await client.query(
+        `SELECT patient_id, from_number, channel FROM luminary.agent_conversation
+          WHERE id = $1 AND credential_id = $2
+            AND closed_at IS NULL AND deleted_at IS NULL`,
+        [input.conversationId, input.credentialId],
+      );
+      const conversation = conversations[0];
+      if (!conversation) throw new NotFound('Conversation not found');
+      const sameDestination = input.channel === 'email'
+        ? conversation.from_number.toLowerCase() === input.to.toLowerCase()
+        : sameNumber(conversation.from_number, input.to);
+      if (conversation.channel !== input.channel || !sameDestination) {
+        throw new BadRequest('Message destination does not match the conversation');
+      }
+      if (patientId && conversation.patient_id && patientId !== conversation.patient_id) {
+        throw new BadRequest('Message patient does not match the conversation');
+      }
+      patientId = patientId ?? conversation.patient_id ?? null;
+    }
+
     const { rows } = await client.query(
       `INSERT INTO luminary.message
-         (practice_id, patient_id, appointment_id, channel, template, body, recipient, status, sent_via_credential)
-       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, 'queued', $7)
+         (practice_id, patient_id, appointment_id, channel, template, body, recipient, status,
+          sent_via_credential, conversation_id, idempotency_key)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9)
+       ON CONFLICT (practice_id, sent_via_credential, idempotency_key)
+         WHERE sent_via_credential IS NOT NULL AND idempotency_key IS NOT NULL AND deleted_at IS NULL
+       DO NOTHING
        RETURNING *`,
       [
-        input.patientId ?? null, input.appointmentId ?? null, input.channel, input.template ?? null,
-        input.body.trim(), input.to, input.credentialId,
+        patientId, input.appointmentId ?? null, input.channel, input.template ?? null,
+        input.body.trim(), input.to, input.credentialId, input.conversationId ?? null,
+        input.idempotencyKey,
       ],
     );
+
+    if (rows.length === 0 && input.idempotencyKey) {
+      const { rows: existing } = await client.query(
+        `SELECT * FROM luminary.message
+          WHERE sent_via_credential = $1 AND idempotency_key = $2 AND deleted_at IS NULL`,
+        [input.credentialId, input.idempotencyKey],
+      );
+      const prior = existing[0];
+      const sameRequest = prior
+        && (prior.patient_id ?? null) === patientId
+        && (prior.appointment_id ?? null) === (input.appointmentId ?? null)
+        && prior.channel === input.channel
+        && (prior.template ?? null) === (input.template ?? null)
+        && prior.body === input.body.trim()
+        && prior.recipient === input.to
+        && (prior.conversation_id ?? null) === (input.conversationId ?? null);
+      if (!sameRequest) {
+        throw new Conflict('Idempotency key was already used with a different message');
+      }
+      return { ...prior, duplicate: true };
+    }
 
     await client.query(
       `SELECT luminary.write_audit('Queued a message via integration', 'message', $1, $2, $3, 'info')`,
@@ -252,7 +302,7 @@ export const messagingService = {
       [id],
     );
     if (!rows[0]) throw new Conflict('That message has already left the queue');
-    return rows[0];
+    return { ...rows[0], duplicate: false };
   },
 
   async cancelQueuedForAppointment(client: PoolClient, appointmentId: string, reason: string) {

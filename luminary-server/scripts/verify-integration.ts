@@ -34,7 +34,7 @@ check('hashing is deterministic, so a key keeps working', hashSecret(a.secret), 
 check('the signing key handed to n8n is the hash, not the secret', integrationSigningKey(a.secret), a.secretHash);
 check('scopes are a closed set', [...INTEGRATION_SCOPES], [
   'messaging:inbound', 'messaging:status', 'messaging:send',
-  'agent:converse', 'agent:schedule', 'agent:intake', 'agent:status',
+  'agent:converse', 'agent:schedule', 'agent:intake', 'agent:status', 'agent:followup',
   'agent:insight', 'agent:report',
   'claims:status',
 ]);
@@ -117,11 +117,22 @@ const service = await readFile(
 check('a conversation with no single patient refuses to act', service.includes('requirePatient'), true);
 check('reschedule checks the appointment belongs to this patient', service.includes('AND patient_id = $2'), true);
 check('there is no cancel tool', /async cancel\s*\(/.test(service), false);
-check('intake is whitelisted, not open', service.includes('const ALLOWED = new Set'), true);
+check('intake is whitelisted, not open', service.includes('const CANONICAL: Record<string, string>'), true);
 check('clinical fields are not proposable by an assistant', /'allergies'|'conditions'|'diagnosis'/.test(service), false);
 
 console.log('\nScopes are split so one leaked key is not all of them');
+const integrationRoutes = await readFile(
+  new URL('../src/modules/integrations/integrations.routes.ts', import.meta.url), 'utf8',
+);
 check('booking and intake are different scopes', INTEGRATION_SCOPES.includes('agent:schedule') && INTEGRATION_SCOPES.includes('agent:intake'), true);
+check('clinical follow-up has its own scope', INTEGRATION_SCOPES.includes('agent:followup'), true);
+check('follow-up routes require the follow-up scope', routes.includes("requireIntegration('agent:followup')"), true);
+check('new machine mutations require Idempotency-Key', routes.includes("request.headers['idempotency-key']"), true);
+check('legacy message enqueue remains callable without an idempotency key', integrationRoutes.includes('suppliedKey !== undefined'), true);
+check('legacy message enqueue reports whether deduplication is active', integrationRoutes.includes('idempotencyProtected'), true);
+check('conversation lookup is bound to the credential', routes.includes('request.integration!.credentialId'), true);
+check('machine request schemas reject unknown fields', routes.includes('.strict().parse(request.body)'), true);
+check('machine schemas never accept practiceId', /practiceId:\s*z\./.test(schemaText), false);
 check('messaging scopes do not imply agent scopes', INTEGRATION_SCOPES.filter((s) => s.startsWith('messaging:')).some((s) => s.startsWith('agent:')), false);
 
 console.log('\nExecutive Insight is tenant-fixed and aggregate-only');

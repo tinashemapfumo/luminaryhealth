@@ -45,6 +45,7 @@ than recovers.
 | `agent:schedule` | availability, book, reschedule, list upcoming |
 | `agent:intake` | propose record changes for review |
 | `agent:status` | read follow-up status |
+| `agent:followup` | operate post-consultation patient follow-ups |
 
 Give each workflow only what it needs. A relay that reports delivery has no
 business booking; an assistant that books has no business reading receipts.
@@ -347,3 +348,63 @@ session-authenticated API.
 **Everything is attributable.** Every tool call lands in `agent_action` with its
 arguments and outcome; appointments record `booked_via_conversation`. When no
 member of staff was involved, "who did this?" still has an answer.
+
+## 12. Intake matching and registration
+
+New machine mutations require an `Idempotency-Key` header containing a stable
+opaque key between 8 and 200 characters. A retry of the same intended operation
+uses the same key.
+
+The pre-existing `POST /integrations/messages` endpoint remains compatible with
+callers that omit this header. Such requests are queued once per call and return
+`idempotencyProtected: false`; new callers should always supply a key. When a
+key is supplied, an identical retry replays the original row and a changed
+payload conflicts.
+
+`POST /agent/intake/match` accepts a conversation ID and structured identity
+evidence. It returns only `matched`, `no_match`, `ambiguous`, or
+`insufficient_evidence`; candidate patient records are never returned. A
+shared phone or contradictory evidence is ambiguous, never guessed.
+
+After `no_match`, `POST /agent/intake/patients` accepts required demographics
+and explicit consent evidence. Luminary rematches inside the transaction,
+generates the patient reference, writes append-only consent evidence, and binds
+the conversation. The request cannot provide a practice, patient, reference, or
+duplicate override.
+
+For existing patients, use `POST /agent/intake/proposals`. Canonical fields are
+`phone`, `altPhone`, `email`, `addressStreet`, `addressSuburb`,
+`addressCity`, `preferredContact`, `emergencyName`,
+`emergencyRelation`, and `emergencyPhone`. The existing
+`POST /agent/intake` route remains as a compatibility endpoint.
+
+## 13. Post-consultation follow-up
+
+The `agent:followup` scope is required for every machine follow-up route.
+
+A follow-up is created only when a clinician explicitly marks the encounter as
+requiring follow-up, the appointment is completed, and the encounter is signed
+or amended. Completion alone never schedules unsolicited outreach.
+
+Routes:
+
+    POST /agent/followups
+    POST /agent/followups/:id
+    POST /agent/followups/:id/responses
+    POST /agent/followups/:id/escalations
+    POST /agent/followups/:id/complete
+
+The second route attaches a short-lived conversation and returns only bounded
+operational state. It does not return the clinical note or unrelated history.
+
+Response values for symptom status and medication adherence are bounded.
+Worsening or new symptoms, partial adherence, and stopped medication force
+clinical review even when the workflow does not request it.
+
+Escalation reason codes and levels are bounded. `possible_emergency` is always
+urgent. n8n cannot select the practice, patient, clinician, or assignee.
+Escalated follow-ups enter the authenticated clinical review queue and cannot be
+completed by the agent.
+
+Every new request schema is strict. Unknown fields, including tenant selectors,
+are rejected.

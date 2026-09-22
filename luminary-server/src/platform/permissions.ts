@@ -24,7 +24,7 @@ export type Permission =
   | 'createInvoice' | 'recordPayment' | 'readClaims' | 'createClaims' | 'editClaims'
   | 'submitClaims' | 'refreshClaimStatus' | 'manageClaimAttachments' | 'viewClaimTransmissions'
   | 'adminClaims' | 'captureBiometric' | 'adjustBalance' | 'manageTariffs'
-  | 'sendMessages' | 'manageAgents' | 'exportReports'
+  | 'sendMessages' | 'manageAgents' | 'exportReports' | 'exportPatientRecord'
   | 'manageUsers' | 'assignRoles' | 'manageConfiguration'
   | 'manageIntegrations' | 'manageCover' | 'reviewAudit';
 
@@ -36,7 +36,7 @@ const NONE: Record<Permission, boolean> = {
   createInvoice: false, recordPayment: false, readClaims: false, createClaims: false, editClaims: false,
   submitClaims: false, refreshClaimStatus: false, manageClaimAttachments: false, viewClaimTransmissions: false,
   adminClaims: false, captureBiometric: false, adjustBalance: false, manageTariffs: false,
-  sendMessages: false, manageAgents: false, exportReports: false,
+  sendMessages: false, manageAgents: false, exportReports: false, exportPatientRecord: false,
   manageUsers: false, assignRoles: false, manageConfiguration: false,
   manageIntegrations: false, manageCover: false, reviewAudit: false,
 };
@@ -56,7 +56,7 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     viewClinicalNotes: true, recordVitals: true, writeNote: true, signNote: true, amendNote: true,
     prescribe: true, orderLabs: true, orderServices: true, editClinicalHistory: true,
     readClaims: true, manageClaimAttachments: true,
-    sendMessages: true,
+    sendMessages: true, exportPatientRecord: true,
   },
   nurse: {
     ...NONE,
@@ -74,7 +74,7 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     submitClaims: true, refreshClaimStatus: true, manageClaimAttachments: true, viewClaimTransmissions: true,
     adjustBalance: true,
     manageTariffs: true,
-    sendMessages: true, manageAgents: true, exportReports: true,
+    sendMessages: true, manageAgents: true, exportReports: true, exportPatientRecord: true,
     manageCover: true, reviewAudit: true,
   },
   receptionist: {

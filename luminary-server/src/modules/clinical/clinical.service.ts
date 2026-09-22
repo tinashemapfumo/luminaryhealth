@@ -5,6 +5,7 @@ import { patientFileStream, removePatientFile, storePatientFile } from '../../pl
 import { assertSamePatient, requireEncounterInTenant, requirePatientInTenant } from '../../platform/tenant-refs.js';
 import { catalogueRepository } from '../catalogue/catalogue.repository.js';
 import { catalogueService } from '../catalogue/catalogue.service.js';
+import { followupService } from '../agent/followup.service.js';
 
 /**
  * Clinical documentation.
@@ -628,7 +629,10 @@ export const clinicalService = {
   async saveDraft(client: PoolClient, actor: Actor, id: string, input: Record<string, unknown>) {
     if (!can(actor.role, 'writeNote')) throw new Forbidden('Your role cannot write clinical notes');
 
-    const editable = ['note_type', 'subjective', 'objective', 'assessment', 'plan', 'follow_up', 'diagnoses'];
+    const editable = [
+      'note_type', 'subjective', 'objective', 'assessment', 'plan', 'follow_up',
+      'follow_up_required', 'follow_up_scheduled_for', 'diagnoses',
+    ];
     const supplied = Object.keys(input).filter((k) => editable.includes(k));
     if (supplied.length === 0) throw new BadRequest('Nothing to save');
 
@@ -746,6 +750,7 @@ export const clinicalService = {
       `SELECT luminary.write_audit('Signed clinical note', 'encounter', $1, $2, NULL, 'notice')`,
       [id, note.note_type],
     );
+    await followupService.ensureIfEligible(client, id);
     return rows[0];
   },
 
@@ -771,6 +776,7 @@ export const clinicalService = {
     await client.query(
       `UPDATE luminary.encounter SET status = 'amended' WHERE id = $1`, [id],
     );
+    await followupService.ensureIfEligible(client, id);
     await client.query(
       `SELECT luminary.write_audit('Added addendum', 'encounter', $1, NULL, $2, 'notice')`,
       [id, body.trim().slice(0, 80)],

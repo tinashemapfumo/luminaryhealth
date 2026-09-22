@@ -267,6 +267,8 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
         assessment: z.string().optional(),
         plan: z.string().optional(),
         follow_up: z.string().optional(),
+        follow_up_required: z.boolean().optional(),
+        follow_up_scheduled_for: z.string().datetime({ offset: true }).nullable().optional(),
         diagnoses: z.array(diagnosis).optional(),
       }).parse(request.body);
       const actor = actorOf(request);

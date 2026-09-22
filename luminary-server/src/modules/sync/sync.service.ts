@@ -34,6 +34,7 @@ const APPEND_ONLY = new Set([
   'invoice_line',
   'message_receipt',
   'appointment_status_history',
+  'patient_consent_event',
 ]);
 
 /**
@@ -383,6 +384,7 @@ const SYNCED_TABLES = new Set([
   'claim_attachment', 'claim_remittance', 'claim_eligibility_result', 'claim_authorisation',
   'claim_denial_disposition', 'collection_case', 'collection_action',
   'agent_conversation', 'agent_action', 'intake_proposal',
+  'patient_consent_event', 'patient_followup',
   'import_batch', 'import_row', 'mapping_profile',
 ]);
 const isKnownTable = (name: string) => SYNCED_TABLES.has(name);
@@ -410,7 +412,8 @@ export const SNAPSHOT_ORDER = [
   "message", "message_receipt", "audit_event", "claim_line", "claim_diagnosis", "claim_event", "claim_transmission",
   "claim_adjudication", "claim_attachment", "claim_remittance", "claim_eligibility_result",
   "claim_authorisation", "claim_denial_disposition", "collection_case", "collection_action",
-  "agent_conversation", "agent_action", "intake_proposal", "import_batch", "import_row", "mapping_profile",
+  "agent_conversation", "agent_action", "intake_proposal", "patient_consent_event", "patient_followup",
+  "import_batch", "import_row", "mapping_profile",
 ] as const;
 
 async function applyOne(client: PoolClient, change: Change): Promise<'applied' | 'skipped' | 'conflict'> {

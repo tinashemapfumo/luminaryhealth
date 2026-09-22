@@ -4,9 +4,13 @@ import { closePool } from './platform/db.js';
 import { assertSchemaReady } from './platform/schema-check.js';
 import { startSyncWorker, stopSyncWorker } from './modules/sync/sync.worker.js';
 import { configureDispatcher, startDispatcher } from './modules/messaging/messaging.dispatcher.js';
+import { startFollowupReconciler } from './modules/agent/followup.worker.js';
+import { startPatientExportWorker } from './modules/patient-exports/patient-exports.worker.js';
 
 const app = buildApp();
 let stopMessagingDispatcher: (() => void) | null = null;
+let stopFollowupReconciler: (() => void) | null = null;
+let stopPatientExportWorker: (() => void) | null = null;
 
 async function start(): Promise<void> {
   try {
@@ -15,8 +19,14 @@ async function start(): Promise<void> {
     app.log.info(`luminary-server listening on ${config.port} as node "${config.nodeId}"`);
     // Only a local node initiates replication; cloud answers.
     startSyncWorker(app.log);
+    stopPatientExportWorker = startPatientExportWorker((result) =>
+      app.log.info({ result }, 'patient_export_cycle'),
+    (error) => app.log.error({ error }, 'patient_export_worker_failed'));
     configureDispatcher(config.messagingDispatchEnabled);
     if (config.messagingDispatchEnabled) {
+      stopFollowupReconciler = startFollowupReconciler((result) =>
+        app.log.info({ result }, 'followup_reconciliation_cycle'),
+      (error) => app.log.error({ error }, 'followup_reconciliation_failed'));
       stopMessagingDispatcher = startDispatcher(config.messagingDispatchIntervalMs, (result) =>
         app.log.info({ result }, 'messaging_dispatcher_cycle'));
       app.log.info({ intervalMs: config.messagingDispatchIntervalMs }, 'messaging_dispatcher_started');
@@ -38,6 +48,8 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     app.log.info(`${signal} received, shutting down`);
     stopMessagingDispatcher?.();
+    stopFollowupReconciler?.();
+    stopPatientExportWorker?.();
     stopSyncWorker();
     void app.close().then(closePool).then(() => process.exit(0));
   });

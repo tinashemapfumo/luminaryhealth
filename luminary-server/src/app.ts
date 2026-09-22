@@ -19,6 +19,7 @@ import { integrationsRoutes } from './modules/integrations/integrations.routes.j
 import { agentRoutes } from './modules/agent/agent.routes.js';
 import { claimsRoutes } from './modules/claims/claims.routes.js';
 import { executiveInsightRoutes } from './modules/executive-insight/executive-insight.routes.js';
+import { patientExportRoutes } from './modules/patient-exports/patient-exports.routes.js';
 
 /**
  * Application assembly.
@@ -47,7 +48,10 @@ export function buildApp(): FastifyInstance {
       origin: config.webOrigins,
       credentials: true,
       methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-      allowedHeaders: ['Content-Type', 'Authorization'],
+      allowedHeaders: [
+        'Content-Type', 'Authorization', 'Idempotency-Key', 'X-Correlation-Id',
+        'X-Luminary-Key', 'X-Luminary-Timestamp', 'X-Luminary-Signature',
+      ],
     });
   }
 
@@ -80,6 +84,7 @@ export function buildApp(): FastifyInstance {
   void app.register(agentRoutes);
   void app.register(claimsRoutes);
   void app.register(executiveInsightRoutes);
+  void app.register(patientExportRoutes);
   void app.register(syncRoutes);
 
   return app;

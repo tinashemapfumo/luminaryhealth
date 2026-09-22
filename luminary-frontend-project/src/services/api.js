@@ -222,6 +222,26 @@ export const api = {
     },
   },
 
+  patientExports: {
+    request: (patientId, body) => post(`/patients/${patientId}/exports`, body),
+    list: (patientId) => get(`/patients/${patientId}/exports`),
+    status: (id) => get(`/patient-exports/${id}`),
+    revoke: (id) => post(`/patient-exports/${id}/revoke`, {}),
+    download: async (id) => {
+      const response = await fetch(`${BASE}/patient-exports/${id}/download`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      }).catch((error) => {
+        throw new ApiError('Cannot reach the server. Check the connection and try again.', {
+          code: 'unreachable', details: error.message,
+        });
+      });
+      if (!response.ok) throw new ApiError('The patient export could not be downloaded', { status: response.status });
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] || 'patient-file.zip';
+      return { filename, blob: await response.blob() };
+    },
+  },
+
   billing: {
     listInvoices: (query) => get('/invoices', query),
     getInvoice: (id) => get(`/invoices/${id}`),

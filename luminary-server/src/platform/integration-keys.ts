@@ -33,6 +33,7 @@ export const INTEGRATION_SCOPES = [
   'agent:schedule',
   'agent:intake',
   'agent:status',
+  'agent:followup',
   // Read-only, aggregate management reporting for Executive Insight.
   'agent:insight',
   // Canonical v1 reporting scope. agent:insight remains a compatibility scope.

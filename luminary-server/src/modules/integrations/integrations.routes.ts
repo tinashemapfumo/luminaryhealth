@@ -5,7 +5,7 @@ import { requirePermission } from '../../platform/permissions.js';
 import { requireIntegration } from '../../platform/integration.js';
 import { integrationsService } from './integrations.service.js';
 import { messagingService } from '../messaging/messaging.service.js';
-import { Unauthorized } from '../../platform/errors.js';
+import { BadRequest, Unauthorized } from '../../platform/errors.js';
 import type { Actor } from '../billing/billing.service.js';
 
 /**
@@ -38,7 +38,8 @@ const inboundBody = z.object({
   mediaUrl: z.string().url().optional(),
   receivedAt: isoish,
   raw: z.unknown().optional(),
-});
+  conversationId: z.string().uuid().optional(),
+}).strict();
 
 const statusBody = z.object({
   messageId: z.string().uuid().optional(),
@@ -46,7 +47,7 @@ const statusBody = z.object({
   status: z.enum(['sent', 'delivered', 'read', 'failed']),
   detail: z.string().max(500).optional(),
   occurredAt: isoish,
-}).refine((v) => v.messageId || v.providerRef, {
+}).strict().refine((v) => v.messageId || v.providerRef, {
   message: 'Give either messageId or providerRef so the message can be found',
 });
 
@@ -57,7 +58,8 @@ const sendBody = z.object({
   channel: z.enum(['whatsapp', 'sms', 'email']).default('whatsapp'),
   body: z.string().min(1).max(4096),
   template: z.string().optional(),
-});
+  conversationId: z.string().uuid().optional(),
+}).strict();
 
 export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
   const actorOf = (request: FastifyRequest): Actor => {
@@ -76,7 +78,17 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
   const asIntegration = <T>(request: FastifyRequest, work: Parameters<typeof withTenant<T>>[1]) => {
     const caller = request.integration;
     if (!caller) throw new Unauthorized();
-    return withTenant<T>({ practiceId: caller.practiceId, userId: null }, work);
+    return withTenant<T>({
+      practiceId: caller.practiceId,
+      userId: null,
+      integrationCredentialId: caller.credentialId,
+      correlationId: typeof request.headers['x-correlation-id'] === 'string'
+        ? request.headers['x-correlation-id'].slice(0, 200)
+        : null,
+      requestId: typeof request.headers['idempotency-key'] === 'string'
+        ? request.headers['idempotency-key'].slice(0, 200)
+        : null,
+    }, work);
   };
 
   // --- machine endpoints ---------------------------------------------------
@@ -86,7 +98,9 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
     handler: async (request, reply) => {
       const body = inboundBody.parse(request.body);
       const result = await asIntegration(request, (client) =>
-        integrationsService.recordInbound(client, body));
+        integrationsService.recordInbound(client, {
+          ...body, credentialId: request.integration!.credentialId,
+        }));
 
       // 200 rather than 201 on a redelivery, and never an error: a workflow
       // that gets a 4xx will retry for ever or alert a human about something
@@ -125,11 +139,20 @@ export async function integrationsRoutes(app: FastifyInstance): Promise<void> {
     handler: async (request, reply) => {
       const body = sendBody.parse(request.body);
       const caller = request.integration!;
+      const suppliedKey = request.headers['idempotency-key'];
+      if (suppliedKey !== undefined
+          && (typeof suppliedKey !== 'string' || suppliedKey.length < 8 || suppliedKey.length > 200)) {
+        throw new BadRequest('Idempotency-Key must be between 8 and 200 characters');
+      }
+      const idempotencyKey = typeof suppliedKey === 'string' ? suppliedKey : undefined;
       const message = await asIntegration(request, (client) =>
         messagingService.queueFromIntegration(client, {
-          ...body, credentialId: caller.credentialId,
+          ...body, credentialId: caller.credentialId, idempotencyKey,
         }));
-      return reply.code(201).send({ id: message.id, status: message.status });
+      return reply.code(message.duplicate ? 200 : 201).send({
+        id: message.id, status: message.status, duplicate: message.duplicate ?? false,
+        idempotencyProtected: Boolean(idempotencyKey),
+      });
     },
   });
 

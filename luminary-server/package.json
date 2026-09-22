@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Luminary Health API \u2014 runs identically in cloud and on a practice's local server",
+  "description": "Luminary Health API — runs identically in cloud and on a practice's local server",
   "engines": {
     "node": ">=20"
   },
@@ -45,8 +45,11 @@
     "lint": "eslint src --ext .ts --max-warnings 0",
     "contract:permissions": "tsx scripts/contract-permissions.ts",
     "verify:integration": "tsx scripts/verify-integration.ts",
+    "verify:whatsapp": "tsx scripts/verify-whatsapp-patient-engagement.ts",
+    "verify:patient-exports": "tsx scripts/verify-patient-exports.ts",
     "verify:executive-insight": "node --env-file=env/local.demo.env --import tsx scripts/verify-executive-insight.ts",
     "test:insight": "tsx --test src/modules/executive-insight/*.test.ts",
+    "test:agent": "tsx --test src/modules/agent/*.test.ts",
     "verify:claims": "tsx scripts/verify-claims.ts",
     "verify:scenario013": "node --import tsx scripts/scenario013-smoke.mjs",
     "verify:scenario014": "node --import tsx scripts/scenario014-smoke.mjs",
@@ -60,13 +63,17 @@
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
+    "archiver": "^8.0.0",
     "argon2": "^0.31.2",
     "fastify": "^4.26.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.11.3",
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/node": "^20.11.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.11.0",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",

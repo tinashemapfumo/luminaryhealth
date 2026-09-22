@@ -850,6 +850,31 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
   };
 
+  const exportPatientFile = async (patient, options) => {
+    const patientId = patient.patientId || patient.id;
+    const job = await api.patientExports.request(patientId, options);
+    notify('Patient export queued');
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      const current = await api.patientExports.status(job.id);
+      if (current.status === 'failed') throw new Error('Patient export generation failed');
+      if (current.status === 'revoked' || current.status === 'expired') throw new Error(`Patient export is ${current.status}`);
+      if (current.status !== 'ready') continue;
+      const { blob, filename } = await api.patientExports.download(job.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      notify(`${filename} downloaded`);
+      return;
+    }
+    throw new Error('Patient export is still processing');
+  };
+
   const submitNewPatient = async (event) => {
     event.preventDefault();
     const errors = {};
@@ -3304,7 +3329,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     sortKey, setSortKey, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen,
     patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, notesForPatient, mergePatients,
     submitEpisode, updateEpisode, EPISODE_STATUSES,
-    uploadPatientDocument, downloadPatientDocument, patientTab, setPatientTab, recordCompleteness,
+    uploadPatientDocument, downloadPatientDocument, exportPatientFile, patientTab, setPatientTab, recordCompleteness,
     // scheduling
     setSelectedAppointment, moveAppointment, visitStatuses, advanceVisitStatus, markNoShow, cancelVisit,
     billVisit, unbilledVisits,

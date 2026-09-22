@@ -3,6 +3,8 @@ import type { PoolClient } from 'pg';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../platform/errors.js';
 import { numberKey } from '../../platform/phone.js';
 import { schedulingRepository } from '../scheduling/scheduling.repository.js';
+import { patientsRepository } from '../patients/patients.repository.js';
+import { patientMatchingService, type PatientMatchInput } from './patient-matching.service.js';
 
 /**
  * Tools for a WhatsApp assistant.
@@ -37,10 +39,16 @@ const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
 const hashOtp = (code: string) => createHash('sha256').update(code).digest('hex');
 
+export const fingerprintRequest = (value: unknown): string =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
 export interface Conversation {
   id: string;
   practice_id: string;
+  credential_id: string;
   patient_id: string | null;
+  channel: string;
+  from_number: string;
   verification: 'number_only' | 'otp_verified';
   expires_at: string;
   closed_at: string | null;
@@ -60,9 +68,10 @@ export const agentService = {
   ) {
     const { rows: live } = await client.query(
       `SELECT * FROM luminary.agent_conversation
-        WHERE from_number = $1 AND closed_at IS NULL AND expires_at > now() AND deleted_at IS NULL
+        WHERE from_number = $1 AND channel = $2 AND credential_id = $3
+          AND closed_at IS NULL AND expires_at > now() AND deleted_at IS NULL
         ORDER BY created_at DESC LIMIT 1`,
-      [input.from],
+      [input.from, input.channel, input.credentialId],
     );
     if (live[0]) return { conversation: live[0] as Conversation, reused: true };
 
@@ -98,7 +107,7 @@ export const agentService = {
     };
   },
 
-  async requireConversation(client: PoolClient, id: string): Promise<Conversation> {
+  async requireConversation(client: PoolClient, id: string, credentialId?: string): Promise<Conversation> {
     const { rows } = await client.query(
       `SELECT * FROM luminary.agent_conversation
         WHERE id = $1 AND deleted_at IS NULL`,
@@ -106,11 +115,124 @@ export const agentService = {
     );
     const conversation = rows[0] as Conversation | undefined;
     if (!conversation) throw new NotFound('Conversation not found');
+    if (credentialId && conversation.credential_id !== credentialId) {
+      throw new NotFound('Conversation not found');
+    }
     if (conversation.closed_at) throw new Conflict('That conversation has been closed');
     if (new Date(conversation.expires_at) < new Date()) {
       throw new Conflict('That conversation has expired — start a new one');
     }
     return conversation;
+  },
+
+  async matchPatient(
+    client: PoolClient,
+    conversation: Conversation,
+    input: PatientMatchInput,
+  ) {
+    const suppliedPhone = numberKey(input.phone ?? '');
+    const channelPhone = numberKey(conversation.from_number);
+    if (suppliedPhone && suppliedPhone !== channelPhone) {
+      throw new BadRequest('Identity phone must match the active conversation');
+    }
+    if (conversation.patient_id) {
+      return { result: 'matched' as const, knownPatient: true, verificationRequired: true };
+    }
+
+    const match = await patientMatchingService.match(client, input);
+    if (match.result === 'matched') {
+      await client.query(
+        `UPDATE luminary.agent_conversation
+            SET patient_id = $2, conversation_type = 'intake', updated_at = now()
+          WHERE id = $1 AND patient_id IS NULL`,
+        [conversation.id, match.patientId],
+      );
+      await client.query(
+        `SELECT luminary.write_audit('Matched intake conversation', 'patient', $1, NULL, $2, 'notice')`,
+        [match.patientId, conversation.id],
+      );
+    }
+    return {
+      result: match.result,
+      knownPatient: match.result === 'matched',
+      verificationRequired: match.result === 'matched',
+    };
+  },
+
+  async registerPatient(
+    client: PoolClient,
+    conversation: Conversation,
+    credentialId: string,
+    input: {
+      fullName: string; dateOfBirth: string; sex: string; phone: string;
+      nationalId?: string | null; email?: string; addressCity: string;
+      emergencyName: string; emergencyRelation?: string; emergencyPhone: string;
+      consentTreatment: true; consentCommunications: boolean; consentDataProcessing: true;
+      consentOccurredAt: string; consentPolicyVersion: string;
+    },
+  ) {
+    if (conversation.patient_id) throw new Conflict('Conversation is already bound to a patient');
+    if (numberKey(input.phone) !== numberKey(conversation.from_number)) {
+      throw new BadRequest('Registration phone must match the active conversation');
+    }
+    const match = await patientMatchingService.match(client, input);
+    if (match.result !== 'no_match') {
+      throw new Conflict(`Registration refused because patient matching returned ${match.result}`);
+    }
+
+    const reference = `WA-${randomInt(0, 1_000_000_000).toString().padStart(9, '0')}`;
+    const patient = await patientsRepository.create(client, {
+      reference,
+      fullName: input.fullName.trim(),
+      dateOfBirth: input.dateOfBirth,
+      sex: input.sex,
+      nationalId: input.nationalId ?? null,
+      phone: input.phone,
+      email: input.email ?? '',
+      addressCity: input.addressCity,
+      emergencyName: input.emergencyName,
+      emergencyRelation: input.emergencyRelation ?? null,
+      emergencyPhone: input.emergencyPhone,
+      schemeId: null,
+      memberNumber: null,
+      principalMember: null,
+      dependantCode: null,
+      coverEffectiveFrom: null,
+      coverValidUntil: null,
+      coverStatus: null,
+      primaryProviderId: null,
+      consentTreatment: true,
+      consentComms: input.consentCommunications,
+    });
+
+    const consentRows = [
+      ['treatment', true],
+      ['communications', input.consentCommunications],
+      ['data_processing', true],
+    ] as const;
+    for (const [type, accepted] of consentRows) {
+      await client.query(
+        `INSERT INTO luminary.patient_consent_event
+           (practice_id, patient_id, conversation_id, credential_id, consent_type,
+            accepted, source, policy_version, occurred_at)
+         VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, 'whatsapp', $6, $7)`,
+        [
+          patient.id, conversation.id, credentialId, type, accepted,
+          input.consentPolicyVersion, input.consentOccurredAt,
+        ],
+      );
+    }
+    await client.query(
+      `UPDATE luminary.agent_conversation
+          SET patient_id = $2, conversation_type = 'intake', updated_at = now()
+        WHERE id = $1 AND patient_id IS NULL`,
+      [conversation.id, patient.id],
+    );
+    await client.query(
+      `SELECT luminary.write_audit('Registered patient via assistant', 'patient', $1, NULL, $2, 'notice')`,
+      [patient.id, conversation.id],
+    );
+    return patient;
   },
 
   /** The patient this conversation is about, or a refusal. Never a parameter. */
@@ -351,14 +473,21 @@ export const agentService = {
     // An assistant must not be able to propose edits to clinical fields. Cover
     // and contact details are administrative and reversible; allergies and
     // conditions are neither, and belong to a clinician.
-    const ALLOWED = new Set([
-      'phone', 'alt_phone', 'email', 'address_line', 'city',
-      'preferred_contact', 'emergency_name', 'emergency_phone',
-      'scheme_member_no',
-    ]);
+    const CANONICAL: Record<string, string> = {
+      phone: 'phone', altPhone: 'alt_phone', alt_phone: 'alt_phone', email: 'email',
+      addressStreet: 'address_street', address_street: 'address_street', address_line: 'address_street',
+      addressSuburb: 'address_suburb', address_suburb: 'address_suburb',
+      addressCity: 'address_city', address_city: 'address_city', city: 'address_city',
+      preferredContact: 'preferred_contact', preferred_contact: 'preferred_contact',
+      emergencyName: 'emergency_name', emergency_name: 'emergency_name',
+      emergencyRelation: 'emergency_relation', emergency_relation: 'emergency_relation',
+      emergencyPhone: 'emergency_phone', emergency_phone: 'emergency_phone',
+    };
 
-    const rejected = input.fields.filter((f) => !ALLOWED.has(f.field)).map((f) => f.field);
-    const accepted = input.fields.filter((f) => ALLOWED.has(f.field));
+    const rejected = input.fields.filter((f) => !CANONICAL[f.field]).map((f) => f.field);
+    const accepted = input.fields
+      .filter((f) => CANONICAL[f.field])
+      .map((f) => ({ ...f, field: CANONICAL[f.field]! }));
     if (accepted.length === 0) {
       throw new Forbidden(`An assistant cannot propose changes to: ${rejected.join(', ')}`);
     }
@@ -458,31 +587,48 @@ export const agentService = {
     client: PoolClient,
     input: {
       conversationId: string; tool: string; requestKey?: string | null;
+      credentialId?: string | null; correlationId?: string | null;
+      requestFingerprint?: string | null; response?: unknown;
       args: unknown; outcome: 'ok' | 'refused' | 'error'; detail?: string; subjectId?: string | null;
     },
   ) {
     const { rows } = await client.query(
       `INSERT INTO luminary.agent_action
-         (practice_id, conversation_id, tool, request_key, arguments, outcome, detail, subject_id)
-       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7)
+         (practice_id, conversation_id, tool, request_key, arguments, outcome, detail, subject_id,
+          credential_id, correlation_id, request_fingerprint, response)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (practice_id, conversation_id, request_key) DO NOTHING
        RETURNING *`,
       [
         input.conversationId, input.tool, input.requestKey ?? null,
         JSON.stringify(input.args ?? {}), input.outcome, input.detail ?? null,
-        input.subjectId ?? null,
+        input.subjectId ?? null, input.credentialId ?? null, input.correlationId ?? null,
+        input.requestFingerprint ?? null, input.response === undefined ? null : JSON.stringify(input.response),
       ],
     );
     return rows[0] ?? null;
   },
 
   /** A previous result for the same key, so a retry does not book twice. */
-  async replay(client: PoolClient, conversationId: string, requestKey: string) {
+  async replay(
+    client: PoolClient,
+    conversationId: string,
+    requestKey: string,
+    expectedTool?: string,
+    expectedFingerprint?: string,
+  ) {
     const { rows } = await client.query(
       `SELECT * FROM luminary.agent_action
         WHERE conversation_id = $1 AND request_key = $2 AND deleted_at IS NULL`,
       [conversationId, requestKey],
     );
-    return rows[0] ?? null;
+    const action = rows[0] ?? null;
+    if (action && expectedTool && action.tool !== expectedTool) {
+      throw new Conflict('Idempotency key was already used for another operation');
+    }
+    if (action && expectedFingerprint && action.request_fingerprint !== expectedFingerprint) {
+      throw new Conflict('Idempotency key was already used with a different request');
+    }
+    return action;
   },
 };

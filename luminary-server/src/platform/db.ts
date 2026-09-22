@@ -27,6 +27,9 @@ export const pool = new Pool({
 export interface TenantContext {
   practiceId: string;
   userId: string | null;
+  integrationCredentialId?: string | null;
+  correlationId?: string | null;
+  requestId?: string | null;
 }
 
 /**
@@ -47,8 +50,14 @@ export async function withTenant<T>(
     await client.query(
       `SELECT set_config('luminary.practice_id', $1, true),
               set_config('luminary.user_id',     $2, true),
-              set_config('luminary.node',        $3, true)`,
-      [ctx.practiceId, ctx.userId ?? '', config.nodeId],
+              set_config('luminary.node',        $3, true),
+              set_config('luminary.integration_credential_id', $4, true),
+              set_config('luminary.correlation_id', $5, true),
+              set_config('luminary.request_id', $6, true)`,
+      [
+        ctx.practiceId, ctx.userId ?? '', config.nodeId,
+        ctx.integrationCredentialId ?? '', ctx.correlationId ?? '', ctx.requestId ?? '',
+      ],
     );
     const result = await work(client);
     await client.query('COMMIT');

@@ -8,7 +8,7 @@ import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function PatientsPage() {
-  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, notesForPatient, openNoteForVisit, setOpenNoteId, patientTab, setPatientTab, currency, openDialog, setActiveView, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
+  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNoteForVisit, setOpenNoteId, patientTab, setPatientTab, currency, openDialog, setActiveView, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
   const defaultProvider = configuredProviders[0] || 'Unassigned';
   const [mergeOpen, setMergeOpen] = React.useState(false);
   const [mergeSourceId, setMergeSourceId] = React.useState('');
@@ -57,6 +57,7 @@ export default function PatientsPage() {
           onSave={savePatientRecord}
           onUploadDocument={(payload) => uploadPatientDocument({ patient: selectedPatient, ...payload })}
           onDownloadDocument={downloadPatientDocument}
+          onExportPatient={(options) => exportPatientFile(selectedPatient, options)}
           canEdit={access.can.editDemographics || access.can.editClinicalHistory}
           canPrescribe={access.can.prescribe}
           can={access.can}

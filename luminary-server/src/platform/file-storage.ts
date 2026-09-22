@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { access, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, stat, unlink, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, resolve, sep } from 'node:path';
 import { config } from './config.js';
@@ -54,4 +54,26 @@ export async function removePatientFile(storageKey: string): Promise<void> {
     throw new Error('Resolved cleanup path escaped the storage root');
   }
   await unlink(absolute);
+}
+
+export async function allocatePatientExportFile(input: {
+  practiceId: string;
+  patientId: string;
+  exportId: string;
+}): Promise<{ storageKey: string; absolutePath: string }> {
+  const storageKey = [input.practiceId, input.patientId, 'exports', `${input.exportId}.zip`].join('/');
+  const absolutePath = resolve(root, storageKey);
+  if (!insideRoot(absolutePath)) throw new Error('Resolved export path escaped the storage root');
+  await mkdir(resolve(root, input.practiceId, input.patientId, 'exports'), { recursive: true });
+  return { storageKey, absolutePath };
+}
+
+export async function storedFileMetadata(storageKey: string): Promise<{ checksum: string; sizeBytes: number }> {
+  const absolute = resolve(root, storageKey);
+  if (!insideRoot(absolute)) throw new Error('Resolved metadata path escaped the storage root');
+  const hash = createHash('sha256');
+  const stream = createReadStream(absolute);
+  for await (const chunk of stream) hash.update(chunk as Buffer);
+  const details = await stat(absolute);
+  return { checksum: hash.digest('hex'), sizeBytes: details.size };
 }

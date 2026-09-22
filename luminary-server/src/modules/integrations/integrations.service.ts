@@ -113,6 +113,7 @@ export const integrationsService = {
     input: {
       channel: string; from: string; body: string; providerRef: string;
       mediaUrl?: string | null; receivedAt?: string | null; raw?: unknown;
+      conversationId?: string; credentialId: string;
     },
   ) {
     const key = numberKey(input.from);
@@ -131,16 +132,37 @@ export const integrationsService = {
     // either is a coin toss with someone's chart. Left unattached for a person.
     const patient = patients.length === 1 ? patients[0] : null;
 
+    let conversation: { id: string; patient_id: string | null; from_number: string; channel: string } | null = null;
+    if (input.conversationId) {
+      const { rows: conversations } = await client.query(
+        `SELECT id, patient_id, from_number, channel
+           FROM luminary.agent_conversation
+          WHERE id = $1 AND credential_id = $2
+            AND closed_at IS NULL AND expires_at > now() AND deleted_at IS NULL`,
+        [input.conversationId, input.credentialId],
+      );
+      conversation = conversations[0] ?? null;
+      if (!conversation || conversation.channel !== input.channel
+          || numberKey(conversation.from_number) !== numberKey(input.from)) {
+        throw new NotFound('Conversation not found');
+      }
+      if (conversation.patient_id && patient && conversation.patient_id !== patient.id) {
+        throw new BadRequest('Conversation patient does not match the message sender');
+      }
+    }
+
     const { rows } = await client.query(
       `INSERT INTO luminary.inbound_message
-         (practice_id, patient_id, channel, from_number, body, media_url, provider_ref, received_at, raw)
-       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, now()), $8)
+         (practice_id, patient_id, channel, from_number, body, media_url, provider_ref,
+          received_at, raw, conversation_id)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6,
+               COALESCE($7::timestamptz, now()), $8, $9)
        ON CONFLICT (practice_id, provider_ref) DO NOTHING
        RETURNING *`,
       [
-        patient?.id ?? null, input.channel, input.from, input.body,
+        conversation?.patient_id ?? patient?.id ?? null, input.channel, input.from, input.body,
         input.mediaUrl ?? null, input.providerRef, input.receivedAt ?? null,
-        JSON.stringify(input.raw ?? {}),
+        JSON.stringify(input.raw ?? {}), conversation?.id ?? null,
       ],
     );
 

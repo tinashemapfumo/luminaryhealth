@@ -58,6 +58,13 @@ export const ENDPOINTS = {
     archive: { method: 'POST', path: '/documents/:id/archive', permission: 'writeNote', note: 'soft archive; metadata is hidden from active lists, bytes remain stored' },
     download: { method: 'GET', path: '/documents/:id/download', permission: 'viewClinicalNotes', note: 'authorized stream from external client-file storage' },
   },
+  patientExports: {
+    request: { method: 'POST', path: '/patients/:id/exports', permission: 'exportPatientRecord' },
+    list: { method: 'GET', path: '/patients/:id/exports', permission: 'exportPatientRecord' },
+    status: { method: 'GET', path: '/patient-exports/:id', permission: 'exportPatientRecord' },
+    download: { method: 'GET', path: '/patient-exports/:id/download', permission: 'exportPatientRecord', note: 'single-use private ZIP stream' },
+    revoke: { method: 'POST', path: '/patient-exports/:id/revoke', permission: 'exportPatientRecord' },
+  },
 
   billing: {
     listInvoices: { method: 'GET', path: '/invoices' },

@@ -5,6 +5,7 @@ import { can, requirePermission, type Role } from '../../platform/permissions.js
 import { schedulingRepository } from './scheduling.repository.js';
 import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from '../../platform/errors.js';
 import { messagingService } from '../messaging/messaging.service.js';
+import { followupService } from '../agent/followup.service.js';
 import { requirePatientInTenant, requireProviderInTenant, requireRoomInTenant } from '../../platform/tenant-refs.js';
 
 /**
@@ -266,6 +267,16 @@ export async function schedulingRoutes(app: FastifyInstance): Promise<void> {
         }
 
         const updated = await schedulingRepository.setStatus(client, id, status, reason);
+        if (status === 'completed') {
+          const { rows: encounters } = await client.query<{ id: string }>(
+            `SELECT id FROM luminary.encounter
+              WHERE appointment_id = $1 AND deleted_at IS NULL`,
+            [id],
+          );
+          for (const encounter of encounters) {
+            await followupService.ensureIfEligible(client, encounter.id);
+          }
+        }
         if (status === 'cancelled') {
           const cancelled = await messagingService.cancelQueuedForAppointment(
             client,

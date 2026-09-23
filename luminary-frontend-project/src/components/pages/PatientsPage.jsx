@@ -53,7 +53,7 @@ export default function PatientsPage() {
         <PatientFile
           record={patientRecords[selectedPatient.id]}
           registry={selectedPatient}
-          onBack={() => setFileOpen(false)}
+          onBack={() => { setFileOpen(false); setPatientFileTab('Summary'); }}
           onSave={savePatientRecord}
           onUploadDocument={(payload) => uploadPatientDocument({ patient: selectedPatient, ...payload })}
           onDownloadDocument={downloadPatientDocument}

@@ -701,6 +701,9 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     setSelectedPatientId(patient.id);
     setFileOpen(true);
     setActiveView('patients');
+    // Each chart opens fresh — otherwise whichever tab was last viewed on a
+    // previous patient (e.g. Clinical) silently carries over to the next one.
+    setPatientFileTab('Summary');
   };
 
   /**

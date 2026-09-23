@@ -54,7 +54,7 @@ export default function AppointmentsPage() {
               { label: 'Type', get: (r) => r.type },
               { label: 'Provider', get: (r) => r.provider },
               { label: 'Room', get: (r) => r.room },
-              { label: 'Status', get: (r) => visitStatuses[r.patient] || 'Booked' },
+              { label: 'Status', get: (r) => visitStatuses[r.id] || 'Booked' },
             ], todaysSchedule)}
             className="lh-secondary-button"
           >
@@ -101,7 +101,7 @@ export default function AppointmentsPage() {
                 <p className="text-lg font-semibold tracking-[-0.01em] text-ink">{selectedAppointment.patient}</p>
                 <p className="mt-1 text-sm text-body">{selectedAppointment.type}</p>
               </div>
-              <StatusPill label={visitStatuses[selectedAppointment.patient] || 'Booked'} tone={visitStatusTone[visitStatuses[selectedAppointment.patient]] || 'neutral'} />
+              <StatusPill label={visitStatuses[selectedAppointment.id] || 'Booked'} tone={visitStatusTone[visitStatuses[selectedAppointment.id]] || 'neutral'} />
             </div>
 
             <div className="mt-5 space-y-3 text-base text-body">
@@ -134,14 +134,14 @@ export default function AppointmentsPage() {
             <div className="flex items-center justify-between">
               <p className="lh-section-label">Visit progress</p>
               <StatusPill
-                label={visitStatuses[selectedAppointment.patient] || 'Booked'}
-                tone={visitStatusTone[visitStatuses[selectedAppointment.patient]] || 'neutral'}
+                label={visitStatuses[selectedAppointment.id] || 'Booked'}
+                tone={visitStatusTone[visitStatuses[selectedAppointment.id]] || 'neutral'}
               />
             </div>
 
             <div className="mt-4 flex items-center gap-1.5">
               {visitStatusFlow.map((step, index) => {
-                const currentStatus = visitStatuses[selectedAppointment.patient] || 'Booked';
+                const currentStatus = visitStatuses[selectedAppointment.id] || 'Booked';
                 const currentIndex = visitStatusFlow.indexOf(currentStatus);
                 const reached = currentIndex >= index;
                 return (
@@ -157,35 +157,35 @@ export default function AppointmentsPage() {
               {!access.can.checkIn && (
                 <p className="text-sm text-muted">Check-in is handled by reception and nursing staff.</p>
               )}
-              {access.can.checkIn && !['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.patient]) && (
+              {access.can.checkIn && !['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.id]) && (
                 <>
                   <button
                     type="button"
-                    onClick={() => advanceVisitStatus(selectedAppointment.patient)}
+                    onClick={() => advanceVisitStatus(selectedAppointment.id)}
                     className="lh-primary-button px-3.5 text-sm"
                   >
-                    {visitStatuses[selectedAppointment.patient] === 'Booked'
+                    {visitStatuses[selectedAppointment.id] === 'Booked'
                       ? 'Check in patient'
-                      : visitStatuses[selectedAppointment.patient] === 'Checked in'
+                      : visitStatuses[selectedAppointment.id] === 'Checked in'
                         ? 'Start triage'
-                        : visitStatuses[selectedAppointment.patient] === 'In triage'
+                        : visitStatuses[selectedAppointment.id] === 'In triage'
                           ? 'Mark ready'
-                          : visitStatuses[selectedAppointment.patient] === 'Ready for provider'
+                          : visitStatuses[selectedAppointment.id] === 'Ready for provider'
                             ? 'Start consultation'
                             : 'Complete visit'}
                   </button>
-                  {visitStatuses[selectedAppointment.patient] === 'Booked' && (
+                  {visitStatuses[selectedAppointment.id] === 'Booked' && (
                     <>
                       <button
                         type="button"
-                        onClick={() => markNoShow(selectedAppointment.patient)}
+                        onClick={() => markNoShow(selectedAppointment)}
                         className="rounded-lg border border-danger-strong bg-white px-3.5 py-2 text-sm font-medium text-danger transition hover:border-danger-line"
                       >
                         Mark no show
                       </button>
                       <button
                         type="button"
-                        onClick={() => cancelVisit(selectedAppointment.patient)}
+                        onClick={() => cancelVisit(selectedAppointment)}
                         className="rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-medium text-ink transition hover:border-danger-line hover:text-danger"
                       >
                         Cancel visit
@@ -194,11 +194,11 @@ export default function AppointmentsPage() {
                   )}
                 </>
               )}
-              {access.can.checkIn && ['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.patient]) && (
+              {access.can.checkIn && ['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.id]) && (
                 <p className="text-sm text-body">
-                  {visitStatuses[selectedAppointment.patient] === 'Completed'
+                  {visitStatuses[selectedAppointment.id] === 'Completed'
                     ? 'Visit completed, note ready for sign off.'
-                    : visitStatuses[selectedAppointment.patient] === 'No-show'
+                    : visitStatuses[selectedAppointment.id] === 'No-show'
                       ? 'Recorded as no show, recall message queued.'
                       : 'Visit cancelled and removed from the active flow.'}
                 </p>
@@ -206,7 +206,7 @@ export default function AppointmentsPage() {
 
               {/* The visit already knows the patient, the provider and what it
                   was for. Billing it should not mean retyping any of that. */}
-              {access.can.createInvoice && visitStatuses[selectedAppointment.patient] === 'Completed' && (
+              {access.can.createInvoice && visitStatuses[selectedAppointment.id] === 'Completed' && (
                 billed ? (
                   <p className="text-sm text-success">Billed · {billed.id}</p>
                 ) : (

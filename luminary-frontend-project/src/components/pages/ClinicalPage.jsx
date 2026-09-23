@@ -127,7 +127,7 @@ export default function ClinicalPage() {
                 {myPatients.map((visit) => {
                   const patient = practicePatients.find((p) => p.name === visit.patient);
                   const note = practiceEncounters.find((n) => n.patientId === patient?.id);
-                  const status = visitStatuses[visit.patient] || 'Booked';
+                  const status = visitStatuses[visit.id] || 'Booked';
                   const record = patient ? patientRecords[patient.id] : null;
                   return (
                     <div key={`${visit.time}-${visit.patient}`} className="flex flex-wrap items-center gap-3 py-2.5">

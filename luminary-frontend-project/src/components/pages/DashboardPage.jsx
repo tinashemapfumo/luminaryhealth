@@ -186,7 +186,7 @@ export default function DashboardPage() {
                   <span className="block text-sm text-body">{item.type} · {item.provider} · {item.room}</span>
                 </span>
                 <span className="flex items-center justify-between gap-3 md:justify-end">
-                  <StatusPill label={visitStatuses[item.patient] || 'Booked'} tone={visitStatusTone[visitStatuses[item.patient]] || 'neutral'} />
+                  <StatusPill label={visitStatuses[item.id] || 'Booked'} tone={visitStatusTone[visitStatuses[item.id]] || 'neutral'} />
                   <ChevronRight size={15} className="text-muted" />
                 </span>
               </button>

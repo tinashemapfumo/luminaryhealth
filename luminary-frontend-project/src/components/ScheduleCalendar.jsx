@@ -98,11 +98,15 @@ export default function ScheduleCalendar({
   const visible = useMemo(
     () =>
       appointments.filter((a) => {
+        // A cancelled or no-show visit no longer holds its slot — leaving it
+        // in the grid made the time look permanently occupied and blocked
+        // rebooking it (see findConflict in the parent).
+        if (['Cancelled', 'No-show'].includes(visitStatuses[a.id])) return false;
         if (restrictToProvider && a.provider !== restrictToProvider) return false;
         if (view === 'Week') return true;
         return (a.day ?? 0) === dayOffset;
       }),
-    [appointments, view, dayOffset, restrictToProvider]
+    [appointments, view, dayOffset, restrictToProvider, visitStatuses]
   );
 
   const byColumn = useMemo(() => {
@@ -283,7 +287,7 @@ export default function ScheduleCalendar({
                   const duration = item.duration || 30;
                   const top = ((start - DAY_START) / SLOT) * SLOT_PX;
                   const height = Math.max((duration / SLOT) * SLOT_PX - 2, 20);
-                  const status = visitStatuses[item.patient] || 'Booked';
+                  const status = visitStatuses[item.id] || 'Booked';
                   const isSelected = selectedId === item.id;
                   const width = `calc(${100 / laneCount}% - 4px)`;
                   const left = `calc(${(lane * 100) / laneCount}% + 2px)`;
@@ -294,6 +298,11 @@ export default function ScheduleCalendar({
                     'In consultation': 'bg-teal-soft border-teal-line text-teal-deep',
                     Completed: 'bg-success-soft border-success-edge text-success-deep',
                     'No-show': 'bg-danger-soft border-danger-edge text-danger-deep',
+                    // Cancelled visits are filtered out of `visible` above and
+                    // should never reach this point, but this keeps a cancelled
+                    // appointment from ever being mistaken for an active Booked
+                    // one if that filter is ever bypassed.
+                    Cancelled: 'bg-surface border-edge text-faint line-through',
                   };
 
                   return (

@@ -272,13 +272,16 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [patientSearch, setPatientSearch] = useState('');
   const [sortKey, setSortKey] = useState({ column: 'registeredAt', direction: 'desc' });
+  // Keyed by appointment id, not patient name — a patient can have more than
+  // one visit on the schedule, and each one needs its own status so cancelling
+  // one booking can never bleed into another.
   const [visitStatuses, setVisitStatuses] = useState(() =>
-    Object.fromEntries(initialSchedule.map((item) => [item.patient, 'Booked']))
+    Object.fromEntries(initialSchedule.map((item) => [item.id, 'Booked']))
   );
 
   useEffect(() => {
     if (!live) return;
-    setVisitStatuses(Object.fromEntries(mockSchedule.map((item) => [item.patient, item.status || 'Booked'])));
+    setVisitStatuses(Object.fromEntries(mockSchedule.map((item) => [item.id, item.status || 'Booked'])));
   }, [live, mockSchedule]);
 
   // Which dialog is open, if any. One slot — dialogs never stack.
@@ -380,10 +383,15 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   // Only today's bookings feed the dashboard, clinical queue, and metrics.
   // Defined once the practice scope exists — see the tenant-scoping block below.
 
-  /** Two appointments clash if they share a resource and overlap in time. */
+  /**
+   * Two appointments clash if they share a resource and overlap in time.
+   * A cancelled or no-show visit no longer occupies its slot, so it must
+   * never block a new booking from reusing that time.
+   */
   const findConflict = (candidate, ignoreId) =>
     mockSchedule.find((other) => {
       if (other.id === ignoreId) return false;
+      if (['Cancelled', 'No-show'].includes(visitStatuses[other.id])) return false;
       if ((other.day ?? 0) !== (candidate.day ?? 0)) return false;
       if (other.provider !== candidate.provider && other.room !== candidate.room) return false;
       const aStart = timeToMinutes(candidate.time);
@@ -1898,13 +1906,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     'No-show': 'no_show',
   }[status] || String(status || '').toLowerCase().replace(/[\s-]+/g, '_'));
 
-  const advanceVisitStatus = async (patient) => {
+  const advanceVisitStatus = async (appointmentId) => {
     if (live) {
       // Any booked visit can be actioned, not only today's — practiceSchedule
       // covers every day, todaysSchedule only day 0, and this silently found
       // nothing (and did nothing) for a visit on any other day.
-      const appointment = practiceSchedule.find((item) => item.patient === patient);
-      const currentIndex = visitStatusFlow.indexOf(visitStatuses[patient]);
+      const appointment = practiceSchedule.find((item) => item.id === appointmentId);
+      const currentIndex = visitStatusFlow.indexOf(visitStatuses[appointmentId]);
       if (!appointment || currentIndex < 0 || currentIndex >= visitStatusFlow.length - 1) return;
       try {
         await api.appointments.setStatus(appointment.id, statusForApi(visitStatusFlow[currentIndex + 1]));
@@ -1915,24 +1923,26 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       return;
     }
     setVisitStatuses((prev) => {
-      const currentIndex = visitStatusFlow.indexOf(prev[patient]);
+      const currentIndex = visitStatusFlow.indexOf(prev[appointmentId]);
       if (currentIndex < 0 || currentIndex >= visitStatusFlow.length - 1) return prev;
-      return { ...prev, [patient]: visitStatusFlow[currentIndex + 1] };
+      return { ...prev, [appointmentId]: visitStatusFlow[currentIndex + 1] };
     });
   };
 
-  const markNoShow = async (patient) => {
+  const markNoShow = async (appointment) => {
     openDialog('visitStatus', {
-      patient,
+      appointmentId: appointment.id,
+      patient: appointment.patient,
       status: 'no_show',
       label: 'Mark no show',
       reason: '',
     });
   };
 
-  const cancelVisit = async (patient) => {
+  const cancelVisit = async (appointment) => {
     openDialog('visitStatus', {
-      patient,
+      appointmentId: appointment.id,
+      patient: appointment.patient,
       status: 'cancelled',
       label: 'Cancel visit',
       reason: '',
@@ -1947,7 +1957,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       return;
     }
     if (live) {
-      const appointment = practiceSchedule.find((item) => item.patient === form.patient);
+      const appointment = practiceSchedule.find((item) => item.id === form.appointmentId);
       if (!appointment) {
         setFormErrors({ reason: 'Could not find that visit — refresh the schedule and try again.' });
         return;
@@ -1963,7 +1973,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
     setVisitStatuses((prev) => ({
       ...prev,
-      [form.patient]: form.status === 'cancelled' ? 'Cancelled' : 'No-show',
+      [form.appointmentId]: form.status === 'cancelled' ? 'Cancelled' : 'No-show',
     }));
     closeDialog();
   };
@@ -2930,7 +2940,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
    */
   const unbilledVisits = useMemo(
     () => todaysSchedule.filter(
-      (appointment) => visitStatuses[appointment.patient] === 'Completed'
+      (appointment) => visitStatuses[appointment.id] === 'Completed'
         && !invoiceData.some((invoice) => invoice.fromVisit === appointment.id)
     ),
     [todaysSchedule, visitStatuses, invoiceData]

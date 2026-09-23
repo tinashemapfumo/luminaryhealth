@@ -118,83 +118,111 @@ function mockStructure(transcript: string): StructuredDictation {
 
 async function openAiStructure(transcript: string): Promise<StructuredDictation> {
   if (!config.sttApiKey) throw new Conflict('OpenAI credentials are not configured');
-  const response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.sttApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: config.clinicalAiModel,
-      input: [
-        {
-          role: 'system',
-          content: 'Extract only transcript-supported clinical documentation. Return strict JSON with SOAP fields, diagnosis suggestions, medication suggestions, and uncertainties. Do not invent facts.',
-        },
-        { role: 'user', content: transcript },
-      ],
-      text: {
-        format: {
-          type: 'json_schema',
-          name: 'clinical_dictation_draft',
-          schema: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['subjective', 'objective', 'assessment', 'plan', 'followUp', 'diagnosesMentioned', 'medicationsMentioned', 'uncertainties'],
-            properties: {
-              subjective: { type: ['string', 'null'] },
-              objective: { type: ['string', 'null'] },
-              assessment: { type: ['string', 'null'] },
-              plan: { type: ['string', 'null'] },
-              followUp: { type: ['string', 'null'] },
-              diagnosesMentioned: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['code', 'label', 'sourceText'],
-                  properties: {
-                    code: { type: 'string' },
-                    label: { type: 'string' },
-                    sourceText: { type: 'string' },
+  // A bad model name or a malformed schema is a 400, not a hang — but without
+  // a client-side ceiling a slow provider round-trip leaves the doctor
+  // watching a spinner for as long as the request takes to fail, which reads
+  // as "broken" long before the real error ever surfaces.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  let response: Response;
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${config.sttApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: config.clinicalAiModel,
+        input: [
+          {
+            role: 'system',
+            content: 'Extract only transcript-supported clinical documentation. Return strict JSON with SOAP fields, diagnosis suggestions, medication suggestions, and uncertainties. Do not invent facts.',
+          },
+          { role: 'user', content: transcript },
+        ],
+        text: {
+          format: {
+            type: 'json_schema',
+            name: 'clinical_dictation_draft',
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['subjective', 'objective', 'assessment', 'plan', 'followUp', 'diagnosesMentioned', 'medicationsMentioned', 'uncertainties'],
+              properties: {
+                subjective: { type: ['string', 'null'] },
+                objective: { type: ['string', 'null'] },
+                assessment: { type: ['string', 'null'] },
+                plan: { type: ['string', 'null'] },
+                followUp: { type: ['string', 'null'] },
+                diagnosesMentioned: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['code', 'label', 'sourceText'],
+                    properties: {
+                      code: { type: 'string' },
+                      label: { type: 'string' },
+                      sourceText: { type: 'string' },
+                    },
                   },
                 },
-              },
-              medicationsMentioned: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['drug', 'strength', 'route', 'frequency', 'durationDays', 'sourceText'],
-                  properties: {
-                    drug: { type: 'string' },
-                    strength: { type: ['string', 'null'] },
-                    route: { type: ['string', 'null'] },
-                    frequency: { type: ['string', 'null'] },
-                    durationDays: { type: ['number', 'null'] },
-                    sourceText: { type: 'string' },
+                medicationsMentioned: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['drug', 'strength', 'route', 'frequency', 'durationDays', 'sourceText'],
+                    properties: {
+                      drug: { type: 'string' },
+                      strength: { type: ['string', 'null'] },
+                      route: { type: ['string', 'null'] },
+                      frequency: { type: ['string', 'null'] },
+                      durationDays: { type: ['number', 'null'] },
+                      sourceText: { type: 'string' },
+                    },
                   },
                 },
-              },
-              uncertainties: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['text', 'reason'],
-                  properties: {
-                    text: { type: 'string' },
-                    reason: { type: 'string' },
+                uncertainties: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['text', 'reason'],
+                    properties: {
+                      text: { type: 'string' },
+                      reason: { type: 'string' },
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    }),
-  });
-  if (!response.ok) throw new Conflict('Clinical structuring provider failed');
+      }),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Conflict('Clinical structuring provider timed out');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    // The response body is the provider's own error text — never the
+    // request, never the key — so it is safe to log in full. Without this the
+    // only visible symptom was a generic 409 with no way to tell a bad model
+    // name from a malformed schema from a quota error.
+    const errorBody = await response.text().catch(() => '');
+    console.error('Clinical structuring provider rejected the request', {
+      status: response.status, model: config.clinicalAiModel, body: errorBody.slice(0, 2000),
+    });
+    throw new Conflict('Clinical structuring provider failed');
+  }
   const payload = await response.json() as { output_text?: string };
   const text = payload.output_text;
   if (!text) throw new Conflict('Clinical structuring provider returned no draft');

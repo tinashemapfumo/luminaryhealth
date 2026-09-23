@@ -29,7 +29,7 @@ const metricIcons = {
 };
 
 export default function DashboardPage() {
-  const { access, roleInfo, currentRole, currentDate, currency, practice, todaysSchedule, visitStatuses, practiceInvoices, practiceClaims, practicePatients, configuredProviders, configuredRooms, setActiveView, setSelectedAppointment, openDialog, notify, showPermissions, setShowPermissions } = useWorkspace();
+  const { access, roleInfo, currentRole, currentDate, currency, practice, todaysSchedule, visitStatuses, practiceInvoices, practiceClaims, practicePatients, configuredProviders, configuredRooms, setActiveView, setSelectedAppointment, openDialog, notify, showPermissions, setShowPermissions, requestPatientFile } = useWorkspace();
   const defaultProvider = configuredProviders[0] || 'Unassigned';
   const defaultRoom = configuredRooms[0] || 'Unassigned';
 
@@ -166,7 +166,15 @@ export default function DashboardPage() {
               <button
                 key={`${item.time}-${item.patient}`}
                 type="button"
-                onClick={() => { setSelectedAppointment(item); setActiveView('appointments'); }}
+                onClick={() => {
+                  const patient = practicePatients.find((p) => p.name === item.patient);
+                  if (patient) {
+                    requestPatientFile(patient);
+                  } else {
+                    setSelectedAppointment(item);
+                    setActiveView('appointments');
+                  }
+                }}
                 className="grid w-full gap-3 rounded-lg px-2 py-2.5 text-left transition hover:bg-surface md:grid-cols-[56px_1fr_auto] md:items-center"
               >
                 <span className="flex items-center gap-1.5 text-base font-medium text-body">

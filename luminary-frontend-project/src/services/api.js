@@ -189,6 +189,7 @@ export const api = {
     sign: (id) => post(`/encounters/${id}/signature`, {}),
     addendum: (id, body) => post(`/encounters/${id}/addenda`, body),
     createDictation: (id, body) => post(`/encounters/${id}/dictations`, body),
+    createDictationFromAudio: (id, body) => post(`/encounters/${id}/dictations/audio`, body),
   },
 
   dictations: {

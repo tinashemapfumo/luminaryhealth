@@ -59,6 +59,7 @@ export default function EncounterNote({
   const [recordingState, setRecordingState] = useState('idle');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState('');
+  const [recordedAudioBlob, setRecordedAudioBlob] = useState(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const speechRecognitionRef = useRef(null);
@@ -91,6 +92,17 @@ export default function EncounterNote({
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
     recordingTimerRef.current = null;
   };
+
+  const blobToBase64 = (blob) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        resolve(result.includes(',') ? result.split(',').pop() : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error('Could not read audio recording.'));
+      reader.readAsDataURL(blob);
+    });
 
   const startRecordingTimer = () => {
     stopRecordingTimer();
@@ -183,6 +195,7 @@ export default function EncounterNote({
       discardRecordingRef.current = false;
       if (recordedAudioUrl) browserUrl?.revokeObjectURL?.(recordedAudioUrl);
       setRecordedAudioUrl('');
+      setRecordedAudioBlob(null);
       setRecordingSeconds(0);
 
       const preferredMimeType = [
@@ -207,6 +220,7 @@ export default function EncounterNote({
         mediaRecorderRef.current = null;
         if (shouldDiscard) return;
         if (blob.size > 0) {
+          setRecordedAudioBlob(blob);
           setRecordedAudioUrl(browserUrl?.createObjectURL?.(blob) || '');
           setDictationStatus(dictationTextRef.current.trim() ? 'Transcript ready' : 'Audio captured');
         } else {
@@ -301,7 +315,7 @@ export default function EncounterNote({
     setRecordingState('stopped');
     setDictationStatus('Saving audio');
     if (!speechRecognitionSupported && !dictationTextRef.current.trim()) {
-      setDictationError('Audio was captured. OpenAI mini transcription will convert it once credentials are configured; for now paste or type the transcript to structure it.');
+      setDictationError('Audio was captured. Structure will send it for transcription when server speech-to-text is configured.');
     }
   };
 
@@ -314,6 +328,7 @@ export default function EncounterNote({
     audioChunksRef.current = [];
     if (recordedAudioUrl) browserUrl?.revokeObjectURL?.(recordedAudioUrl);
     setRecordedAudioUrl('');
+    setRecordedAudioBlob(null);
     setRecordingSeconds(0);
     setRecordingState('idle');
     setDictationStatus('Ready');
@@ -357,12 +372,12 @@ export default function EncounterNote({
 
   const generateDictationDraft = async () => {
     const transcript = dictationText.trim();
-    if (transcript.length < 12) {
-      setDictationError('Speak or paste enough detail to structure the note.');
+    if (transcript.length < 12 && !recordedAudioBlob) {
+      setDictationError('Speak, record audio, or paste enough detail to structure the note.');
       return;
     }
     setDictationError('');
-    setDictationStatus('Processing');
+    setDictationStatus(transcript.length >= 12 ? 'Processing' : 'Transcribing audio');
     try {
       if (!isLive()) {
         setDictation({ id: `local-${Date.now()}` });
@@ -370,7 +385,14 @@ export default function EncounterNote({
         setDictationStatus('Structured draft ready');
         return;
       }
-      const created = await api.encounters.createDictation(draft.id, { transcript });
+      const created = transcript.length >= 12
+        ? await api.encounters.createDictation(draft.id, { transcript })
+        : await api.encounters.createDictationFromAudio(draft.id, {
+            audioBase64: await blobToBase64(recordedAudioBlob),
+            contentType: recordedAudioBlob.type || 'audio/webm',
+          });
+      setDictationText(created.raw_transcript || transcript);
+      setDictationStatus('Structuring');
       const structured = await api.dictations.structure(created.id);
       setDictation(structured);
       setDictationDraft(structured.structured_draft);

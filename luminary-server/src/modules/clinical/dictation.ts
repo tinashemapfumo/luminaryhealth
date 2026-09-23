@@ -26,9 +26,23 @@ export type StructuredDictation = {
   uncertainties: { text: string; reason: string }[];
 };
 
+type TranscriptionSource = {
+  transcript: string;
+  provider: string;
+  model: string | null;
+};
+
 function clean(value: unknown): string | null {
   const text = String(value ?? '').trim();
   return text ? text : null;
+}
+
+function audioFilename(contentType: string) {
+  if (contentType.includes('mp4')) return 'dictation.mp4';
+  if (contentType.includes('mpeg')) return 'dictation.mp3';
+  if (contentType.includes('ogg')) return 'dictation.ogg';
+  if (contentType.includes('wav')) return 'dictation.wav';
+  return 'dictation.webm';
 }
 
 function splitSentences(transcript: string) {
@@ -219,6 +233,37 @@ async function structureTranscript(transcript: string) {
   return mockStructure(transcript);
 }
 
+async function transcribeAudio(audioBase64: string, contentType: string): Promise<TranscriptionSource> {
+  if (config.sttProvider !== 'openai') {
+    throw new Conflict('Audio transcription is not configured');
+  }
+  if (!config.sttApiKey) throw new Conflict('OpenAI credentials are not configured');
+
+  const audio = Buffer.from(audioBase64, 'base64');
+  if (audio.length < 256) throw new BadRequest('Dictation audio is too short to transcribe');
+  if (audio.length > 25 * 1024 * 1024) throw new BadRequest('Dictation audio is too large');
+
+  const form = new FormData();
+  form.append('model', config.sttModel);
+  form.append('language', 'en');
+  form.append(
+    'prompt',
+    'Medical consultation dictation in English, with possible Zimbabwean clinical context. Preserve medication names, doses, durations, vitals, and ICD-relevant diagnoses.',
+  );
+  form.append('file', new Blob([audio], { type: contentType }), audioFilename(contentType));
+
+  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${config.sttApiKey}` },
+    body: form,
+  });
+  if (!response.ok) throw new Conflict('Speech-to-text provider failed');
+  const payload = await response.json() as { text?: string };
+  const transcript = clean(payload.text);
+  if (!transcript) throw new Conflict('Speech-to-text provider returned no transcript');
+  return { transcript, provider: config.sttProvider, model: config.sttModel };
+}
+
 async function dictationFor(client: PoolClient, id: string) {
   const { rows } = await client.query(
     `SELECT *
@@ -247,7 +292,22 @@ export const dictationService = {
     const text = transcript.trim();
     if (text.length < 12) throw new BadRequest('Dictation transcript is too short to structure');
     if (text.length > 12000) throw new BadRequest('Dictation transcript is too long');
+    return this.createCaptured(client, actor, encounterId, {
+      transcript: text,
+      provider: 'manual',
+      model: config.sttModel,
+    });
+  },
 
+  async createFromAudio(client: PoolClient, actor: Actor, encounterId: string, audioBase64: string, contentType: string) {
+    requireDoctor(actor);
+    const source = await transcribeAudio(audioBase64, contentType);
+    if (source.transcript.length < 12) throw new BadRequest('Dictation transcript is too short to structure');
+    if (source.transcript.length > 12000) throw new BadRequest('Dictation transcript is too long');
+    return this.createCaptured(client, actor, encounterId, source);
+  },
+
+  async createCaptured(client: PoolClient, actor: Actor, encounterId: string, source: TranscriptionSource) {
     const encounter = await requireEncounterInTenant(client, encounterId);
     const { rows } = await client.query(
       `INSERT INTO luminary.encounter_dictation
@@ -259,16 +319,16 @@ export const dictationService = {
         encounter.patient_id,
         encounterId,
         actor.userId,
-        'manual',
-        config.sttModel,
+        source.provider,
+        source.model,
         config.clinicalAiProvider,
         config.clinicalAiModel,
-        text,
+        source.transcript,
       ],
     );
     await client.query(
       `SELECT luminary.write_audit('Captured doctor dictation transcript', 'encounter', $1, $2, $3, 'notice')`,
-      [encounterId, 'manual transcript', rows[0].id],
+      [encounterId, source.provider === 'manual' ? 'manual transcript' : `${source.provider} transcription`, rows[0].id],
     );
     return rows[0];
   },

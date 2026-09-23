@@ -330,6 +330,22 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  app.post('/encounters/:id/dictations/audio', {
+    preHandler: requirePermission('prescribe'),
+    handler: async (request, reply) => {
+      const { id } = idParams.parse(request.params);
+      const body = z.object({
+        audioBase64: z.string().min(1).max(36 * 1024 * 1024),
+        contentType: z.string().min(1).max(120),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const dictation = await run(actor, (client) =>
+        dictationService.createFromAudio(client, actor, id, body.audioBase64, body.contentType),
+      );
+      return reply.code(201).send(dictation);
+    },
+  });
+
   app.get('/dictations/:id', {
     preHandler: requirePermission('prescribe'),
     handler: async (request) => {

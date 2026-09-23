@@ -230,6 +230,7 @@ const PATCHABLE = {
   alcohol: 'alcohol',
   exercise: 'exercise',
   risk: 'risk',
+  notes: 'clinicalSummary',
   consentComms: 'consentComms',
   consentDataSharing: 'consentDataSharing',
 };

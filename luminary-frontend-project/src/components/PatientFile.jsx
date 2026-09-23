@@ -126,6 +126,7 @@ export default function PatientFile({
   const TABS = ALL_TABS.filter((item) => item !== 'Notes' || can.viewClinicalNotes);
   const setTab = onTabChange;
   const [editing, setEditing] = useState(false);
+  const [editScope, setEditScope] = useState('all');
   const [draft, setDraft] = useState(record);
   const [errors, setErrors] = useState({});
   const [documentKind, setDocumentKind] = useState('X-ray');
@@ -165,7 +166,7 @@ export default function PatientFile({
     }
   };
 
-  const startEdit = () => {
+  const startEdit = (scope = 'all') => {
     setDraft({
       ...record,
       allergies: fromList(record.allergies),
@@ -175,6 +176,7 @@ export default function PatientFile({
       immunisations: fromList(record.immunisations),
     });
     setErrors({});
+    setEditScope(scope);
     setEditing(true);
   };
 
@@ -186,12 +188,12 @@ export default function PatientFile({
   const save = (event) => {
     event.preventDefault();
     const next = {};
-    if (!draft.name?.trim()) next.name = 'Full name is required';
-    if (!draft.phone?.trim()) next.phone = 'A primary phone number is required';
-    if (draft.dob && Number.isNaN(new Date(draft.dob).getTime())) next.dob = 'Enter a valid date';
-    if (draft.dob && new Date(draft.dob) > new Date()) next.dob = 'Date of birth cannot be in the future';
-    if (draft.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.email)) next.email = 'Enter a valid email address';
-    if (draft.emergencyPhone && draft.emergencyPhone === draft.phone) {
+    if (editScope === 'all' && !draft.name?.trim()) next.name = 'Full name is required';
+    if (editScope === 'all' && !draft.phone?.trim()) next.phone = 'A primary phone number is required';
+    if (editScope === 'all' && draft.dob && Number.isNaN(new Date(draft.dob).getTime())) next.dob = 'Enter a valid date';
+    if (editScope === 'all' && draft.dob && new Date(draft.dob) > new Date()) next.dob = 'Date of birth cannot be in the future';
+    if (editScope === 'all' && draft.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(draft.email)) next.email = 'Enter a valid email address';
+    if (editScope === 'all' && draft.emergencyPhone && draft.emergencyPhone === draft.phone) {
       next.emergencyPhone = 'Emergency contact must differ from the patient’s own number';
     }
     setErrors(next);
@@ -199,7 +201,7 @@ export default function PatientFile({
 
     onSave({
       ...draft,
-      name: draft.name.trim(),
+      name: draft.name?.trim() || record.name,
       allergies: toList(draft.allergies),
       conditions: toList(draft.conditions),
       medications: toList(draft.medications),
@@ -305,7 +307,7 @@ export default function PatientFile({
               </Button>
             )}
             {canEdit && !editing && (
-              <Button variant="secondary" type="button" onClick={startEdit}>
+              <Button variant="secondary" type="button" onClick={() => startEdit('all')}>
                 <Pencil size={13} /> Edit record
               </Button>
             )}
@@ -350,7 +352,7 @@ export default function PatientFile({
               Missing: {completeness.missing.map((field) => field.label).join(', ')}
             </span>
             {canEdit && (
-              <button type="button" onClick={startEdit} className="text-sm font-semibold text-brand hover:underline">
+              <button type="button" onClick={() => startEdit('all')} className="text-sm font-semibold text-brand hover:underline">
                 Complete now
               </button>
             )}
@@ -377,7 +379,7 @@ export default function PatientFile({
 
       {editing ? (
         <form onSubmit={save} className="space-y-4">
-          {can.editDemographics && <Panel title="Identity" icon={User}>
+          {editScope === 'all' && can.editDemographics && <Panel title="Identity" icon={User}>
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Full name" required error={errors.name}>
                 <Input value={draft.name || ''} onChange={set('name')} />
@@ -394,7 +396,7 @@ export default function PatientFile({
             </div>
           </Panel>}
 
-          {can.editDemographics && <Panel title="Contact" icon={User}>
+          {editScope === 'all' && can.editDemographics && <Panel title="Contact" icon={User}>
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Primary phone" required error={errors.phone}><Input value={draft.phone || ''} onChange={set('phone')} /></Field>
               <Field label="Alternate phone"><Input value={draft.altPhone || ''} onChange={set('altPhone')} /></Field>
@@ -407,7 +409,7 @@ export default function PatientFile({
             </div>
           </Panel>}
 
-          {can.editDemographics && <Panel title="Emergency contact" icon={AlertTriangle}>
+          {editScope === 'all' && can.editDemographics && <Panel title="Emergency contact" icon={AlertTriangle}>
             <div className="grid gap-3.5 sm:grid-cols-3">
               <Field label="Name" required><Input value={draft.emergencyName || ''} onChange={set('emergencyName')} /></Field>
               <Field label="Relationship"><Select value={draft.emergencyRelationship || ''} onChange={set('emergencyRelationship')} options={['', ...RELATIONSHIPS]} /></Field>
@@ -457,7 +459,7 @@ export default function PatientFile({
             </div>
           </Panel>}
 
-          {can.editCover && <Panel title="Cover and consent" icon={ShieldCheck}>
+          {editScope === 'all' && can.editCover && <Panel title="Cover and consent" icon={ShieldCheck}>
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
               <Field label="Cover plan" required><Select value={draft.coverPlan || ''} onChange={set('coverPlan')} options={['', ...COVER_PLANS]} /></Field>
               <Field label="Member number"><Input value={draft.memberNo || ''} onChange={set('memberNo')} /></Field>
@@ -483,7 +485,7 @@ export default function PatientFile({
 
           <div className="sticky bottom-0 flex items-center justify-end gap-2 rounded-lg border border-line bg-white/95 p-3 backdrop-blur">
             <Button variant="secondary" type="button" onClick={() => setEditing(false)}>Discard changes</Button>
-            <Button type="submit">Save record</Button>
+            <Button type="submit">{editScope === 'clinical' ? 'Save clinical information' : 'Save record'}</Button>
           </div>
         </form>
       ) : (
@@ -587,7 +589,15 @@ export default function PatientFile({
 
           {tab === 'Clinical' && (
             <div className="grid gap-4 lg:grid-cols-2">
-              <Panel title="Conditions & history" icon={Stethoscope}>
+              <Panel
+                title="Conditions & history"
+                icon={Stethoscope}
+                action={can.editClinicalHistory ? (
+                  <Button variant="secondary" type="button" onClick={() => startEdit('clinical')}>
+                    <Plus size={13} /> Add clinical information
+                  </Button>
+                ) : null}
+              >
                 <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Active conditions</p>
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {record.conditions?.length ? record.conditions.map((c) => (

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUpDown, GitMerge, Plus, Search, AlertTriangle } from 'lucide-react';
 import PatientFile from '../PatientFile';
+import EncounterNote from '../EncounterNote';
 import { patientStatusTone } from '../../data/registry';
 import { carePlansByPatient, labResultsByPatient, prescriptionsByPatient } from '../../data/clinical';
 import { Button, EmptyState, Field, Modal, Select, Textarea } from '../ui';
@@ -8,7 +9,7 @@ import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function PatientsPage() {
-  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNoteForVisit, setOpenNoteId, patientTab, setPatientTab, currency, openDialog, setActiveView, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
+  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNote, openNoteForVisit, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, applyDictationEncounter, roleInfo, patientTab, setPatientTab, currency, openDialog, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
   const defaultProvider = configuredProviders[0] || 'Unassigned';
   const [mergeOpen, setMergeOpen] = React.useState(false);
   const [mergeSourceId, setMergeSourceId] = React.useState('');
@@ -46,6 +47,25 @@ export default function PatientsPage() {
     }
   };
 
+    // A note opened from inside a chart stays inside the chart — closing it
+    // returns to the patient file, not out to the Clinical queue.
+    if (fileOpen && openNote) {
+      return (
+        <EncounterNote
+          note={openNote}
+          patientRecord={patientRecords[openNote.patientId]}
+          onBack={() => setOpenNoteId(null)}
+          onSave={saveNote}
+          onSign={signNote}
+          onAddendum={addAddendum}
+          onCompleteTriage={completeTriage}
+          onDictationApproved={applyDictationEncounter}
+          can={access.can}
+          currentUser={roleInfo.person}
+        />
+      );
+    }
+
     // The full chart takes over the workspace — a clinical record needs room,
     // not a narrow sidebar squeezed beside the registry table.
     if (fileOpen && patientRecords[selectedPatient.id]) {
@@ -63,7 +83,7 @@ export default function PatientsPage() {
           can={access.can}
           practice={practice}
           notes={access.can.viewClinicalNotes ? notesForPatient(selectedPatient.id) : []}
-          onOpenNote={(id) => { setFileOpen(false); setOpenNoteId(id); setActiveView('clinical'); }}
+          onOpenNote={(id) => setOpenNoteId(id)}
           onStartNote={() => openNoteForVisit(selectedPatient, practiceSchedule.find((v) => v.patient === selectedPatient.name))}
           onNewPrescription={() => openDialog('prescription', { patient: selectedPatient })}
           onDictatePrescription={() => openDialog('prescriptionDictation', { patient: selectedPatient })}

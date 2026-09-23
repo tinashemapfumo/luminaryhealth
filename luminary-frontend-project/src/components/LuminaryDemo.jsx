@@ -513,8 +513,6 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       }
     }
     setSelectedPatientId(patient.id);
-    setFileOpen(false);
-    setActiveView('clinical');
   };
 
   const saveNote = async (updated) => {

@@ -26,7 +26,10 @@ export type Permission =
   | 'adminClaims' | 'captureBiometric' | 'adjustBalance' | 'manageTariffs'
   | 'sendMessages' | 'manageAgents' | 'exportReports' | 'exportPatientRecord'
   | 'manageUsers' | 'assignRoles' | 'manageConfiguration'
-  | 'manageIntegrations' | 'manageCover' | 'reviewAudit';
+  | 'manageIntegrations' | 'manageCover' | 'reviewAudit'
+  | 'viewBillingHandoff' | 'captureEncounterServices' | 'editDraftInvoice'
+  | 'addCatalogueInvoiceLine' | 'addCustomInvoiceLine' | 'excludeAutomatedInvoiceLine'
+  | 'overrideInvoicePrice' | 'approveBespokePrice' | 'finalizeInvoice' | 'requestBillingClarification';
 
 const NONE: Record<Permission, boolean> = {
   viewPatientDirectory: false, addPatient: false, editDemographics: false, editCover: false,
@@ -39,6 +42,9 @@ const NONE: Record<Permission, boolean> = {
   sendMessages: false, manageAgents: false, exportReports: false, exportPatientRecord: false,
   manageUsers: false, assignRoles: false, manageConfiguration: false,
   manageIntegrations: false, manageCover: false, reviewAudit: false,
+  viewBillingHandoff: false, captureEncounterServices: false, editDraftInvoice: false,
+  addCatalogueInvoiceLine: false, addCustomInvoiceLine: false, excludeAutomatedInvoiceLine: false,
+  overrideInvoicePrice: false, approveBespokePrice: false, finalizeInvoice: false, requestBillingClarification: false,
 };
 
 export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
@@ -57,6 +63,7 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     prescribe: true, orderLabs: true, orderServices: true, editClinicalHistory: true,
     readClaims: true, manageClaimAttachments: true,
     sendMessages: true, exportPatientRecord: true,
+    viewBillingHandoff: true, captureEncounterServices: true, requestBillingClarification: true,
   },
   nurse: {
     ...NONE,
@@ -65,6 +72,7 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     viewClinicalNotes: true, recordVitals: true, writeNote: true, editClinicalHistory: true,
     orderServices: true, readClaims: true, manageClaimAttachments: true,
     captureBiometric: true, sendMessages: true,
+    viewBillingHandoff: true, captureEncounterServices: true, requestBillingClarification: true,
   },
   manager: {
     ...NONE,
@@ -76,6 +84,9 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     manageTariffs: true,
     sendMessages: true, manageAgents: true, exportReports: true, exportPatientRecord: true,
     manageCover: true, reviewAudit: true,
+    viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
+    addCustomInvoiceLine: true, excludeAutomatedInvoiceLine: true, overrideInvoicePrice: true,
+    approveBespokePrice: true, finalizeInvoice: true, requestBillingClarification: true,
   },
   receptionist: {
     ...NONE,
@@ -85,6 +96,8 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     submitClaims: true, refreshClaimStatus: true, manageClaimAttachments: true,
     captureBiometric: true,
     sendMessages: true,
+    viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
+    finalizeInvoice: true, requestBillingClarification: true,
   },
 };
 

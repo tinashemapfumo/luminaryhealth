@@ -40,6 +40,7 @@ export const PERMISSIONS = [
   { key: 'orderLabs', label: 'Order investigations', group: 'Clinical' },
   { key: 'orderServices', label: 'Order catalogue services', group: 'Clinical' },
   { key: 'editClinicalHistory', label: 'Edit allergies, conditions, history', group: 'Clinical' },
+  { key: 'captureEncounterServices', label: 'Capture services performed in a consultation', group: 'Clinical' },
   // Financial
   { key: 'createInvoice', label: 'Raise invoices', group: 'Financial' },
   { key: 'recordPayment', label: 'Record payments and receipts', group: 'Financial' },
@@ -54,6 +55,15 @@ export const PERMISSIONS = [
   { key: 'captureBiometric', label: 'Capture patient biometrics', group: 'Financial' },
   { key: 'adjustBalance', label: 'Write off and credit balances', group: 'Financial' },
   { key: 'manageTariffs', label: 'Publish medical aid tariffs', group: 'Financial' },
+  { key: 'viewBillingHandoff', label: 'View the billing handoff queue', group: 'Financial' },
+  { key: 'editDraftInvoice', label: 'Edit draft invoices', group: 'Financial' },
+  { key: 'addCatalogueInvoiceLine', label: 'Add catalogue lines to a draft invoice', group: 'Financial' },
+  { key: 'addCustomInvoiceLine', label: 'Add a custom or miscellaneous invoice line', group: 'Financial' },
+  { key: 'excludeAutomatedInvoiceLine', label: 'Exclude an automatically proposed invoice line', group: 'Financial' },
+  { key: 'overrideInvoicePrice', label: 'Override an invoice line price', group: 'Financial' },
+  { key: 'approveBespokePrice', label: 'Approve a bespoke price agreement', group: 'Financial' },
+  { key: 'finalizeInvoice', label: 'Finalize invoices', group: 'Financial' },
+  { key: 'requestBillingClarification', label: 'Request or answer billing clarifications', group: 'Financial' },
   // Platform
   { key: 'sendMessages', label: 'Message patients', group: 'Platform' },
   { key: 'manageAgents', label: 'Manage AI agents', group: 'Platform' },
@@ -75,6 +85,7 @@ export const SELF_ELEVATION_BLOCKED = [
   'refreshClaimStatus', 'manageClaimAttachments', 'viewClaimTransmissions', 'adminClaims',
   'adjustBalance', 'manageTariffs',
   'viewClinicalNotes', 'viewPatientDirectory',
+  'excludeAutomatedInvoiceLine', 'overrideInvoicePrice', 'approveBespokePrice', 'finalizeInvoice',
 ];
 
 /**
@@ -110,6 +121,7 @@ export const roleAccess = {
       prescribe: true, orderLabs: true, orderServices: true, editClinicalHistory: true,
       readClaims: true, manageClaimAttachments: true,
       sendMessages: true, exportPatientRecord: true,
+      viewBillingHandoff: true, captureEncounterServices: true, requestBillingClarification: true,
     },
     scopeNote: 'Clinical practice: your clinic list, encounter notes, prescribing, and investigations. Demographics and cover are maintained by reception; billing and claims are handled by the practice manager.',
     ownPatientsOnly: true,
@@ -123,6 +135,7 @@ export const roleAccess = {
       viewClinicalNotes: true, recordVitals: true, writeNote: true, editClinicalHistory: true,
       orderServices: true, readClaims: true, manageClaimAttachments: true,
       captureBiometric: true, sendMessages: true,
+      viewBillingHandoff: true, captureEncounterServices: true, requestBillingClarification: true,
     },
     scopeNote: 'Care operations: intake, check in, vitals, allergy and history review, and biometric capture. You can draft a note for a clinician to sign, but cannot sign it, prescribe, or order investigations.',
     ownPatientsOnly: false,
@@ -139,6 +152,9 @@ export const roleAccess = {
       manageTariffs: true,
       sendMessages: true, manageAgents: true, exportReports: true, exportPatientRecord: true,
       manageCover: true, reviewAudit: true,
+      viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
+      addCustomInvoiceLine: true, excludeAutomatedInvoiceLine: true, overrideInvoicePrice: true,
+      approveBespokePrice: true, finalizeInvoice: true, requestBillingClarification: true,
     },
     scopeNote: 'Operations and revenue: scheduling, billing, claims, campaigns, and analytics. Clinical notes are deliberately out of scope: running the practice does not require reading consultations.',
     ownPatientsOnly: false,
@@ -156,6 +172,8 @@ export const roleAccess = {
       // Deliberately no adjustBalance. Reception takes money in; deciding the
       // practice will never collect a debt is a different kind of decision,
       // and letting the same person do both removes the only check on it.
+      viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
+      finalizeInvoice: true, requestBillingClarification: true,
     },
     scopeNote: 'Front desk operations: patient registration, demographics, cover, scheduling, check in, payments, claims, and reminders. Clinical notes, prescribing, reporting, audit review, and system settings are deliberately out of scope.',
     ownPatientsOnly: false,

@@ -50,6 +50,10 @@ export const ENDPOINTS = {
     saveDraft: { method: 'PUT', path: '/encounters/:id', permission: 'writeNote', note: '409 once signed — a signed note is immutable' },
     sign: { method: 'POST', path: '/encounters/:id/signature', permission: 'signNote', note: 'server stamps signer and time; rejects an incomplete SOAP body' },
     addendum: { method: 'POST', path: '/encounters/:id/addenda', permission: 'amendNote' },
+    listServiceEvents: { method: 'GET', path: '/encounters/:id/service-events', permission: 'captureEncounterServices' },
+    createServiceEvent: { method: 'POST', path: '/encounters/:id/service-events', permission: 'captureEncounterServices', note: 'an "ordered" event also creates the real clinical order — no shadow queue' },
+    updateServiceEvent: { method: 'PATCH', path: '/encounters/:id/service-events/:eventId', permission: 'captureEncounterServices' },
+    deleteServiceEvent: { method: 'DELETE', path: '/encounters/:id/service-events/:eventId', permission: 'captureEncounterServices', note: 'blocked once the note is signed or the linked order is completed' },
   },
 
   documents: {

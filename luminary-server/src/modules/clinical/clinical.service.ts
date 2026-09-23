@@ -761,6 +761,11 @@ export const clinicalService = {
       [id, note.note_type],
     );
     await followupService.ensureIfEligible(client, id);
+    // Same transaction as the signature itself: the billing handoff is a
+    // consequence of the note becoming immutable, not a separate step someone
+    // can forget, and it can never run twice because signing a signed note is
+    // already refused above.
+    await catalogueService.runEncounterBillingHandoff(client, actor, rows[0]);
     return rows[0];
   },
 

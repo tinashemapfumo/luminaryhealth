@@ -4,6 +4,7 @@ import { withTenant } from '../../platform/db.js';
 import { requirePermission } from '../../platform/permissions.js';
 import { clinicalService, type Actor } from './clinical.service.js';
 import { dictationService } from './dictation.js';
+import { catalogueService } from '../catalogue/catalogue.service.js';
 import { Unauthorized } from '../../platform/errors.js';
 
 const diagnosis = z.object({ code: z.string().min(1), label: z.string().min(1) });
@@ -317,6 +318,54 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
       const actor = actorOf(request);
       const addendum = await run(actor, (client) => clinicalService.addAddendum(client, actor, id, body));
       return reply.code(201).send(addendum);
+    },
+  });
+
+  app.get('/encounters/:id/service-events', {
+    preHandler: requirePermission('captureEncounterServices'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => catalogueService.listServiceEvents(client, actor, id));
+    },
+  });
+
+  app.post('/encounters/:id/service-events', {
+    preHandler: requirePermission('captureEncounterServices'),
+    handler: async (request, reply) => {
+      const { id } = idParams.parse(request.params);
+      const body = z.object({
+        serviceId: z.string().uuid(),
+        eventType: z.enum(['planned', 'ordered', 'performed']),
+        quantity: z.number().positive().optional(),
+        billingNote: z.string().max(240).optional(),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const event = await run(actor, (client) => catalogueService.createServiceEvent(client, actor, id, body));
+      return reply.code(201).send(event);
+    },
+  });
+
+  app.patch('/encounters/:id/service-events/:eventId', {
+    preHandler: requirePermission('captureEncounterServices'),
+    handler: async (request) => {
+      const { id, eventId } = z.object({ id: z.string().uuid(), eventId: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        quantity: z.number().positive().optional(),
+        billingNote: z.string().max(240).optional(),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => catalogueService.updateServiceEvent(client, actor, id, eventId, body));
+    },
+  });
+
+  app.delete('/encounters/:id/service-events/:eventId', {
+    preHandler: requirePermission('captureEncounterServices'),
+    handler: async (request, reply) => {
+      const { id, eventId } = z.object({ id: z.string().uuid(), eventId: z.string().uuid() }).parse(request.params);
+      const actor = actorOf(request);
+      await run(actor, (client) => catalogueService.deleteServiceEvent(client, actor, id, eventId));
+      return reply.code(204).send();
     },
   });
 

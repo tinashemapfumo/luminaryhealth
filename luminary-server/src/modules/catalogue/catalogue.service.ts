@@ -3,7 +3,7 @@ import { catalogueRepository } from './catalogue.repository.js';
 import { billingRepository } from '../billing/billing.repository.js';
 import { can } from '../../platform/permissions.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../platform/errors.js';
-import { requirePatientInTenant } from '../../platform/tenant-refs.js';
+import { requirePatientInTenant, requireEncounterInTenant } from '../../platform/tenant-refs.js';
 import type { Actor } from '../billing/billing.service.js';
 
 /**
@@ -358,6 +358,246 @@ export const catalogueService = {
       estimatedPatient: tariff.patient,
       via: tariff.via,
     };
+  },
+
+  // --- billing handoff (encounter service capture) --------------------------
+
+  async listServiceEvents(client: PoolClient, actor: Actor, encounterId: string) {
+    if (!can(actor.role, 'captureEncounterServices') && !can(actor.role, 'viewBillingHandoff')) {
+      throw new Forbidden('Your role does not include the billing handoff');
+    }
+    await requireEncounterInTenant(client, encounterId);
+    const { rows } = await client.query(
+      `SELECT e.id, e.patient_id, e.encounter_id, e.service_id, e.order_id, e.event_type,
+              e.quantity, e.status, e.billing_note, e.performed_at, e.created_at,
+              s.display_name AS service_name, s.internal_code AS service_code
+         FROM luminary.encounter_service_event e
+         JOIN luminary.service s ON s.id = e.service_id
+        WHERE e.encounter_id = $1 AND e.deleted_at IS NULL
+        ORDER BY e.created_at`,
+      [encounterId],
+    );
+    return rows;
+  },
+
+  async createServiceEvent(
+    client: PoolClient,
+    actor: Actor,
+    encounterId: string,
+    input: { serviceId: string; eventType: string; quantity?: number; billingNote?: string },
+  ) {
+    if (!can(actor.role, 'captureEncounterServices')) {
+      throw new Forbidden('Your role cannot capture billing handoff services');
+    }
+    const encounter = await requireEncounterInTenant(client, encounterId);
+    if (encounter.status !== 'draft') {
+      throw new Conflict('The consultation note is already signed — services cannot be added retroactively');
+    }
+    const service = await catalogueRepository.findService(client, input.serviceId);
+    if (!service) throw new NotFound('Service not found');
+    if (!service.active) throw new Conflict(`${service.display_name} is not currently offered`);
+    if (!['planned', 'ordered', 'performed'].includes(input.eventType)) {
+      throw new BadRequest('event type must be planned, ordered, or performed');
+    }
+    const quantity = Number(input.quantity ?? 1);
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequest('Quantity must be a positive number');
+
+    // Ordering it here creates the real clinical order immediately, so a
+    // service marked "ordered" during the consultation shows up in the same
+    // order queue as one placed any other way — there is only one order
+    // pipeline, not a shadow copy that this feature maintains on the side.
+    let orderId: string | null = null;
+    if (input.eventType === 'ordered') {
+      const order = await this.createOrder(client, actor, {
+        patientId: encounter.patient_id,
+        serviceId: service.id,
+        encounterId,
+        quantity,
+      });
+      orderId = String(order.id);
+    }
+
+    const { rows } = await client.query(
+      `INSERT INTO luminary.encounter_service_event
+         (practice_id, patient_id, encounter_id, service_id, order_id, event_type,
+          quantity, billing_note, performed_by, performed_at, created_by)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7,
+               $8, $9, $8)
+       RETURNING *`,
+      [
+        encounter.patient_id, encounterId, service.id, orderId, input.eventType,
+        quantity, (input.billingNote ?? '').trim(), actor.userId,
+        input.eventType === 'performed' ? new Date().toISOString() : null,
+      ],
+    );
+    return { ...rows[0], service_name: service.display_name, service_code: service.internal_code };
+  },
+
+  async updateServiceEvent(
+    client: PoolClient,
+    actor: Actor,
+    encounterId: string,
+    eventId: string,
+    input: { quantity?: number; billingNote?: string },
+  ) {
+    if (!can(actor.role, 'captureEncounterServices')) {
+      throw new Forbidden('Your role cannot capture billing handoff services');
+    }
+    const encounter = await requireEncounterInTenant(client, encounterId);
+    if (encounter.status !== 'draft') {
+      throw new Conflict('The consultation note is already signed — services cannot be changed retroactively');
+    }
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (input.quantity !== undefined) {
+      if (!Number.isFinite(input.quantity) || input.quantity <= 0) throw new BadRequest('Quantity must be a positive number');
+      values.push(input.quantity);
+      fields.push(`quantity = $${values.length}`);
+    }
+    if (input.billingNote !== undefined) {
+      values.push(input.billingNote.trim());
+      fields.push(`billing_note = $${values.length}`);
+    }
+    if (fields.length === 0) throw new BadRequest('Nothing to update');
+    values.push(eventId, encounterId);
+    const { rows } = await client.query(
+      `UPDATE luminary.encounter_service_event
+          SET ${fields.join(', ')}, updated_at = now()
+        WHERE id = $${values.length - 1} AND encounter_id = $${values.length} AND deleted_at IS NULL
+        RETURNING *`,
+      values,
+    );
+    if (!rows[0]) throw new NotFound('Service event not found');
+    return rows[0];
+  },
+
+  async deleteServiceEvent(client: PoolClient, actor: Actor, encounterId: string, eventId: string) {
+    if (!can(actor.role, 'captureEncounterServices')) {
+      throw new Forbidden('Your role cannot capture billing handoff services');
+    }
+    const encounter = await requireEncounterInTenant(client, encounterId);
+    if (encounter.status !== 'draft') {
+      throw new Conflict('The consultation note is already signed — services cannot be removed retroactively');
+    }
+    const { rows: existing } = await client.query(
+      `SELECT e.*, o.status AS order_status
+         FROM luminary.encounter_service_event e
+         LEFT JOIN luminary.clinical_order o ON o.id = e.order_id
+        WHERE e.id = $1 AND e.encounter_id = $2 AND e.deleted_at IS NULL`,
+      [eventId, encounterId],
+    );
+    if (!existing[0]) throw new NotFound('Service event not found');
+    if (existing[0].order_status === 'Completed') {
+      throw new Conflict('That order has already been completed and cannot be removed from the handoff');
+    }
+    await client.query(
+      `UPDATE luminary.encounter_service_event SET deleted_at = now(), updated_at = now() WHERE id = $1`,
+      [eventId],
+    );
+    return { removed: true };
+  },
+
+  /**
+   * Turn the encounter's captured service events into a billing work item and
+   * proposed draft invoice lines. Called from inside `clinicalService.sign()`,
+   * on the same transaction, so a retried sign call can never produce a
+   * second work item or a duplicate line — `sign()` itself already refuses a
+   * second signature, and each line's `billing_key` is unique per event.
+   */
+  async runEncounterBillingHandoff(client: PoolClient, actor: Actor, encounter: Record<string, unknown>) {
+    const encounterId = String(encounter.id);
+    const patientId = String(encounter.patient_id);
+
+    const { rows: events } = await client.query(
+      `SELECT * FROM luminary.encounter_service_event
+        WHERE encounter_id = $1 AND deleted_at IS NULL AND event_type = 'performed' AND status = 'captured'`,
+      [encounterId],
+    );
+
+    let draftInvoiceId: string | null = null;
+    let missingPrice = false;
+    const on = dateOnly(encounter.created_at);
+
+    for (const event of events) {
+      const key = `${event.id}:encounter_sign`;
+      const alreadyBilled = await catalogueRepository.lineForBillingKey(client, key);
+      if (alreadyBilled) continue;
+
+      const service = await catalogueRepository.findService(client, event.service_id);
+      if (!service || !service.billable) continue;
+
+      const price = await catalogueRepository.priceOn(client, service.id, on);
+      if (!price) {
+        missingPrice = true;
+        continue;
+      }
+
+      const quantity = Number(event.quantity ?? 1);
+      const gross = round2(Number(price.amount) * quantity);
+      const cover = await billingRepository.coverForPatient?.(client, patientId);
+      const tariff = await this.resolveTariff(client, {
+        serviceId: service.id,
+        payerId: cover?.payer_id ?? null,
+        plan: cover?.plan ?? null,
+        charge: gross,
+        on,
+        defaultCode: service.default_tariff_code,
+      });
+
+      const invoice = await billingRepository.openInvoiceForPatient(client, patientId, price.currency, on);
+      draftInvoiceId = draftInvoiceId ?? invoice.id;
+
+      const { rows: inserted } = await client.query(
+        `INSERT INTO luminary.invoice_line
+           (practice_id, invoice_id, origin, service_id, order_id, encounter_id,
+            tariff_code, description, quantity, unit_price, scheme_pays,
+            estimated_funder, tariff_id, tariff_via, billing_key,
+            service_event_id, service_display_name_snapshot, line_source)
+         VALUES (luminary.current_practice_id(), $1, 'clinical', $2, $3, $4, $5, $6,
+                 $7, $8, $9, $9, $10, $11, $12, $13, $14, 'encounter')
+         ON CONFLICT (practice_id, billing_key) WHERE billing_key IS NOT NULL AND deleted_at IS NULL
+           DO NOTHING
+         RETURNING *`,
+        [
+          invoice.id, service.id, event.order_id, encounterId,
+          tariff.code ?? service.default_tariff_code ?? '', service.billing_description,
+          quantity, price.amount, tariff.funder,
+          (tariff as { tariffId?: string }).tariffId ?? null, tariff.via, key,
+          event.id, service.display_name,
+        ],
+      );
+
+      if (inserted.length > 0) {
+        await billingRepository.recomputeInvoiceTotals(client, invoice.id);
+        await client.query(
+          `UPDATE luminary.encounter_service_event SET status = 'billed', updated_at = now() WHERE id = $1`,
+          [event.id],
+        );
+      }
+    }
+
+    const appointmentId = (encounter.appointment_id as string | null) ?? null;
+    const status = missingPrice ? 'Needs clarification' : 'Ready to bill';
+
+    const { rows: workItem } = await client.query(
+      `INSERT INTO luminary.billing_work_item
+         (practice_id, patient_id, appointment_id, encounter_id, draft_invoice_id, status, ready_at)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, CASE WHEN $5 = 'Ready to bill' THEN now() ELSE NULL END)
+       ON CONFLICT (practice_id, encounter_id) WHERE deleted_at IS NULL
+         DO UPDATE SET draft_invoice_id = COALESCE(billing_work_item.draft_invoice_id, EXCLUDED.draft_invoice_id),
+                        status = EXCLUDED.status,
+                        ready_at = EXCLUDED.ready_at,
+                        updated_at = now()
+       RETURNING *`,
+      [patientId, appointmentId, encounterId, draftInvoiceId, status],
+    );
+
+    await client.query(
+      `SELECT luminary.write_audit('Created billing handoff', 'encounter', $1, $2, $3, 'info')`,
+      [encounterId, status, draftInvoiceId ? `draft invoice ${draftInvoiceId}` : 'no billable lines'],
+    );
+
+    return workItem[0];
   },
 
   // --- imports -------------------------------------------------------------

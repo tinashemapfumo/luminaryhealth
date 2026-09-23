@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  ClipboardList,
   Lock,
   Mic,
   Pause,
@@ -60,6 +61,15 @@ export default function EncounterNote({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordedAudioUrl, setRecordedAudioUrl] = useState('');
   const [recordedAudioBlob, setRecordedAudioBlob] = useState(null);
+  const [catalogueOptions, setCatalogueOptions] = useState([]);
+  const [serviceEvents, setServiceEvents] = useState([]);
+  const [serviceQuery, setServiceQuery] = useState('');
+  const [newService, setNewService] = useState(null);
+  const [newQuantity, setNewQuantity] = useState('1');
+  const [newEventType, setNewEventType] = useState('performed');
+  const [newBillingNote, setNewBillingNote] = useState('');
+  const [serviceCaptureError, setServiceCaptureError] = useState('');
+  const [serviceCaptureBusy, setServiceCaptureBusy] = useState(false);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const speechRecognitionRef = useRef(null);
@@ -70,8 +80,70 @@ export default function EncounterNote({
 
   const locked = draft.status !== NOTE_STATUS.DRAFT;
   const canWrite = can.writeNote && !locked;
+  const canCaptureServices = can.captureEncounterServices && !locked;
   const flags = useMemo(() => abnormalVitals(draft.vitals), [draft.vitals]);
   const bmi = calculateBmi(draft.vitals);
+
+  // The billing handoff needs the real catalogue, not the demo/seed one used
+  // elsewhere in this app — a service id picked from the wrong list would
+  // fail server-side (or worse, silently name the wrong service).
+  useEffect(() => {
+    if (!can.captureEncounterServices || !draft.id) return;
+    let cancelled = false;
+    api.catalogue.services().then((rows) => { if (!cancelled) setCatalogueOptions(rows); }).catch(() => {});
+    api.encounters.serviceEvents.list(draft.id).then((rows) => { if (!cancelled) setServiceEvents(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [can.captureEncounterServices, draft.id]);
+
+  const serviceMatches = useMemo(() => {
+    const query = serviceQuery.trim().toLowerCase();
+    if (!query) return [];
+    return catalogueOptions
+      .filter((s) =>
+        s.display_name?.toLowerCase().includes(query) ||
+        s.internal_code?.toLowerCase().includes(query) ||
+        (s.aliases || []).some((a) => a.toLowerCase().includes(query)))
+      .slice(0, 8);
+  }, [catalogueOptions, serviceQuery]);
+
+  const addServiceEvent = async () => {
+    if (!newService) {
+      setServiceCaptureError('Search for and choose a service first');
+      return;
+    }
+    setServiceCaptureBusy(true);
+    setServiceCaptureError('');
+    try {
+      const event = await api.encounters.serviceEvents.create(draft.id, {
+        serviceId: newService.id,
+        eventType: newEventType,
+        quantity: Number(newQuantity) || 1,
+        billingNote: newBillingNote.trim() || undefined,
+      });
+      setServiceEvents((prev) => [
+        ...prev,
+        { ...event, service_name: newService.display_name, service_code: newService.internal_code },
+      ]);
+      setNewService(null);
+      setServiceQuery('');
+      setNewQuantity('1');
+      setNewBillingNote('');
+    } catch (error) {
+      setServiceCaptureError(error.message);
+    } finally {
+      setServiceCaptureBusy(false);
+    }
+  };
+
+  const removeServiceEvent = async (eventId) => {
+    setServiceCaptureError('');
+    try {
+      await api.encounters.serviceEvents.remove(draft.id, eventId);
+      setServiceEvents((prev) => prev.filter((e) => e.id !== eventId));
+    } catch (error) {
+      setServiceCaptureError(error.message);
+    }
+  };
 
   const set = (key) => (event) => setDraft((prev) => ({ ...prev, [key]: event.target.value }));
   const setVital = (key) => (event) =>
@@ -883,6 +955,95 @@ export default function EncounterNote({
             )}
             {errors.diagnoses && <p className="mt-1.5 text-xs text-danger">{errors.diagnoses}</p>}
           </section>
+
+          {/* Services and billing handoff — finance-facing, kept out of the
+              free-text note. Billing staff never read subjective/objective/
+              assessment/plan; this is the only clinical-facing surface that
+              feeds their queue. */}
+          {can.captureEncounterServices && (
+            <section className="lh-card-pad">
+              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+                <ClipboardList size={14} className="text-brand" /> Services and billing handoff
+              </h2>
+              <p className="mb-3 text-2xs text-muted">Finance-only. Billing staff see this, never the note text.</p>
+
+              <div className="mb-3 space-y-1.5">
+                {serviceEvents.length === 0 && (
+                  <p className="text-base text-muted">No services captured yet.</p>
+                )}
+                {serviceEvents.map((event) => (
+                  <div key={event.id} className="flex items-center justify-between gap-3 rounded border border-line bg-white px-2.5 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-ink">
+                        {event.service_name} <span className="text-2xs text-muted">{event.service_code}</span>
+                      </p>
+                      <p className="text-xs text-muted">
+                        {event.event_type === 'performed' ? 'Performed now' : event.event_type === 'ordered' ? 'Ordered' : 'Planned'}
+                        {' · qty '}{event.quantity}
+                        {event.billing_note ? ` · ${event.billing_note}` : ''}
+                      </p>
+                    </div>
+                    {canCaptureServices && (
+                      <button
+                        type="button"
+                        onClick={() => removeServiceEvent(event.id)}
+                        aria-label={`Remove ${event.service_name}`}
+                        className="text-muted hover:text-danger"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {canCaptureServices && (
+                <div className="space-y-2 border-t border-line pt-3">
+                  <div className="relative">
+                    <Input
+                      value={newService ? `${newService.display_name} (${newService.internal_code})` : serviceQuery}
+                      onChange={(e) => { setNewService(null); setServiceQuery(e.target.value); }}
+                      placeholder="Search catalogue services by name or code…"
+                    />
+                    {!newService && serviceMatches.length > 0 && (
+                      <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-edge bg-white shadow-[0_12px_28px_-8px_rgba(11,21,36,0.25)]">
+                        {serviceMatches.map((s) => (
+                          <li key={s.id}>
+                            <button
+                              type="button"
+                              onClick={() => { setNewService(s); setServiceQuery(''); }}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition hover:bg-surface"
+                            >
+                              <span className="text-base text-ink">{s.display_name}</span>
+                              <span className="text-2xs text-muted">{s.internal_code} · {s.category}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1fr_auto_auto]">
+                    <Select
+                      value={newEventType}
+                      onChange={(e) => setNewEventType(e.target.value)}
+                      options={['performed', 'ordered']}
+                      render={(v) => (v === 'performed' ? 'Performed now' : 'Ordered')}
+                    />
+                    <Input type="number" min="1" value={newQuantity} onChange={(e) => setNewQuantity(e.target.value)} />
+                    <Button type="button" onClick={addServiceEvent} disabled={serviceCaptureBusy}>
+                      <Plus size={13} /> Add
+                    </Button>
+                  </div>
+                  <Input
+                    value={newBillingNote}
+                    onChange={(e) => setNewBillingNote(e.target.value)}
+                    placeholder="Billing-only note (optional) — visible to billing, not part of the clinical record"
+                  />
+                  {serviceCaptureError && <p className="text-xs text-danger">{serviceCaptureError}</p>}
+                </div>
+              )}
+            </section>
+          )}
         </div>
 
         {/* SOAP body */}

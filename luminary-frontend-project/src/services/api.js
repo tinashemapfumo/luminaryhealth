@@ -190,6 +190,12 @@ export const api = {
     addendum: (id, body) => post(`/encounters/${id}/addenda`, body),
     createDictation: (id, body) => post(`/encounters/${id}/dictations`, body),
     createDictationFromAudio: (id, body) => post(`/encounters/${id}/dictations/audio`, body),
+    serviceEvents: {
+      list: (encounterId) => get(`/encounters/${encounterId}/service-events`),
+      create: (encounterId, body) => post(`/encounters/${encounterId}/service-events`, body),
+      update: (encounterId, eventId, body) => patch(`/encounters/${encounterId}/service-events/${eventId}`, body),
+      remove: (encounterId, eventId) => del(`/encounters/${encounterId}/service-events/${eventId}`),
+    },
   },
 
   dictations: {

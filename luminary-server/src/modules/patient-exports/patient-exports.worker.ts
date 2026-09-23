@@ -9,10 +9,30 @@ export async function processPatientExports(): Promise<{ generated: number; fail
   let generated = 0;
   let failed = 0;
   let expired = 0;
-  const claimed = await withoutTenant(async (client) =>
-    (await client.query<{ id: string; practice_id: string; patient_id: string }>(
-      `SELECT * FROM luminary.claim_next_patient_export($1)`, [config.nodeId],
+  // Discovery only crosses the tenant boundary to ask "which row, in which
+  // practice" — never to write. The claim itself runs inside a normal
+  // withTenant call below, so current_practice_id() is genuinely set and the
+  // row survives the touch_and_log trigger's own RLS-protected insert into
+  // sync_change, the same way the messaging dispatcher and sync worker find
+  // cross-tenant work without ever writing outside a real tenant context.
+  const candidate = await withoutTenant(async (client) =>
+    (await client.query<{ id: string; practice_id: string }>(
+      `SELECT * FROM luminary.next_pending_patient_export()`,
     )).rows[0] ?? null);
+
+  const claimed = candidate ? await withTenant(
+    { practiceId: candidate.practice_id, userId: null },
+    async (client) => {
+      const { rows } = await client.query<{ id: string; patient_id: string }>(
+        `UPDATE luminary.patient_export_job
+            SET status = 'processing', started_at = now(), updated_at = now(), origin_node = $2
+          WHERE id = $1 AND status = 'pending'
+          RETURNING id, patient_id`,
+        [candidate.id, config.nodeId],
+      );
+      return rows[0] ? { ...rows[0], practice_id: candidate.practice_id } : null;
+    },
+  ) : null;
 
   if (claimed) {
     try {

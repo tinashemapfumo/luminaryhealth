@@ -65,12 +65,13 @@ export default function PatientsPage() {
           notes={access.can.viewClinicalNotes ? notesForPatient(selectedPatient.id) : []}
           onOpenNote={(id) => { setFileOpen(false); setOpenNoteId(id); setActiveView('clinical'); }}
           onStartNote={() => openNoteForVisit(selectedPatient, practiceSchedule.find((v) => v.patient === selectedPatient.name))}
+          onNewPrescription={() => openDialog('prescription', { patient: selectedPatient })}
           episodes={practiceEpisodes}
           onStartEpisode={(initial) => openDialog('episode', initial)}
           onEditEpisode={(episode) => openDialog('episode', episode)}
           onUpdateEpisode={updateEpisode}
           orders={practiceOrders}
-          prescriptions={prescriptionsByPatient[selectedPatient.name] || []}
+          prescriptions={patientRecords[selectedPatient.id]?.prescriptions ?? prescriptionsByPatient[selectedPatient.name] ?? []}
           labs={labResultsByPatient[selectedPatient.name] || []}
           carePlans={carePlansByPatient[selectedPatient.name] || []}
           invoices={practiceInvoices}

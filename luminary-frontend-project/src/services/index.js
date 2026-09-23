@@ -58,6 +58,14 @@ export const ENDPOINTS = {
     archive: { method: 'POST', path: '/documents/:id/archive', permission: 'writeNote', note: 'soft archive; metadata is hidden from active lists, bytes remain stored' },
     download: { method: 'GET', path: '/documents/:id/download', permission: 'viewClinicalNotes', note: 'authorized stream from external client-file storage' },
   },
+  clinical: {
+    summary: { method: 'GET', path: '/patients/:id/clinical-summary', permission: 'viewClinicalNotes', note: 'labs, prescriptions, care plans, referrals for the chart' },
+  },
+
+  prescriptions: {
+    create: { method: 'POST', path: '/prescriptions', permission: 'prescribe', note: '409 ALLERGY_REVIEW_REQUIRED if allergies unreviewed; hard-blocks on a recorded allergy match' },
+  },
+
   patientExports: {
     request: { method: 'POST', path: '/patients/:id/exports', permission: 'exportPatientRecord' },
     list: { method: 'GET', path: '/patients/:id/exports', permission: 'exportPatientRecord' },

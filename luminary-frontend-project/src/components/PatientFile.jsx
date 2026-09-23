@@ -103,6 +103,7 @@ export default function PatientFile({
   notes = [],
   onOpenNote,
   onStartNote,
+  onNewPrescription,
   prescriptions = [],
   labs = [],
   carePlans = [],
@@ -625,7 +626,15 @@ export default function PatientFile({
                   title="Prescriptions"
                   icon={Pill}
                   action={canPrescribe
-                    ? <span className="text-xs font-medium text-brand">Prescriber access</span>
+                    ? (
+                      <button
+                        type="button"
+                        onClick={() => onNewPrescription?.()}
+                        className="flex items-center gap-1 rounded border border-brand px-2 py-1 text-xs font-medium text-brand transition hover:bg-brand-soft"
+                      >
+                        <Plus size={12} /> New prescription
+                      </button>
+                    )
                     : <span className="text-xs uppercase tracking-[0.08em] text-muted">Read only</span>}
                 >
                   {prescriptions.length === 0 ? (

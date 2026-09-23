@@ -223,6 +223,14 @@ export const api = {
     },
   },
 
+  clinical: {
+    summary: (patientId) => get(`/patients/${patientId}/clinical-summary`),
+  },
+
+  prescriptions: {
+    create: (prescription) => post('/prescriptions', prescription),
+  },
+
   patientExports: {
     request: (patientId, body) => post(`/patients/${patientId}/exports`, body),
     list: (patientId) => get(`/patients/${patientId}/exports`),

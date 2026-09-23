@@ -261,6 +261,25 @@ export const encounterFromApi = (row, patient) => ({
   addendumCount: Number(row.addendum_count ?? (Array.isArray(row.addenda) ? row.addenda.length : row.addenda) ?? 0),
 });
 
+export const prescriptionFromApi = (row, fallbackPrescriberName) => ({
+  id: row.id,
+  patientId: row.patient_id,
+  encounterId: row.encounter_id,
+  drug: row.drug,
+  strength: row.strength || '',
+  route: row.route || '',
+  frequency: row.frequency || '',
+  directions: row.frequency || '',
+  duration: row.duration_days ? `${row.duration_days} day${Number(row.duration_days) === 1 ? '' : 's'}` : '',
+  durationDays: row.duration_days ?? null,
+  refills: row.refills ?? 0,
+  pharmacy: row.pharmacy || '',
+  status: titleCase(row.status || 'active'),
+  tone: statusTone(row.status),
+  prescriber: row.prescriber_name || fallbackPrescriberName || '',
+  issuedAt: row.created_at ? `${shortDate(row.created_at)} ${timeLabel(row.created_at)}` : '',
+});
+
 export const auditFromApi = (row) => ({
   id: row.id,
   user: row.actor_name || row.actor_id || 'System',

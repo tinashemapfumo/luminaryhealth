@@ -84,7 +84,7 @@ import {
 import { initialPatientRows, patientStatusTone } from '../data/registry';
 import { usePatientDirectory, createBodyFromForm, patchFromChanges, documentFromApi, formatBytes } from '../services/patients';
 import { api, isLive } from '../services/api';
-import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi, settingsFromApi } from '../services/liveWorkspace';
+import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi, settingsFromApi, prescriptionFromApi } from '../services/liveWorkspace';
 
 /** Fallback for a user with no job title recorded. */
 const ROLE_LABELS = {
@@ -814,6 +814,45 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       },
     }));
     notify(`${file.name} indexed locally`);
+  };
+
+  /**
+   * Issue a prescription for the currently open patient.
+   *
+   * `allergiesReviewed` is sent as the caller's acknowledgement, but the
+   * server remains the authority: an unreviewed-allergy 409 is rethrown so
+   * the modal can show the review step rather than a generic error.
+   */
+  const createPrescription = async ({ patient, allergiesReviewed, ...fields }) => {
+    if (!live) {
+      notify('Prescriptions require the live API');
+      return null;
+    }
+    const durationDays = fields.durationDays !== undefined && fields.durationDays !== ''
+      ? Number(fields.durationDays) : undefined;
+    const refills = fields.refills !== undefined && fields.refills !== ''
+      ? Number(fields.refills) : 0;
+    const rx = await api.prescriptions.create({
+      patientId: patient.patientId ?? patient.id,
+      encounterId: fields.encounterId || null,
+      drug: fields.drug?.trim(),
+      strength: fields.strength?.trim() || undefined,
+      route: fields.route?.trim() || undefined,
+      frequency: fields.frequency?.trim() || undefined,
+      durationDays,
+      refills,
+      pharmacy: fields.pharmacy?.trim() || undefined,
+      allergiesReviewed: Boolean(allergiesReviewed),
+    });
+    const mapped = prescriptionFromApi(rx, roleInfo.person ?? currentUser.name);
+    setPatientRecords((prev) => ({
+      ...prev,
+      [patient.id]: {
+        ...prev[patient.id],
+        prescriptions: [mapped, ...(prev[patient.id]?.prescriptions ?? [])],
+      },
+    }));
+    return mapped;
   };
 
   const mergePatients = async ({ sourcePatientId, survivorPatientId, reason }) => {
@@ -2248,6 +2287,45 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     notify(`${service.displayName} billed, ${invoice.id}, patient ${formatMoney(priced.estimatedPatient, billingCurrency)}`);
   };
 
+  const submitPrescription = async (event) => {
+    event.preventDefault();
+    const patient = form.patient;
+    const record = patient ? patientRecords[patient.id] : null;
+    const errors = {};
+    if (!form.drug?.trim()) errors.drug = 'Medication name is required';
+    if (!form.strength?.trim()) errors.strength = 'Strength is required';
+    if (!form.route?.trim()) errors.route = 'Route is required';
+    if (!form.frequency?.trim()) errors.frequency = 'Frequency or directions are required';
+    if (!form.durationDays) errors.durationDays = 'Duration is required';
+    if (!record?.allergiesRecorded && !form.allergiesReviewed) {
+      errors.allergiesReviewed = 'Confirm allergy review before issuing';
+    }
+    setFormErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    try {
+      const rx = await createPrescription({
+        patient,
+        drug: form.drug,
+        strength: form.strength,
+        route: form.route,
+        frequency: form.frequency,
+        durationDays: form.durationDays,
+        refills: form.refills ?? 0,
+        pharmacy: form.pharmacy,
+        allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
+      });
+      closeDialog();
+      notify(`Prescription issued for ${patient.name} — ${rx.drug} ${rx.strength || ''}`.trim());
+    } catch (error) {
+      setFormErrors({
+        submit: error.code === 'conflict' && error.details?.code === 'ALLERGY_REVIEW_REQUIRED'
+          ? 'Review this patient’s allergies and confirm the checkbox before issuing.'
+          : error.message,
+      });
+    }
+  };
+
   const placeOrder = (event) => {
     event.preventDefault();
     const errors = {};
@@ -2757,9 +2835,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       const result = await patientDirectory.open(patient);
       if (result.ok) {
         try {
-          const [rows, documents] = await Promise.all([
+          const [rows, documents, clinicalSummary] = await Promise.all([
             api.encounters.list(patient.patientId ?? patient.id),
             api.documents.list(patient.patientId ?? patient.id),
+            access.can.viewClinicalNotes ? api.clinical.summary(patient.patientId ?? patient.id) : Promise.resolve(null),
           ]);
           setLiveEncounters((prev) => [
             ...prev.filter((note) => note.patientId !== patient.id),
@@ -2770,6 +2849,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             [patient.id]: {
               ...prev[patient.id],
               documents: documents.map(documentFromApi),
+              prescriptions: (clinicalSummary?.prescriptions ?? []).map((row) => prescriptionFromApi(row)),
             },
           }));
         } catch (error) {
@@ -3334,6 +3414,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, notesForPatient, mergePatients,
     submitEpisode, updateEpisode, EPISODE_STATUSES,
     uploadPatientDocument, downloadPatientDocument, exportPatientFile, patientTab, setPatientTab, recordCompleteness,
+    createPrescription,
     // scheduling
     setSelectedAppointment, moveAppointment, visitStatuses, advanceVisitStatus, markNoShow, cancelVisit,
     billVisit, unbilledVisits,
@@ -4359,6 +4440,93 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             );
           })()}
         </form>
+      </Modal>
+
+      <Modal
+        open={dialog === 'prescription'}
+        onClose={closeDialog}
+        title="New prescription"
+        subtitle={form.patient ? `${form.patient.name} · ${form.patient.id}` : undefined}
+        width="max-w-2xl"
+        footer={<>
+          <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
+          <Button type="submit" form="prescription-form">Issue prescription</Button>
+        </>}
+      >
+        {form.patient && (() => {
+          const record = patientRecords[form.patient.id];
+          return (
+            <form id="prescription-form" onSubmit={submitPrescription} className="space-y-4">
+              <div className="rounded-lg border border-line bg-surface p-3 text-sm">
+                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <p className="text-ink"><span className="text-muted">Patient:</span> <strong>{form.patient.name}</strong> · {form.patient.id}</p>
+                  <p className="text-ink"><span className="text-muted">DOB / sex:</span> {record?.dob || 'Not recorded'} · {record?.sex || 'Not recorded'}</p>
+                  <p className="text-ink"><span className="text-muted">Prescriber:</span> {roleInfo.person ?? currentUser.name}</p>
+                  <p className="text-ink"><span className="text-muted">Current medications:</span> {record?.medications?.length ? record.medications.join(', ') : 'None recorded'}</p>
+                  <p className="text-ink"><span className="text-muted">Active conditions:</span> {record?.conditions?.length ? record.conditions.join(', ') : 'None recorded'}</p>
+                </div>
+                <p className={`mt-2 font-medium ${record?.allergies?.length ? 'text-danger' : 'text-muted'}`}>
+                  {record?.allergiesRecorded
+                    ? record?.allergies?.length ? `Allergies: ${record.allergies.join('; ')}` : 'Allergies: none known'
+                    : '⚠ Allergies not yet reviewed for this patient'}
+                </p>
+              </div>
+
+              <div className="grid gap-3.5 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Field label="Medication" required error={formErrors.drug}>
+                    <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin (include form, e.g. capsule, in the name if relevant)" />
+                  </Field>
+                </div>
+                <Field label="Strength" required error={formErrors.strength}>
+                  <Input value={form.strength || ''} onChange={setField('strength')} placeholder="e.g. 500 mg" />
+                </Field>
+                <Field label="Route" required error={formErrors.route}>
+                  <Select
+                    value={form.route || ''}
+                    onChange={setField('route')}
+                    options={['', 'oral', 'topical', 'IM', 'IV', 'subcutaneous', 'inhaled', 'rectal', 'ophthalmic', 'other']}
+                    render={(v) => v || 'Choose a route…'}
+                  />
+                </Field>
+                <Field label="Frequency / directions" required error={formErrors.frequency}>
+                  <Input value={form.frequency || ''} onChange={setField('frequency')} placeholder="e.g. three times daily" />
+                </Field>
+                <Field label="Duration (days)" required error={formErrors.durationDays}>
+                  <Input type="number" min="1" value={form.durationDays || ''} onChange={setField('durationDays')} />
+                </Field>
+                <Field label="Refills" hint="0–12">
+                  <Input type="number" min="0" max="12" value={form.refills ?? '0'} onChange={setField('refills')} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Pharmacy" hint="Optional">
+                    <Input value={form.pharmacy || ''} onChange={setField('pharmacy')} placeholder="Dispense at patient pharmacy" />
+                  </Field>
+                </div>
+              </div>
+
+              {!record?.allergiesRecorded && (
+                <label className="flex items-center gap-2 text-sm text-body">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.allergiesReviewed)}
+                    onChange={(event) => setForm((prev) => ({ ...prev, allergiesReviewed: event.target.checked }))}
+                    className="h-4 w-4 accent-brand"
+                  />
+                  I have reviewed this patient&apos;s allergies before prescribing
+                </label>
+              )}
+              {formErrors.allergiesReviewed && (
+                <p className="text-sm text-danger">{formErrors.allergiesReviewed}</p>
+              )}
+              {formErrors.submit && (
+                <div className="rounded border border-danger-strong bg-danger-soft p-3 text-sm text-danger">
+                  {formErrors.submit}
+                </div>
+              )}
+            </form>
+          );
+        })()}
       </Modal>
 
       <Modal

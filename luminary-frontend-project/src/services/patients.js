@@ -147,9 +147,9 @@ export function recordFromApi(patient) {
     consentTreatment: patient.consent_treatment === true,
     consentComms: patient.consent_comms === true,
     consentDataSharing: patient.consent_data_sharing === true,
+    notes: patient.clinical_summary || '',
     // Owned by other endpoints. Empty rather than absent, so the file renders
-    // its empty states instead of throwing on a missing array.
-    notes: [],
+    // its empty state instead of throwing on a missing array.
     timeline: [],
     documents: (patient.documents ?? []).map(documentFromApi),
   };

@@ -64,8 +64,10 @@ export const clinicalService = {
       throw new Forbidden('Your role does not include clinical notes');
     }
     const { rows } = await client.query(
-      `SELECT e.id, e.note_type, e.status, e.assessment, e.diagnoses, e.follow_up,
-              e.created_at, e.signed_at, e.triage_completed_at,
+      `SELECT e.id, e.patient_id, e.appointment_id, e.note_type, e.status,
+              e.subjective, e.objective, e.assessment, e.plan, e.diagnoses,
+              e.follow_up, e.follow_up_required, e.follow_up_scheduled_for,
+              e.vitals, e.created_at, e.signed_at, e.triage_completed_at,
               author.display_name AS author_name,
               author.display_name AS created_by_name,
               signer.display_name AS signed_by_name,

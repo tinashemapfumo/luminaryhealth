@@ -209,7 +209,9 @@ export const patientExportsService = {
         FROM luminary.encounter_addendum a JOIN luminary.encounter e ON e.id=a.encounter_id JOIN luminary.app_user u ON u.id=a.author_id
         WHERE e.patient_id=$1 AND a.deleted_at IS NULL AND ($2::date IS NULL OR a.created_at::date >= $2) AND ($3::date IS NULL OR a.created_at::date <= $3)
         ORDER BY a.created_at`, range);
-      const prescriptions = await rows(client, `SELECT drug,strength,route,frequency,duration_days,refills,status,created_at FROM luminary.prescription
+      const prescriptions = await rows(client, `SELECT drug,form,strength,dose,route,frequency,duration_days,quantity,refills,
+          indication,pharmacy,substitution_allowed,instructions,status,issued_at,completed_at,cancelled_at,
+          cancellation_reason,prescriber_name,prescriber_registration FROM luminary.prescription
         WHERE patient_id=$1 AND deleted_at IS NULL AND ($2::date IS NULL OR created_at::date >= $2) AND ($3::date IS NULL OR created_at::date <= $3) ORDER BY created_at`, range);
       const results = await rows(client, `SELECT test_name,value,unit,normal_range,abnormal,resulted_on,reviewed_at FROM luminary.lab_result
         WHERE patient_id=$1 AND deleted_at IS NULL AND ($2::date IS NULL OR resulted_on >= $2) AND ($3::date IS NULL OR resulted_on <= $3) ORDER BY resulted_on`, range);

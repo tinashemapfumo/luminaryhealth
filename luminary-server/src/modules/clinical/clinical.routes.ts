@@ -21,6 +21,9 @@ const archiveDocumentBody = z.object({
 });
 const patientParams = z.object({ id: z.string().uuid() });
 const idParams = z.object({ id: z.string().uuid() });
+const prescriptionCancellationBody = z.object({
+  reason: z.string().trim().min(5).max(500),
+});
 const labBody = z.object({
   encounterId: z.string().uuid().nullable().optional(),
   orderId: z.string().uuid().nullable().optional(),
@@ -417,24 +420,45 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
       const body = z.object({
         patientId: z.string().uuid(),
         encounterId: z.string().uuid().nullable().optional(),
-        drug: z.string().min(1),
-        form: z.string().optional(),
-        strength: z.string().optional(),
-        dose: z.string().optional(),
-        route: z.string().optional(),
-        frequency: z.string().optional(),
+        drug: z.string().trim().min(1).max(180),
+        form: z.string().trim().max(80).optional(),
+        strength: z.string().trim().min(1).max(120),
+        dose: z.string().trim().max(120).optional(),
+        route: z.string().trim().min(1).max(80),
+        frequency: z.string().trim().min(1).max(240),
         durationDays: z.number().int().positive().optional(),
         quantity: z.number().int().positive().optional(),
         refills: z.number().int().min(0).max(12).optional(),
-        indication: z.string().optional(),
-        pharmacy: z.string().optional(),
+        indication: z.string().trim().max(500).optional(),
+        pharmacy: z.string().trim().max(180).optional(),
         substitutionAllowed: z.boolean().optional(),
-        instructions: z.string().optional(),
+        instructions: z.string().trim().max(1000).optional(),
         allergiesReviewed: z.boolean().optional(),
+        supersedesId: z.string().uuid().optional(),
+        idempotencyKey: z.string().trim().min(8).max(200).optional(),
       }).parse(request.body);
       const actor = actorOf(request);
       const rx = await run(actor, (client) => clinicalService.prescribe(client, actor, body));
       return reply.code(201).send(rx);
+    },
+  });
+
+  app.post('/prescriptions/:id/cancel', {
+    preHandler: requirePermission('prescribe'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const body = prescriptionCancellationBody.parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => clinicalService.cancelPrescription(client, actor, id, body.reason));
+    },
+  });
+
+  app.post('/prescriptions/:id/complete', {
+    preHandler: requirePermission('prescribe'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => clinicalService.completePrescription(client, actor, id));
     },
   });
 }

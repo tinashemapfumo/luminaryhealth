@@ -190,12 +190,18 @@ export const clinicalService = {
         `SELECT p.id, p.patient_id, p.encounter_id, p.drug, p.form, p.strength, p.dose, p.route,
                 p.frequency, p.duration_days, p.quantity, p.refills, p.indication, p.pharmacy,
                 p.substitution_allowed, p.instructions, p.status, p.created_at, p.issued_at,
+                p.cancelled_at, p.cancellation_reason, p.completed_at, p.superseded_at,
+                p.supersedes_id,
                 COALESCE(p.prescriber_name, u.display_name) AS prescriber_name,
-                COALESCE(p.prescriber_registration, u.registration_number) AS prescriber_registration
+                COALESCE(p.prescriber_registration, u.registration_number) AS prescriber_registration,
+                cancelled.display_name AS cancelled_by_name,
+                superseded.display_name AS superseded_by_name
            FROM luminary.prescription p
            JOIN luminary.app_user u ON u.id = p.prescriber_id
+           LEFT JOIN luminary.app_user cancelled ON cancelled.id = p.cancelled_by
+           LEFT JOIN luminary.app_user superseded ON superseded.id = p.superseded_by
           WHERE p.patient_id = $1 AND p.deleted_at IS NULL
-          ORDER BY p.created_at DESC`,
+          ORDER BY p.issued_at DESC, p.created_at DESC`,
         [patientId],
       ),
       client.query(
@@ -794,7 +800,8 @@ export const clinicalService = {
     input: { patientId: string; encounterId?: string | null; drug: string; form?: string; strength?: string;
              dose?: string; route?: string; frequency?: string; durationDays?: number; quantity?: number;
              refills?: number; indication?: string; pharmacy?: string; substitutionAllowed?: boolean;
-             instructions?: string; allergiesReviewed?: boolean },
+             instructions?: string; allergiesReviewed?: boolean; supersedesId?: string;
+             idempotencyKey?: string },
   ) {
     if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot prescribe');
     if (actor.registrationLapsed) {
@@ -804,6 +811,31 @@ export const clinicalService = {
     if (input.encounterId) {
       const encounter = await requireEncounterInTenant(client, input.encounterId);
       assertSamePatient(encounter.patient_id, input.patientId, 'That encounter does not belong to this patient');
+    }
+
+    if (input.idempotencyKey) {
+      const { rows: existing } = await client.query(
+        `SELECT * FROM luminary.prescription
+          WHERE idempotency_key = $1 AND deleted_at IS NULL`,
+        [input.idempotencyKey],
+      );
+      if (existing[0]) {
+        if (existing[0].patient_id !== input.patientId || existing[0].prescriber_id !== actor.userId) {
+          throw new Conflict('That prescription idempotency key has already been used');
+        }
+        return existing[0];
+      }
+    }
+
+    if (input.supersedesId) {
+      const { rows: prior } = await client.query(
+        `SELECT id, patient_id, status FROM luminary.prescription
+          WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [input.supersedesId],
+      );
+      if (!prior[0]) throw new NotFound('Prescription to replace not found');
+      assertSamePatient(prior[0].patient_id, input.patientId, 'Replacement prescription belongs to another patient');
+      if (prior[0].status !== 'active') throw new Conflict('Only an active prescription can be replaced');
     }
 
     // Allergy checking is a safety control, so it refuses rather than warns.
@@ -850,19 +882,99 @@ export const clinicalService = {
       `INSERT INTO luminary.prescription
          (practice_id, patient_id, encounter_id, prescriber_id, drug, form, strength, dose, route,
           frequency, duration_days, quantity, refills, indication, pharmacy, substitution_allowed,
-          instructions, issued_at, prescriber_name, prescriber_registration)
+          instructions, issued_at, prescriber_name, prescriber_registration, supersedes_id, idempotency_key)
        VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-               $14, $15, $16, now(), $17, $18)
+               $14, $15, $16, now(), $17, $18, $19, $20)
+       ON CONFLICT (practice_id, idempotency_key) DO NOTHING
        RETURNING *`,
       [input.patientId, input.encounterId ?? null, actor.userId, input.drug, input.form ?? null,
        input.strength ?? null, input.dose ?? null, input.route ?? null, input.frequency ?? null,
        input.durationDays ?? null, input.quantity ?? null, input.refills ?? 0, input.indication ?? null,
        input.pharmacy ?? null, input.substitutionAllowed ?? null, input.instructions ?? null,
-       prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null],
+       prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null,
+       input.supersedesId ?? null, input.idempotencyKey ?? null],
     );
+
+    // A concurrent retry may have won the unique-key race after the earlier
+    // lookup. Return that command's result instead of issuing twice or leaking
+    // a database uniqueness error to the clinician.
+    if (!rows[0] && input.idempotencyKey) {
+      const duplicate = await client.query(
+        `SELECT * FROM luminary.prescription
+          WHERE idempotency_key = $1 AND deleted_at IS NULL`,
+        [input.idempotencyKey],
+      );
+      if (duplicate.rows[0]?.patient_id === input.patientId
+          && duplicate.rows[0]?.prescriber_id === actor.userId) {
+        return duplicate.rows[0];
+      }
+      throw new Conflict('That prescription idempotency key has already been used');
+    }
+
+    if (input.supersedesId) {
+      const replaced = await client.query(
+        `UPDATE luminary.prescription
+            SET status = 'superseded', superseded_at = now(), superseded_by = $2, updated_at = now()
+          WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+          RETURNING id`,
+        [input.supersedesId, actor.userId],
+      );
+      if (replaced.rowCount !== 1) throw new Conflict('The original prescription is no longer active');
+      await client.query(
+        `SELECT luminary.write_audit('Superseded prescription', 'prescription', $1, $2, $3, 'notice')`,
+        [input.supersedesId, input.drug, rows[0].id],
+      );
+    }
     await client.query(
-      `SELECT luminary.write_audit('Prescribed', 'patient', $1, $2, $3, 'notice')`,
-      [input.patientId, patient[0].full_name, `${input.drug} ${input.strength ?? ''}`.trim()],
+      `SELECT luminary.write_audit('Issued prescription', 'prescription', $1, $2, $3, 'notice')`,
+      [rows[0].id, patient[0].full_name, `${input.drug} ${input.strength ?? ''}`.trim()],
+    );
+    return rows[0];
+  },
+
+  async cancelPrescription(client: PoolClient, actor: Actor, id: string, reason: string) {
+    if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot cancel prescriptions');
+    const { rows } = await client.query(
+      `UPDATE luminary.prescription
+          SET status = 'cancelled', cancelled_at = now(), cancelled_by = $2,
+              cancellation_reason = $3, updated_at = now()
+        WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+        RETURNING *`,
+      [id, actor.userId, reason.trim()],
+    );
+    if (!rows[0]) {
+      const current = await client.query(
+        `SELECT status FROM luminary.prescription WHERE id = $1 AND deleted_at IS NULL`, [id],
+      );
+      if (!current.rows[0]) throw new NotFound('Prescription not found');
+      throw new Conflict(`A ${current.rows[0].status} prescription cannot be cancelled`);
+    }
+    await client.query(
+      `SELECT luminary.write_audit('Cancelled prescription', 'prescription', $1, $2, $3, 'notice')`,
+      [id, rows[0].drug, reason.trim()],
+    );
+    return rows[0];
+  },
+
+  async completePrescription(client: PoolClient, actor: Actor, id: string) {
+    if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot complete prescriptions');
+    const { rows } = await client.query(
+      `UPDATE luminary.prescription
+          SET status = 'completed', completed_at = now(), updated_at = now()
+        WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+        RETURNING *`,
+      [id],
+    );
+    if (!rows[0]) {
+      const current = await client.query(
+        `SELECT status FROM luminary.prescription WHERE id = $1 AND deleted_at IS NULL`, [id],
+      );
+      if (!current.rows[0]) throw new NotFound('Prescription not found');
+      throw new Conflict(`A ${current.rows[0].status} prescription cannot be completed`);
+    }
+    await client.query(
+      `SELECT luminary.write_audit('Completed prescription', 'prescription', $1, $2, NULL, 'notice')`,
+      [id, rows[0].drug],
     );
     return rows[0];
   },

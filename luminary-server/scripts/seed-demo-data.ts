@@ -225,7 +225,25 @@ try {
     await upsert('encounter', { id: encounterId, practice_id: PRACTICE_ID, patient_id: patientId, appointment_id: appointmentId, author_id: providerId, note_type: 'SOAP note', status: 'signed', vitals: { bp: i % 4 === 0 ? '146/92' : '122/78', pulse: 72 + (i % 12), temp: i % 5 === 0 ? 37.8 : 36.8, weightKg: 58 + i }, vitals_by: id('a001', 4), subjective: `${fullName} attended for ${reason.toLowerCase()}. Symptoms and medication adherence reviewed.`, objective: 'Clinically stable. No acute distress. Examination findings recorded for demo workflow.', assessment: conditions.length ? `${conditions[0]} with ongoing monitoring.` : `${reason}; no red flags identified.`, plan: 'Treat according to protocol, safety-net advice given, follow up arranged as needed.', diagnoses: [{ code: i % 2 === 0 ? 'J45.9' : 'Z00.0', description: conditions[0] || reason, primary: true }], follow_up: i % 3 === 0 ? 'Review in 2 weeks' : 'Review as needed', signed_by: providerId, signed_at: new Date(visitDate.getTime() + 25 * 60000).toISOString(), deleted_at: null });
 
     const [drug, strength, route, frequency, durationDays] = prescriptions[i % prescriptions.length];
-    await upsert('prescription', { id: id('f005', i + 1), practice_id: PRACTICE_ID, patient_id: patientId, encounter_id: encounterId, prescriber_id: providerId, drug, strength, route, frequency, duration_days: durationDays, refills: i % 4 === 0 ? 2 : 0, pharmacy: 'Patient choice', status: i % 9 === 0 ? 'completed' : 'active', deleted_at: null });
+    const prescriptionStatus = i % 9 === 0 ? 'completed' : i % 11 === 0 ? 'cancelled' : 'active';
+    const prescriptionTime = new Date(visitDate.getTime() + 30 * 60000).toISOString();
+    await upsert('prescription', {
+      id: id('f005', i + 1), practice_id: PRACTICE_ID, patient_id: patientId,
+      encounter_id: encounterId, prescriber_id: providerId, drug,
+      form: route === 'inhaled' ? 'inhaler' : 'tablet', strength,
+      dose: route === 'inhaled' ? '2 puffs' : '1 dose', route, frequency,
+      duration_days: durationDays, quantity: Math.max(1, durationDays),
+      refills: i % 4 === 0 ? 2 : 0, indication: reason,
+      pharmacy: 'Patient choice', substitution_allowed: true,
+      instructions: 'Use as directed by the prescriber.', status: prescriptionStatus,
+      issued_at: prescriptionTime, prescriber_name: users[(i % 2) + 4][3],
+      prescriber_registration: users[(i % 2) + 4][8],
+      completed_at: prescriptionStatus === 'completed' ? new Date(visitDate.getTime() + durationDays * 86400_000).toISOString() : null,
+      cancelled_at: prescriptionStatus === 'cancelled' ? new Date(visitDate.getTime() + 2 * 3600_000).toISOString() : null,
+      cancelled_by: prescriptionStatus === 'cancelled' ? providerId : null,
+      cancellation_reason: prescriptionStatus === 'cancelled' ? 'Treatment plan changed after review' : null,
+      idempotency_key: `demo-prescription-${number}`, deleted_at: null,
+    });
     await upsert('lab_result', { id: id('f006', i + 1), practice_id: PRACTICE_ID, patient_id: patientId, test_name: i % 2 === 0 ? 'Full blood count' : 'Random glucose', value: i % 2 === 0 ? (i % 5 === 0 ? 'Hb 10.8' : 'Normal') : `${5.4 + (i % 4)} mmol/L`, unit: i % 2 === 0 ? null : 'mmol/L', normal_range: i % 2 === 0 ? 'Hb 12-16 g/dL' : '3.9-7.8 mmol/L', abnormal: i % 5 === 0, resulted_on: visitDate.toISOString().slice(0, 10), reviewed_by: providerId, reviewed_at: new Date(visitDate.getTime() + 2 * 3600_000).toISOString(), deleted_at: null });
     await upsert('invoice', { id: invoiceId, practice_id: PRACTICE_ID, patient_id: patientId, reference: `INV-DEMO-${number}`, issued_on: visitDate.toISOString().slice(0, 10), due_on: new Date(visitDate.getTime() + 14 * 86400_000).toISOString().slice(0, 10), currency: 'USD', total: price, scheme_portion: estimatedFunder, patient_portion: patientPortion, amount_paid: paid, status: invoiceStatus, deleted_at: null });
     await upsert('invoice_line', { id: invoiceLineId, practice_id: PRACTICE_ID, invoice_id: invoiceId, tariff_code: code, description, quantity: 1, unit_price: price, scheme_pays: estimatedFunder, service_id: id('e001', serviceIndex + 1), estimated_funder: estimatedFunder, actual_funder_approved: claimStatus === 'SUBMITTED' ? null : approved, actual_funder_paid: claimStatus === 'APPROVED' ? approved : null, tariff_id: schemeId ? id(planName === 'Premier Health Plan' ? 'e004' : 'e005', serviceIndex + 1) : null, tariff_via: schemeId ? 'plan tariff' : 'self-pay', billing_key: `demo-${number}-${code}`, deleted_at: null });

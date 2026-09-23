@@ -2344,6 +2344,112 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
   };
 
+  /**
+   * Turn a typed/pasted dictation transcript into a structured draft.
+   *
+   * Dictation is an encounter-scoped resource server-side, so this reuses
+   * today's open (unsigned) note for the patient if one exists, and quietly
+   * opens a lightweight draft encounter otherwise — the doctor never has to
+   * leave the Prescribe tab to get there.
+   */
+  const structureDictation = async (event) => {
+    event.preventDefault();
+    const patient = form.patient;
+    const transcript = (form.transcript || '').trim();
+    if (transcript.length < 12) {
+      setFormErrors({ transcript: 'Dictate or paste at least a sentence describing the prescription' });
+      return;
+    }
+    setFormErrors({});
+    setForm((prev) => ({ ...prev, structuring: true }));
+    try {
+      let encounterId = encounters.find((e) => e.patientId === patient.id && e.status === 'Draft')?.id;
+      if (!encounterId) {
+        const created = await api.encounters.createDraft({ patientId: patient.patientId ?? patient.id });
+        encounterId = created.id;
+        setLiveEncounters((prev) => [encounterFromApi(created, patient), ...prev]);
+      }
+      const dictation = await api.encounters.createDictation(encounterId, { transcript });
+      const structured = await api.dictations.structure(dictation.id);
+      const draft = structured.structured_draft || {};
+      const medicationsMentioned = Array.isArray(draft.medicationsMentioned) ? draft.medicationsMentioned : [];
+      setForm((prev) => ({
+        ...prev,
+        structuring: false,
+        dictationId: dictation.id,
+        medicationsMentioned,
+        selectedMedicationIndex: medicationsMentioned.length ? 0 : null,
+        ...(medicationsMentioned[0] ? {
+          drug: medicationsMentioned[0].drug || '',
+          strength: medicationsMentioned[0].strength || '',
+          route: medicationsMentioned[0].route || '',
+          frequency: medicationsMentioned[0].frequency || '',
+          durationDays: medicationsMentioned[0].durationDays || '',
+        } : {}),
+      }));
+      if (medicationsMentioned.length === 0) {
+        notify('No medication was recognised in that dictation — check the fields below before approving');
+      }
+    } catch (error) {
+      setForm((prev) => ({ ...prev, structuring: false }));
+      setFormErrors({ submit: error.message });
+    }
+  };
+
+  const selectDictatedMedication = (index) => {
+    const med = form.medicationsMentioned?.[index];
+    if (!med) return;
+    setForm((prev) => ({
+      ...prev,
+      selectedMedicationIndex: index,
+      drug: med.drug || '',
+      strength: med.strength || '',
+      route: med.route || '',
+      frequency: med.frequency || '',
+      durationDays: med.durationDays || '',
+    }));
+  };
+
+  const approveDictatedPrescription = async (event) => {
+    event.preventDefault();
+    const patient = form.patient;
+    const record = patient ? patientRecords[patient.id] : null;
+    const errors = {};
+    if (!form.drug?.trim()) errors.drug = 'Medication name is required';
+    if (!record?.allergiesRecorded && !form.allergiesReviewed) {
+      errors.allergiesReviewed = 'Confirm allergy review before issuing';
+    }
+    setFormErrors(errors);
+    if (Object.keys(errors).length) return;
+
+    try {
+      const result = await api.dictations.approvePrescription(form.dictationId, {
+        drug: form.drug,
+        strength: form.strength || undefined,
+        route: form.route || undefined,
+        frequency: form.frequency || undefined,
+        durationDays: form.durationDays ? Number(form.durationDays) : undefined,
+        allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
+      });
+      const mapped = prescriptionFromApi(result.prescription, roleInfo.person ?? currentUser.name);
+      setPatientRecords((prev) => ({
+        ...prev,
+        [patient.id]: {
+          ...prev[patient.id],
+          prescriptions: [mapped, ...(prev[patient.id]?.prescriptions ?? [])],
+        },
+      }));
+      closeDialog();
+      notify(`Prescription issued for ${patient.name} — ${mapped.drug} ${mapped.strength || ''}`.trim());
+    } catch (error) {
+      setFormErrors({
+        submit: error.code === 'conflict' && error.details?.code === 'ALLERGY_REVIEW_REQUIRED'
+          ? 'Review this patient’s allergies and confirm the checkbox before issuing.'
+          : error.message,
+      });
+    }
+  };
+
   const placeOrder = (event) => {
     event.preventDefault();
     const errors = {};
@@ -4573,6 +4679,130 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 </div>
               )}
             </form>
+          );
+        })()}
+      </Modal>
+
+      <Modal
+        open={dialog === 'prescriptionDictation'}
+        onClose={closeDialog}
+        title="Dictate prescription"
+        subtitle={form.patient ? `${form.patient.name} · ${form.patient.id}` : undefined}
+        width="max-w-2xl"
+        footer={<>
+          <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
+          {form.dictationId
+            ? <Button type="submit" form="prescription-dictation-approve-form">Approve prescription</Button>
+            : <Button type="submit" form="prescription-dictation-transcript-form" disabled={form.structuring}>
+                {form.structuring ? 'Structuring…' : 'Structure'}
+              </Button>}
+        </>}
+      >
+        {form.patient && (() => {
+          const record = patientRecords[form.patient.id];
+          return (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-line bg-surface p-3 text-sm">
+                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <p className="text-ink"><span className="text-muted">Patient:</span> <strong>{form.patient.name}</strong> · {form.patient.id}</p>
+                  <p className="text-ink"><span className="text-muted">Prescriber:</span> {roleInfo.person ?? currentUser.name}</p>
+                </div>
+                <p className={`mt-2 font-medium ${record?.allergies?.length ? 'text-danger' : 'text-muted'}`}>
+                  {record?.allergiesRecorded
+                    ? record?.allergies?.length ? `Allergies: ${record.allergies.join('; ')}` : 'Allergies: none known'
+                    : '⚠ Allergies not yet reviewed for this patient'}
+                </p>
+              </div>
+
+              {!form.dictationId && (
+                <form id="prescription-dictation-transcript-form" onSubmit={structureDictation}>
+                  <Field
+                    label="Dictated transcript"
+                    required
+                    error={formErrors.transcript}
+                    hint="Type or paste what was dictated, e.g. “Start Amoxicillin 500mg capsules, one three times daily for five days.”"
+                  >
+                    <Textarea
+                      value={form.transcript || ''}
+                      onChange={setField('transcript')}
+                      placeholder="Prescribe amoxicillin 500 milligrams, one capsule three times a day for five days…"
+                    />
+                  </Field>
+                </form>
+              )}
+
+              {form.dictationId && (
+                <form id="prescription-dictation-approve-form" onSubmit={approveDictatedPrescription} className="space-y-4">
+                  {form.medicationsMentioned?.length > 1 && (
+                    <div>
+                      <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Medications heard in the dictation</p>
+                      <div className="flex flex-wrap gap-2">
+                        {form.medicationsMentioned.map((med, index) => (
+                          <button
+                            key={`${med.drug}-${index}`}
+                            type="button"
+                            onClick={() => selectDictatedMedication(index)}
+                            className={`rounded border px-2.5 py-1.5 text-sm transition ${
+                              form.selectedMedicationIndex === index
+                                ? 'border-brand bg-brand-soft text-brand-deep'
+                                : 'border-edge text-body hover:border-brand'
+                            }`}
+                          >
+                            {med.drug} {med.strength || ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(!form.medicationsMentioned || form.medicationsMentioned.length === 0) && (
+                    <p className="rounded border border-warning-strong bg-warning-soft p-3 text-sm text-warning-deep">
+                      No medication was recognised automatically — fill in the fields below from the transcript.
+                    </p>
+                  )}
+
+                  <div className="grid gap-3.5 sm:grid-cols-2">
+                    <div className="sm:col-span-2">
+                      <Field label="Medication" required error={formErrors.drug}>
+                        <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin" />
+                      </Field>
+                    </div>
+                    <Field label="Strength">
+                      <Input value={form.strength || ''} onChange={setField('strength')} placeholder="e.g. 500 mg" />
+                    </Field>
+                    <Field label="Route">
+                      <Input value={form.route || ''} onChange={setField('route')} placeholder="e.g. oral" />
+                    </Field>
+                    <Field label="Frequency / directions">
+                      <Input value={form.frequency || ''} onChange={setField('frequency')} placeholder="e.g. three times daily" />
+                    </Field>
+                    <Field label="Duration (days)">
+                      <Input type="number" min="1" value={form.durationDays || ''} onChange={setField('durationDays')} />
+                    </Field>
+                  </div>
+
+                  {!record?.allergiesRecorded && (
+                    <label className="flex items-center gap-2 text-sm text-body">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(form.allergiesReviewed)}
+                        onChange={(event) => setForm((prev) => ({ ...prev, allergiesReviewed: event.target.checked }))}
+                        className="h-4 w-4 accent-brand"
+                      />
+                      I have reviewed this patient&apos;s allergies before prescribing
+                    </label>
+                  )}
+                  {formErrors.allergiesReviewed && (
+                    <p className="text-sm text-danger">{formErrors.allergiesReviewed}</p>
+                  )}
+                </form>
+              )}
+
+              {formErrors.submit && (
+                <div className="rounded border border-danger-strong bg-danger-soft p-3 text-sm text-danger">
+                  {formErrors.submit}
+                </div>
+              )}
+            </div>
           );
         })()}
       </Modal>

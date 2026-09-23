@@ -66,6 +66,7 @@ export default function PatientsPage() {
           onOpenNote={(id) => { setFileOpen(false); setOpenNoteId(id); setActiveView('clinical'); }}
           onStartNote={() => openNoteForVisit(selectedPatient, practiceSchedule.find((v) => v.patient === selectedPatient.name))}
           onNewPrescription={() => openDialog('prescription', { patient: selectedPatient })}
+          onDictatePrescription={() => openDialog('prescriptionDictation', { patient: selectedPatient })}
           episodes={practiceEpisodes}
           onStartEpisode={(initial) => openDialog('episode', initial)}
           onEditEpisode={(episode) => openDialog('episode', episode)}

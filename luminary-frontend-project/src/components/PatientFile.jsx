@@ -8,6 +8,7 @@ import {
   FileText,
   FlaskConical,
   Image,
+  Mic,
   Pencil,
   Pill,
   Plus,
@@ -35,7 +36,7 @@ import {
 } from '../data/patientRecords';
 import { episodeStatusTone } from '../data/episodes';
 
-const ALL_TABS = ['Summary', 'Demographics', 'Clinical', 'Episodes', 'Notes', 'Cover & consent', 'Visits', 'Billing', 'Documents'];
+const ALL_TABS = ['Summary', 'Demographics', 'Clinical', 'Prescribe', 'Episodes', 'Notes', 'Cover & consent', 'Visits', 'Billing', 'Documents'];
 
 /** Comma-separated text <-> array, so list fields stay editable as plain text. */
 const toList = (value) => String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
@@ -104,6 +105,7 @@ export default function PatientFile({
   onOpenNote,
   onStartNote,
   onNewPrescription,
+  onDictatePrescription,
   prescriptions = [],
   labs = [],
   carePlans = [],
@@ -123,8 +125,8 @@ export default function PatientFile({
   tab = 'Summary',
   onTabChange,
 }) {
-  // Notes are hidden entirely from roles without clinical read access.
-  const TABS = ALL_TABS.filter((item) => item !== 'Notes' || can.viewClinicalNotes);
+  // Notes and Prescribe are hidden entirely from roles without clinical read access.
+  const TABS = ALL_TABS.filter((item) => (item !== 'Notes' && item !== 'Prescribe') || can.viewClinicalNotes);
   const setTab = onTabChange;
   const [editing, setEditing] = useState(false);
   const [editScope, setEditScope] = useState('all');
@@ -621,66 +623,76 @@ export default function PatientFile({
                 </ul>
               </Panel>
 
-              <div className="space-y-4">
-                <Panel
-                  title="Prescriptions"
-                  icon={Pill}
-                  action={canPrescribe
-                    ? (
-                      <button
-                        type="button"
-                        onClick={() => onNewPrescription?.()}
-                        className="flex items-center gap-1 rounded border border-brand px-2 py-1 text-xs font-medium text-brand transition hover:bg-brand-soft"
-                      >
-                        <Plus size={12} /> New prescription
-                      </button>
-                    )
-                    : <span className="text-xs uppercase tracking-[0.08em] text-muted">Read only</span>}
-                >
-                  {prescriptions.length === 0 ? (
-                    <p className="text-base text-muted">No prescriptions on file.</p>
-                  ) : prescriptions.map((rx) => (
-                    <div key={rx.id} className="flex items-start justify-between gap-3 border-b border-line py-2 last:border-0">
-                      <div>
-                        <p className="text-base font-medium text-ink">{rx.drug} {rx.strength}</p>
-                        <p className="text-xs text-muted">{rx.frequency} · {rx.refills} refills · {rx.pharmacy}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => printPrescription(rx)}
-                          className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-brand"
-                          title="Print prescription"
-                          aria-label={`Print prescription ${rx.id}`}
-                        >
-                          <Printer size={14} />
-                        </button>
-                        <StatusPill label={rx.status} tone={rx.tone} />
-                      </div>
+              <Panel title="Recent results" icon={FlaskConical}>
+                {labs.length === 0 ? (
+                  <p className="text-base text-muted">No results on file.</p>
+                ) : labs.map((lab) => (
+                  <div key={lab.test} className="flex items-start justify-between gap-3 border-b border-line py-2 last:border-0">
+                    <div>
+                      <p className="text-base font-medium text-ink">{lab.test}</p>
+                      <p className="text-xs text-muted">Normal {lab.normal} · {lab.date}</p>
                     </div>
-                  ))}
-                </Panel>
-
-                <Panel title="Recent results" icon={FlaskConical}>
-                  {labs.length === 0 ? (
-                    <p className="text-base text-muted">No results on file.</p>
-                  ) : labs.map((lab) => (
-                    <div key={lab.test} className="flex items-start justify-between gap-3 border-b border-line py-2 last:border-0">
-                      <div>
-                        <p className="text-base font-medium text-ink">{lab.test}</p>
-                        <p className="text-xs text-muted">Normal {lab.normal} · {lab.date}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-base font-semibold ${lab.tone === 'alert' ? 'text-danger' : lab.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
-                          {lab.value} <span className="text-xs font-normal text-muted">{lab.unit}</span>
-                        </p>
-                        <StatusPill label={lab.status} tone={lab.tone} />
-                      </div>
+                    <div className="text-right">
+                      <p className={`text-base font-semibold ${lab.tone === 'alert' ? 'text-danger' : lab.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
+                        {lab.value} <span className="text-xs font-normal text-muted">{lab.unit}</span>
+                      </p>
+                      <StatusPill label={lab.status} tone={lab.tone} />
                     </div>
-                  ))}
-                </Panel>
-              </div>
+                  </div>
+                ))}
+              </Panel>
             </div>
+          )}
+
+          {tab === 'Prescribe' && (
+            <Panel
+              title="Prescriptions"
+              icon={Pill}
+              action={canPrescribe
+                ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onDictatePrescription?.()}
+                      className="flex items-center gap-1 rounded border border-edge px-2 py-1 text-xs font-medium text-body transition hover:border-brand hover:text-brand"
+                    >
+                      <Mic size={12} /> Dictate prescription
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNewPrescription?.()}
+                      className="flex items-center gap-1 rounded border border-brand px-2 py-1 text-xs font-medium text-brand transition hover:bg-brand-soft"
+                    >
+                      <Plus size={12} /> New prescription
+                    </button>
+                  </div>
+                )
+                : <span className="text-xs uppercase tracking-[0.08em] text-muted">Read only</span>}
+            >
+              {prescriptions.length === 0 ? (
+                <p className="text-base text-muted">No prescriptions on file.</p>
+              ) : prescriptions.map((rx) => (
+                <div key={rx.id} className="flex items-start justify-between gap-3 border-b border-line py-2.5 last:border-0">
+                  <div>
+                    <p className="text-base font-medium text-ink">{rx.drug} {rx.strength}</p>
+                    <p className="text-xs text-muted">{rx.frequency} · {rx.refills} refills · {rx.pharmacy}</p>
+                    {rx.prescriber && <p className="mt-0.5 text-xs text-muted">Prescribed by {rx.prescriber}{rx.issuedAt ? ` · ${rx.issuedAt}` : ''}</p>}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => printPrescription(rx)}
+                      className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-brand"
+                      title="Print prescription"
+                      aria-label={`Print prescription ${rx.id}`}
+                    >
+                      <Printer size={14} />
+                    </button>
+                    <StatusPill label={rx.status} tone={rx.tone} />
+                  </div>
+                </div>
+              ))}
+            </Panel>
           )}
 
           {tab === 'Episodes' && (

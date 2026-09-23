@@ -21,6 +21,7 @@ import ReportsPage from './pages/ReportsPage';
 import CommunicationsPage from './pages/CommunicationsPage';
 import AuditPage from './pages/AuditPage';
 import BillingPage from './pages/BillingPage';
+import BillingHandoffPage from './pages/BillingHandoffPage';
 import OrdersPage from './pages/OrdersPage';
 import TariffImportPage from './pages/TariffImportPage';
 import ClaimsPage from './pages/ClaimsPage';
@@ -3170,6 +3171,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         return selectedAppointment?.id ? ['appointments', selectedAppointment.id] : ['appointments'];
       case 'billing':
         return selectedInvoice?.id ? ['billing', selectedInvoice.id] : ['billing'];
+      case 'billing-handoff':
+        return ['billing-handoff'];
       case 'claims':
         return selectedClaimId ? ['claims', selectedClaimId] : ['claims'];
       case 'ai':
@@ -3566,6 +3569,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         return <AppointmentsPage />;
       case 'billing':
         return <BillingPage />;
+      case 'billing-handoff':
+        return <BillingHandoffPage />;
       case 'clinical':
         return <ClinicalPage />;
       case 'orders':

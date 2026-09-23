@@ -3,7 +3,7 @@ import { billingRepository } from './billing.repository.js';
 import { can, type Role } from '../../platform/permissions.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../platform/errors.js';
 import { catalogueRepository, } from '../catalogue/catalogue.repository.js';
-import { TARIFF_SOURCES } from '../catalogue/catalogue.service.js';
+import { TARIFF_SOURCES, catalogueService } from '../catalogue/catalogue.service.js';
 import { requireUserInTenant } from '../../platform/tenant-refs.js';
 
 /**
@@ -712,6 +712,447 @@ export const billingService = {
       [id, claim.reference, `${input.status}${input.rejectionCode ? `: ${input.rejectionCode}` : ''}`],
     );
     return updated;
+  },
+
+  // --- billing handoff: work queue and editable draft invoice --------------
+
+  assertWorkItemEditable(item: Record<string, unknown>) {
+    if (item.status === 'Finalized' || item.status === 'Cancelled') {
+      throw new Conflict(`This billing item is ${String(item.status).toLowerCase()} and cannot be edited`);
+    }
+  },
+
+  /** Every draft line belongs to an invoice; find-or-create it lazily so a
+   *  billing user can start adding lines to a work item that arrived with
+   *  none (e.g. an "Expected" item from check-in with no signed encounter yet). */
+  async ensureDraftInvoice(client: PoolClient, item: Record<string, unknown>) {
+    if (item.draft_invoice_id) {
+      const invoice = await billingRepository.findInvoice(client, String(item.draft_invoice_id));
+      if (invoice) return invoice;
+    }
+    const patient = await billingRepository.findPatientForBilling(client, String(item.patient_id));
+    if (!patient) throw new NotFound('Patient not found');
+    const created = await billingRepository.openInvoiceForPatient(client, String(item.patient_id), 'USD', today());
+    await client.query(
+      `UPDATE luminary.billing_work_item SET draft_invoice_id = $2, updated_at = now() WHERE id = $1`,
+      [item.id, created.id],
+    );
+    return billingRepository.findInvoice(client, created.id);
+  },
+
+  async syncWorkItemReady(client: PoolClient, workItemId: string) {
+    await client.query(
+      `UPDATE luminary.billing_work_item
+          SET status = 'Ready to bill', ready_at = COALESCE(ready_at, now()), updated_at = now()
+        WHERE id = $1 AND status IN ('Expected', 'In consultation', 'Awaiting clinician', 'Draft invoice')`,
+      [workItemId],
+    );
+  },
+
+  async listWorkItems(client: PoolClient, actor: Actor, opts: { status?: string }) {
+    if (!can(actor.role, 'viewBillingHandoff')) throw new Forbidden('Your role does not include the billing handoff');
+    return billingRepository.listWorkItems(client, opts);
+  },
+
+  /**
+   * A billing-safe view of one work item: proposed invoice, clarification
+   * thread, and prior account activity. Never the SOAP note — the encounter
+   * status/type/signature timestamp is all that crosses this boundary.
+   */
+  async getWorkItem(client: PoolClient, actor: Actor, id: string) {
+    if (!can(actor.role, 'viewBillingHandoff')) throw new Forbidden('Your role does not include the billing handoff');
+    const item = await billingRepository.findWorkItem(client, id);
+    if (!item) throw new NotFound('Billing work item not found');
+    const [invoice, clarifications, priorActivity, bespokeAgreements] = await Promise.all([
+      item.draft_invoice_id ? billingRepository.findInvoice(client, String(item.draft_invoice_id)) : null,
+      billingRepository.listClarifications(client, id),
+      billingRepository.statement(client, String(item.patient_id)),
+      billingRepository.listBespokePriceAgreements(client, String(item.patient_id)),
+    ]);
+    return { ...item, invoice, clarifications, priorActivity, bespokeAgreements };
+  },
+
+  async addCatalogueLine(
+    client: PoolClient, actor: Actor, workItemId: string,
+    input: { serviceId: string; quantity?: number },
+  ) {
+    if (!can(actor.role, 'addCatalogueInvoiceLine')) throw new Forbidden('Your role cannot add catalogue lines');
+    const item = await billingRepository.findWorkItem(client, workItemId);
+    if (!item) throw new NotFound('Billing work item not found');
+    this.assertWorkItemEditable(item);
+
+    const service = await catalogueRepository.findService(client, input.serviceId);
+    if (!service) throw new NotFound('Service not found');
+    const quantity = Number(input.quantity ?? 1);
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new BadRequest('Quantity must be a positive number');
+    const on = today();
+    const price = await catalogueRepository.priceOn(client, service.id, on);
+    if (!price) throw new BadRequest(`${service.display_name} has no price configured today`);
+    const gross = round2(Number(price.amount) * quantity);
+
+    const cover = await billingRepository.coverForPatient?.(client, String(item.patient_id));
+    const tariff = await catalogueService.resolveTariff(client, {
+      serviceId: service.id, payerId: cover?.payer_id ?? null, plan: cover?.plan ?? null,
+      charge: gross, on, defaultCode: service.default_tariff_code,
+    });
+
+    const invoice = await this.ensureDraftInvoice(client, item);
+    const { rows } = await client.query(
+      `INSERT INTO luminary.invoice_line
+         (practice_id, invoice_id, origin, service_id, tariff_code, description, quantity, unit_price,
+          scheme_pays, estimated_funder, tariff_id, tariff_via, service_display_name_snapshot, line_source)
+       VALUES (luminary.current_practice_id(), $1, 'manual', $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, 'billing')
+       RETURNING *`,
+      [
+        invoice.id, service.id, tariff.code ?? service.default_tariff_code ?? '', service.billing_description,
+        quantity, price.amount, tariff.funder, (tariff as { tariffId?: string }).tariffId ?? null,
+        tariff.via, service.display_name,
+      ],
+    );
+    await billingRepository.recomputeInvoiceTotals(client, invoice.id);
+    await this.syncWorkItemReady(client, workItemId);
+    await client.query(
+      `SELECT luminary.write_audit('Added billing line', 'invoice', $1, $2, $3, 'info')`,
+      [invoice.id, service.display_name, `qty ${quantity}`],
+    );
+    return rows[0];
+  },
+
+  async addCustomLine(
+    client: PoolClient, actor: Actor, workItemId: string,
+    input: { description: string; quantity: number; unitPrice: number },
+  ) {
+    if (!can(actor.role, 'addCustomInvoiceLine')) throw new Forbidden('Your role cannot add a custom invoice line');
+    if (!input.description?.trim()) throw new BadRequest('Describe the line');
+    if (!(input.quantity > 0)) throw new BadRequest('Quantity must be a positive number');
+    if (!(input.unitPrice >= 0)) throw new BadRequest('Price cannot be negative');
+    const item = await billingRepository.findWorkItem(client, workItemId);
+    if (!item) throw new NotFound('Billing work item not found');
+    this.assertWorkItemEditable(item);
+
+    const invoice = await this.ensureDraftInvoice(client, item);
+    const { rows } = await client.query(
+      `INSERT INTO luminary.invoice_line
+         (practice_id, invoice_id, origin, tariff_code, description, quantity, unit_price,
+          scheme_pays, estimated_funder, line_source)
+       VALUES (luminary.current_practice_id(), $1, 'manual', '', $2, $3, $4, 0, 0, 'billing')
+       RETURNING *`,
+      [invoice.id, input.description.trim(), input.quantity, input.unitPrice],
+    );
+    await billingRepository.recomputeInvoiceTotals(client, invoice.id);
+    await this.syncWorkItemReady(client, workItemId);
+    await client.query(
+      `SELECT luminary.write_audit('Added custom billing line', 'invoice', $1, $2, $3, 'info')`,
+      [invoice.id, input.description.trim(), `qty ${input.quantity} @ ${input.unitPrice}`],
+    );
+    return rows[0];
+  },
+
+  async findEditableLine(client: PoolClient, lineId: string) {
+    const { rows } = await client.query(
+      `SELECT il.*, i.finalized_at, i.patient_id
+         FROM luminary.invoice_line il
+         JOIN luminary.invoice i ON i.id = il.invoice_id
+        WHERE il.id = $1 AND il.deleted_at IS NULL`,
+      [lineId],
+    );
+    const line = rows[0];
+    if (!line) throw new NotFound('Invoice line not found');
+    if (line.finalized_at) throw new Conflict('This invoice is finalized — corrections require a credit note or reversal');
+    return line;
+  },
+
+  async updateLine(
+    client: PoolClient, actor: Actor, lineId: string,
+    input: { quantity?: number; unitPrice?: number; reason?: string },
+  ) {
+    const line = await this.findEditableLine(client, lineId);
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (input.quantity !== undefined) {
+      if (!can(actor.role, 'editDraftInvoice')) throw new Forbidden('Your role cannot edit draft invoice lines');
+      if (!(input.quantity > 0)) throw new BadRequest('Quantity must be a positive number');
+      values.push(input.quantity);
+      fields.push(`quantity = $${values.length}`);
+    }
+    if (input.unitPrice !== undefined) {
+      if (!can(actor.role, 'overrideInvoicePrice')) throw new Forbidden('Your role cannot override a price');
+      if (!(input.unitPrice >= 0)) throw new BadRequest('Price cannot be negative');
+      if (!input.reason || input.reason.trim().length < 5) throw new BadRequest('Say why the price is being overridden');
+      values.push(input.unitPrice);
+      fields.push(`unit_price = $${values.length}`);
+    }
+    if (fields.length === 0) throw new BadRequest('Nothing to update');
+    values.push(lineId);
+
+    const { rows } = await client.query(
+      `UPDATE luminary.invoice_line SET ${fields.join(', ')}, updated_at = now()
+        WHERE id = $${values.length} RETURNING *`,
+      values,
+    );
+    await billingRepository.recomputeInvoiceTotals(client, line.invoice_id);
+    await client.query(
+      `SELECT luminary.write_audit('Edited invoice line', 'invoice', $1, $2, $3, 'notice')`,
+      [
+        line.invoice_id, line.description,
+        `qty ${line.quantity}→${rows[0].quantity}, price ${line.unit_price}→${rows[0].unit_price}${input.reason ? `: ${input.reason.trim()}` : ''}`,
+      ],
+    );
+    return rows[0];
+  },
+
+  async excludeLine(client: PoolClient, actor: Actor, lineId: string, reason: string) {
+    if (!can(actor.role, 'excludeAutomatedInvoiceLine')) throw new Forbidden('Your role cannot exclude invoice lines');
+    if (!reason || reason.trim().length < 3) throw new BadRequest('Say why this line is excluded');
+    const line = await this.findEditableLine(client, lineId);
+    if (line.exclusion_status === 'excluded') throw new Conflict('That line is already excluded');
+
+    const { rows } = await client.query(
+      `UPDATE luminary.invoice_line
+          SET exclusion_status = 'excluded', exclusion_reason = $2, excluded_by = $3, excluded_at = now(), updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [lineId, reason.trim(), actor.userId],
+    );
+    await billingRepository.recomputeInvoiceTotals(client, line.invoice_id);
+    await client.query(
+      `SELECT luminary.write_audit('Excluded invoice line', 'invoice', $1, $2, $3, 'notice')`,
+      [line.invoice_id, line.description, reason.trim()],
+    );
+    return rows[0];
+  },
+
+  async restoreLine(client: PoolClient, actor: Actor, lineId: string) {
+    if (!can(actor.role, 'excludeAutomatedInvoiceLine')) throw new Forbidden('Your role cannot restore invoice lines');
+    const line = await this.findEditableLine(client, lineId);
+    if (line.exclusion_status !== 'excluded') throw new Conflict('That line is not excluded');
+
+    const { rows } = await client.query(
+      `UPDATE luminary.invoice_line
+          SET exclusion_status = NULL, exclusion_reason = NULL, excluded_by = NULL, excluded_at = NULL, updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [lineId],
+    );
+    await billingRepository.recomputeInvoiceTotals(client, line.invoice_id);
+    await client.query(
+      `SELECT luminary.write_audit('Restored invoice line', 'invoice', $1, $2, NULL, 'info')`,
+      [line.invoice_id, line.description],
+    );
+    return rows[0];
+  },
+
+  async reorderLines(client: PoolClient, actor: Actor, invoiceId: string, orderedLineIds: string[]) {
+    if (!can(actor.role, 'editDraftInvoice')) throw new Forbidden('Your role cannot edit draft invoices');
+    const invoice = await billingRepository.findInvoice(client, invoiceId);
+    if (!invoice) throw new NotFound('Invoice not found');
+    if (invoice.finalized_at) throw new Conflict('This invoice is finalized');
+
+    await Promise.all(orderedLineIds.map((id, index) => client.query(
+      `UPDATE luminary.invoice_line SET display_order = $2, updated_at = now() WHERE id = $1 AND invoice_id = $3`,
+      [id, index, invoiceId],
+    )));
+    return billingRepository.findInvoice(client, invoiceId);
+  },
+
+  async setPatientNote(client: PoolClient, actor: Actor, invoiceId: string, note: string) {
+    if (!can(actor.role, 'editDraftInvoice')) throw new Forbidden('Your role cannot edit draft invoices');
+    const { rows } = await client.query(
+      `UPDATE luminary.invoice SET patient_note = $2, updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
+      [invoiceId, note?.trim() || null],
+    );
+    if (!rows[0]) throw new NotFound('Invoice not found');
+    return rows[0];
+  },
+
+  async requestClarification(
+    client: PoolClient, actor: Actor, workItemId: string,
+    input: { category: string; question: string },
+  ) {
+    if (!can(actor.role, 'requestBillingClarification')) throw new Forbidden('Your role cannot request clarification');
+    if (!input.question || input.question.trim().length < 5) throw new BadRequest('Say what needs clarifying');
+    const item = await billingRepository.findWorkItem(client, workItemId);
+    if (!item) throw new NotFound('Billing work item not found');
+
+    const { rows } = await client.query(
+      `INSERT INTO luminary.billing_clarification (practice_id, work_item_id, category, question, requested_by)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4) RETURNING *`,
+      [workItemId, input.category, input.question.trim(), actor.userId],
+    );
+    await client.query(
+      `UPDATE luminary.billing_work_item SET status = 'Needs clarification', updated_at = now() WHERE id = $1`,
+      [workItemId],
+    );
+    await client.query(
+      `SELECT luminary.write_audit('Requested billing clarification', 'patient', $1, $2, $3, 'notice')`,
+      [item.patient_id, input.category, input.question.trim()],
+    );
+    return rows[0];
+  },
+
+  /** Answering closes the loop without reopening or touching the signed note — if
+   *  the clinical record itself is wrong, that goes through the addendum workflow. */
+  async respondClarification(client: PoolClient, actor: Actor, clarificationId: string, response: string) {
+    if (!can(actor.role, 'requestBillingClarification')) throw new Forbidden('Your role cannot answer billing clarifications');
+    if (!response || response.trim().length < 2) throw new BadRequest('Enter a response');
+    const { rows: existing } = await client.query(
+      `SELECT * FROM luminary.billing_clarification WHERE id = $1 AND deleted_at IS NULL`,
+      [clarificationId],
+    );
+    const clarification = existing[0];
+    if (!clarification) throw new NotFound('Clarification not found');
+
+    const { rows } = await client.query(
+      `UPDATE luminary.billing_clarification
+          SET response = $2, responded_by = $3, responded_at = now(), status = 'answered', updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [clarificationId, response.trim(), actor.userId],
+    );
+    const { rows: openCount } = await client.query(
+      `SELECT count(*)::int AS n FROM luminary.billing_clarification
+        WHERE work_item_id = $1 AND status = 'open' AND deleted_at IS NULL`,
+      [clarification.work_item_id],
+    );
+    if (openCount[0].n === 0) {
+      await client.query(
+        `UPDATE luminary.billing_work_item
+            SET status = 'Ready to bill', ready_at = now(), updated_at = now()
+          WHERE id = $1 AND status = 'Needs clarification'`,
+        [clarification.work_item_id],
+      );
+    }
+    await client.query(
+      `SELECT luminary.write_audit('Answered billing clarification', 'patient', NULL, $1, $2, 'notice')`,
+      [clarification.category, response.trim()],
+    );
+    return rows[0];
+  },
+
+  async createBespokePriceAgreement(
+    client: PoolClient, actor: Actor,
+    input: {
+      patientId: string; serviceId: string; amount: number; currency: string; reason: string;
+      scope?: string; encounterId?: string; appointmentId?: string; validUntil?: string; usesRemaining?: number;
+    },
+  ) {
+    if (!can(actor.role, 'editDraftInvoice')) throw new Forbidden('Your role cannot arrange bespoke prices');
+    if (!(input.amount > 0)) throw new BadRequest('Amount must be positive');
+    if (!input.reason || input.reason.trim().length < 5) throw new BadRequest('Say why this price was agreed');
+
+    const { rows } = await client.query(
+      `INSERT INTO luminary.bespoke_price_agreement
+         (practice_id, patient_id, service_id, appointment_id, encounter_id, amount, currency,
+          reason, scope, valid_until, uses_remaining, created_by)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        input.patientId, input.serviceId, input.appointmentId ?? null, input.encounterId ?? null,
+        input.amount, input.currency, input.reason.trim(), input.scope ?? 'one_encounter',
+        input.validUntil ?? null, input.usesRemaining ?? null, actor.userId,
+      ],
+    );
+    await client.query(
+      `SELECT luminary.write_audit('Proposed bespoke price', 'patient', $1, $2, $3, 'notice')`,
+      [input.patientId, null, `${input.currency} ${input.amount} pending approval`],
+    );
+    return rows[0];
+  },
+
+  async approveBespokePriceAgreement(client: PoolClient, actor: Actor, id: string) {
+    if (!can(actor.role, 'approveBespokePrice')) throw new Forbidden('Your role cannot approve bespoke prices');
+    const { rows } = await client.query(
+      `UPDATE luminary.bespoke_price_agreement SET status = 'approved', approved_by = $2, updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL AND status = 'pending' RETURNING *`,
+      [id, actor.userId],
+    );
+    if (!rows[0]) throw new NotFound('Pending bespoke price agreement not found');
+    await client.query(
+      `SELECT luminary.write_audit('Approved bespoke price', 'patient', $1, $2, $3, 'notice')`,
+      [rows[0].patient_id, null, `${rows[0].currency} ${rows[0].amount}`],
+    );
+    return rows[0];
+  },
+
+  async applyBespokePrice(client: PoolClient, actor: Actor, lineId: string, agreementId: string) {
+    if (!can(actor.role, 'overrideInvoicePrice')) throw new Forbidden('Your role cannot override a price');
+    const line = await this.findEditableLine(client, lineId);
+    const { rows: agreements } = await client.query(
+      `SELECT * FROM luminary.bespoke_price_agreement WHERE id = $1 AND deleted_at IS NULL AND status = 'approved'`,
+      [agreementId],
+    );
+    const agreement = agreements[0];
+    if (!agreement) throw new NotFound('Approved bespoke price agreement not found');
+    if (agreement.service_id !== line.service_id) throw new BadRequest('That agreement is for a different service');
+    if (agreement.patient_id !== line.patient_id) throw new BadRequest('That agreement is for a different patient');
+    if (agreement.valid_until && agreement.valid_until < today()) throw new Conflict('That bespoke price has expired');
+    if (agreement.uses_remaining !== null && Number(agreement.uses_remaining) <= 0) {
+      throw new Conflict('That bespoke price has no uses remaining');
+    }
+
+    const { rows } = await client.query(
+      `UPDATE luminary.invoice_line
+          SET unit_price = $2, tariff_via = 'bespoke agreement', bespoke_price_agreement_id = $3, updated_at = now()
+        WHERE id = $1 RETURNING *`,
+      [lineId, agreement.amount, agreementId],
+    );
+    if (agreement.uses_remaining !== null) {
+      await client.query(
+        `UPDATE luminary.bespoke_price_agreement SET uses_remaining = uses_remaining - 1, updated_at = now() WHERE id = $1`,
+        [agreementId],
+      );
+    }
+    await billingRepository.recomputeInvoiceTotals(client, line.invoice_id);
+    await client.query(
+      `SELECT luminary.write_audit('Applied bespoke price', 'invoice', $1, $2, $3, 'notice')`,
+      [line.invoice_id, line.description, `${agreement.currency} ${agreement.amount}`],
+    );
+    return rows[0];
+  },
+
+  /**
+   * Locks the invoice. Once finalized, line mutations refuse (`findEditableLine`
+   * checks `finalized_at`); corrections go through the existing credit-note /
+   * write-off / reversal machinery instead of rewriting a finalized line —
+   * the same rule payments already follow.
+   */
+  async finalizeInvoice(client: PoolClient, actor: Actor, workItemId: string) {
+    if (!can(actor.role, 'finalizeInvoice')) throw new Forbidden('Your role cannot finalize invoices');
+    const item = await billingRepository.findWorkItem(client, workItemId);
+    if (!item) throw new NotFound('Billing work item not found');
+    if (item.status === 'Finalized' && item.draft_invoice_id) {
+      return billingRepository.findInvoice(client, String(item.draft_invoice_id));
+    }
+    if (!item.draft_invoice_id) throw new Conflict('There is no draft invoice on this work item to finalize');
+
+    const { rows: openClarifications } = await client.query(
+      `SELECT count(*)::int AS n FROM luminary.billing_clarification
+        WHERE work_item_id = $1 AND status = 'open' AND deleted_at IS NULL`,
+      [workItemId],
+    );
+    if (openClarifications[0].n > 0) throw new Conflict('Answer open clarifications before finalizing');
+
+    const invoice = await billingRepository.findInvoice(client, String(item.draft_invoice_id));
+    if (!invoice) throw new NotFound('Draft invoice not found');
+    const chargeable = (invoice.lines as Array<Record<string, unknown>>).filter((l) => l.exclusion_status !== 'excluded');
+    if (chargeable.length === 0) throw new Conflict('Add at least one line before finalizing');
+    const missingPrice = chargeable.find((l) => l.unit_price === null || l.unit_price === undefined);
+    if (missingPrice) throw new Conflict(`${String(missingPrice.description)} has no price — set one before finalizing`);
+
+    const { rows: finalized } = await client.query(
+      `UPDATE luminary.invoice SET finalized_at = now(), finalized_by = $2, updated_at = now()
+        WHERE id = $1 AND finalized_at IS NULL RETURNING *`,
+      [invoice.id, actor.userId],
+    );
+    if (!finalized[0]) throw new Conflict('This invoice was already finalized');
+    const settled = await billingRepository.settleInvoice(client, invoice.id);
+    await client.query(
+      `UPDATE luminary.billing_work_item SET status = 'Finalized', finalized_at = now(), updated_at = now() WHERE id = $1`,
+      [workItemId],
+    );
+    await client.query(
+      `SELECT luminary.write_audit('Finalized invoice', 'invoice', $1, $2, $3, 'alert')`,
+      [invoice.id, invoice.reference, `${invoice.currency} ${invoice.total}`],
+    );
+    return settled;
   },
 };
 

@@ -97,7 +97,7 @@ export const rolePermissions: Record<Role, Record<Permission, boolean>> = {
     captureBiometric: true,
     sendMessages: true,
     viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
-    finalizeInvoice: true, requestBillingClarification: true,
+    requestBillingClarification: true,
   },
 };
 

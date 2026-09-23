@@ -141,7 +141,7 @@ export const roleAccess = {
     ownPatientsOnly: false,
   },
   manager: {
-    views: ['dashboard', 'patients', 'appointments', 'billing', 'orders', 'claims', 'tariffs', 'communications', 'reports', 'ai', 'audit'],
+    views: ['dashboard', 'patients', 'appointments', 'billing', 'billing-handoff', 'orders', 'claims', 'tariffs', 'communications', 'reports', 'ai', 'audit'],
     can: {
       ...NONE,
       viewPatientDirectory: true, addPatient: true, editDemographics: true, editCover: true,
@@ -160,7 +160,7 @@ export const roleAccess = {
     ownPatientsOnly: false,
   },
   receptionist: {
-    views: ['dashboard', 'patients', 'appointments', 'billing', 'claims', 'communications'],
+    views: ['dashboard', 'patients', 'appointments', 'billing', 'billing-handoff', 'claims', 'communications'],
     can: {
       ...NONE,
       viewPatientDirectory: true, addPatient: true, editDemographics: true, editCover: true,
@@ -173,7 +173,7 @@ export const roleAccess = {
       // practice will never collect a debt is a different kind of decision,
       // and letting the same person do both removes the only check on it.
       viewBillingHandoff: true, editDraftInvoice: true, addCatalogueInvoiceLine: true,
-      finalizeInvoice: true, requestBillingClarification: true,
+      requestBillingClarification: true,
     },
     scopeNote: 'Front desk operations: patient registration, demographics, cover, scheduling, check in, payments, claims, and reminders. Clinical notes, prescribing, reporting, audit review, and system settings are deliberately out of scope.',
     ownPatientsOnly: false,

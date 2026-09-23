@@ -227,4 +227,165 @@ export async function billingRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(result);
   });
 
+  // --- billing handoff: work queue and editable draft invoice --------------
+
+  app.get('/billing/work-items', async (request) => {
+    const query = z.object({ status: z.string().optional() }).parse(request.query);
+    const actor = actorOf(request);
+    return run(actor, (client) => billingService.listWorkItems(client, actor, query));
+  });
+
+  app.get('/billing/work-items/:id', async (request) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const actor = actorOf(request);
+    return run(actor, (client) => billingService.getWorkItem(client, actor, id));
+  });
+
+  app.post('/billing/work-items/:id/clarifications', {
+    preHandler: requirePermission('requestBillingClarification'),
+    handler: async (request, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        category: z.enum(['missing_service', 'service_not_completed', 'diagnosis_code', 'quantity', 'pricing_agreement', 'other']),
+        question: z.string().trim().min(5),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const result = await run(actor, (client) => billingService.requestClarification(client, actor, id, body));
+      return reply.code(201).send(result);
+    },
+  });
+
+  app.post('/billing/clarifications/:id/response', {
+    preHandler: requirePermission('requestBillingClarification'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { response } = z.object({ response: z.string().trim().min(2) }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.respondClarification(client, actor, id, response));
+    },
+  });
+
+  app.post('/billing/draft-invoices/:id/catalogue-lines', {
+    preHandler: requirePermission('addCatalogueInvoiceLine'),
+    handler: async (request, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({ serviceId: z.string().uuid(), quantity: z.number().positive().optional() }).parse(request.body);
+      const actor = actorOf(request);
+      const result = await run(actor, (client) => billingService.addCatalogueLine(client, actor, id, body));
+      return reply.code(201).send(result);
+    },
+  });
+
+  app.post('/billing/draft-invoices/:id/custom-lines', {
+    preHandler: requirePermission('addCustomInvoiceLine'),
+    handler: async (request, reply) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        description: z.string().trim().min(1),
+        quantity: z.number().positive(),
+        unitPrice: money,
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const result = await run(actor, (client) => billingService.addCustomLine(client, actor, id, body));
+      return reply.code(201).send(result);
+    },
+  });
+
+  app.patch('/billing/draft-invoices/lines/:lineId', async (request) => {
+    const { lineId } = z.object({ lineId: z.string().uuid() }).parse(request.params);
+    const body = z.object({
+      quantity: z.number().positive().optional(),
+      unitPrice: money.optional(),
+      reason: z.string().trim().optional(),
+    }).parse(request.body);
+    const actor = actorOf(request);
+    return run(actor, (client) => billingService.updateLine(client, actor, lineId, body));
+  });
+
+  app.post('/billing/draft-invoices/lines/:lineId/exclude', {
+    preHandler: requirePermission('excludeAutomatedInvoiceLine'),
+    handler: async (request) => {
+      const { lineId } = z.object({ lineId: z.string().uuid() }).parse(request.params);
+      const { reason } = z.object({ reason: z.string().trim().min(3) }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.excludeLine(client, actor, lineId, reason));
+    },
+  });
+
+  app.post('/billing/draft-invoices/lines/:lineId/restore', {
+    preHandler: requirePermission('excludeAutomatedInvoiceLine'),
+    handler: async (request) => {
+      const { lineId } = z.object({ lineId: z.string().uuid() }).parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.restoreLine(client, actor, lineId));
+    },
+  });
+
+  app.post('/billing/draft-invoices/lines/:lineId/bespoke-price', {
+    preHandler: requirePermission('overrideInvoicePrice'),
+    handler: async (request) => {
+      const { lineId } = z.object({ lineId: z.string().uuid() }).parse(request.params);
+      const { agreementId } = z.object({ agreementId: z.string().uuid() }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.applyBespokePrice(client, actor, lineId, agreementId));
+    },
+  });
+
+  app.post('/billing/draft-invoices/:id/reorder', {
+    preHandler: requirePermission('editDraftInvoice'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { lineIds } = z.object({ lineIds: z.array(z.string().uuid()) }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.reorderLines(client, actor, id, lineIds));
+    },
+  });
+
+  app.patch('/billing/draft-invoices/:id/patient-note', {
+    preHandler: requirePermission('editDraftInvoice'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { note } = z.object({ note: z.string().max(500) }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.setPatientNote(client, actor, id, note));
+    },
+  });
+
+  app.post('/billing/work-items/:id/finalize', {
+    preHandler: requirePermission('finalizeInvoice'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.finalizeInvoice(client, actor, id));
+    },
+  });
+
+  app.post('/patients/:patientId/bespoke-prices', async (request, reply) => {
+    const { patientId } = z.object({ patientId: z.string().uuid() }).parse(request.params);
+    const body = z.object({
+      serviceId: z.string().uuid(),
+      amount: z.number().positive(),
+      currency: z.string().length(3),
+      reason: z.string().trim().min(5),
+      scope: z.enum(['one_encounter', 'date_range', 'use_count']).optional(),
+      encounterId: z.string().uuid().optional(),
+      appointmentId: z.string().uuid().optional(),
+      validUntil: dateOnly.optional(),
+      usesRemaining: z.number().int().positive().optional(),
+    }).parse(request.body);
+    const actor = actorOf(request);
+    const result = await run(actor, (client) =>
+      billingService.createBespokePriceAgreement(client, actor, { patientId, ...body }),
+    );
+    return reply.code(201).send(result);
+  });
+
+  app.post('/bespoke-prices/:id/approve', {
+    preHandler: requirePermission('approveBespokePrice'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => billingService.approveBespokePriceAgreement(client, actor, id));
+    },
+  });
 }

@@ -57,6 +57,9 @@ export const billingRepository = {
                 il.tariff_id, il.tariff_via, il.billing_key,
                 il.tariff_code, il.description, il.quantity, il.unit_price,
                 il.scheme_pays, il.estimated_funder,
+                il.service_event_id, il.service_display_name_snapshot, il.line_source,
+                il.exclusion_status, il.exclusion_reason, il.excluded_by, il.excluded_at,
+                il.display_order, il.bespoke_price_agreement_id,
                 svc.display_name AS service_name,
                 o.status AS order_status,
                 e.appointment_id
@@ -65,7 +68,7 @@ export const billingRepository = {
            LEFT JOIN luminary.clinical_order o ON o.id = il.order_id
            LEFT JOIN luminary.encounter e ON e.id = COALESCE(il.encounter_id, o.encounter_id)
           WHERE il.invoice_id = $1 AND il.deleted_at IS NULL
-          ORDER BY il.created_at`,
+          ORDER BY il.display_order, il.created_at`,
         [id],
       ),
       client.query(
@@ -1103,6 +1106,73 @@ export const billingRepository = {
     return rows[0];
   },
 
+  async listWorkItems(client: PoolClient, opts: { status?: string } = {}) {
+    const conditions = ['w.deleted_at IS NULL'];
+    const params: unknown[] = [];
+    if (opts.status) {
+      params.push(opts.status);
+      conditions.push(`w.status = $${params.length}`);
+    }
+    const { rows } = await client.query(
+      `SELECT w.*, p.full_name AS patient_name, p.id AS patient_reference,
+              e.status AS encounter_status, e.signed_at, e.note_type,
+              i.total AS draft_total, i.currency AS draft_currency,
+              i.patient_portion, i.scheme_portion,
+              (SELECT string_agg(DISTINCT COALESCE(il.service_display_name_snapshot, il.description), ', ')
+                 FROM luminary.invoice_line il
+                WHERE il.invoice_id = w.draft_invoice_id AND il.deleted_at IS NULL AND il.exclusion_status IS NULL
+              ) AS service_summary,
+              (SELECT count(*)::int FROM luminary.billing_clarification c
+                WHERE c.work_item_id = w.id AND c.status = 'open' AND c.deleted_at IS NULL) AS open_clarifications
+         FROM luminary.billing_work_item w
+         JOIN luminary.patient p ON p.id = w.patient_id
+         LEFT JOIN luminary.encounter e ON e.id = w.encounter_id
+         LEFT JOIN luminary.invoice i ON i.id = w.draft_invoice_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY w.created_at DESC`,
+      params,
+    );
+    return rows;
+  },
+
+  async findWorkItem(client: PoolClient, id: string) {
+    const { rows } = await client.query(
+      `SELECT w.*, p.full_name AS patient_name
+         FROM luminary.billing_work_item w
+         JOIN luminary.patient p ON p.id = w.patient_id
+        WHERE w.id = $1 AND w.deleted_at IS NULL`,
+      [id],
+    );
+    return rows[0] ?? null;
+  },
+
+  async listBespokePriceAgreements(client: PoolClient, patientId: string) {
+    const { rows } = await client.query(
+      `SELECT a.*, s.display_name AS service_name, cb.display_name AS created_by_name, ab.display_name AS approved_by_name
+         FROM luminary.bespoke_price_agreement a
+         JOIN luminary.service s ON s.id = a.service_id
+         JOIN luminary.app_user cb ON cb.id = a.created_by
+         LEFT JOIN luminary.app_user ab ON ab.id = a.approved_by
+        WHERE a.patient_id = $1 AND a.deleted_at IS NULL AND a.status IN ('pending', 'approved')
+        ORDER BY a.created_at DESC`,
+      [patientId],
+    );
+    return rows;
+  },
+
+  async listClarifications(client: PoolClient, workItemId: string) {
+    const { rows } = await client.query(
+      `SELECT c.*, req.display_name AS requested_by_name, resp.display_name AS responded_by_name
+         FROM luminary.billing_clarification c
+         JOIN luminary.app_user req ON req.id = c.requested_by
+         LEFT JOIN luminary.app_user resp ON resp.id = c.responded_by
+        WHERE c.work_item_id = $1 AND c.deleted_at IS NULL
+        ORDER BY c.requested_at`,
+      [workItemId],
+    );
+    return rows;
+  },
+
   async listAdjustments(client: PoolClient, invoiceId: string) {
     const { rows } = await client.query(
       `SELECT a.*, u.full_name AS decided_by_name
@@ -1293,7 +1363,7 @@ export const billingRepository = {
          SELECT COALESCE(sum(unit_price * quantity), 0) AS gross,
                 COALESCE(sum(COALESCE(actual_funder_approved, estimated_funder)), 0) AS funder
            FROM luminary.invoice_line
-          WHERE invoice_id = $1 AND deleted_at IS NULL
+          WHERE invoice_id = $1 AND deleted_at IS NULL AND exclusion_status IS NULL
        )
        UPDATE luminary.invoice i
           SET total = totals.gross,

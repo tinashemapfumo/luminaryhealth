@@ -266,6 +266,38 @@ export const api = {
     adjustBalance: (id, adjustment) => post(`/invoices/${id}/adjustments`, adjustment),
     statement: (patientId) => get(`/patients/${patientId}/statement`),
     aging: () => get('/reports/aging'),
+    listPayments: (query) => get('/payments', query),
+    collectionsReport: (query) => get('/reports/collections', query),
+    collectionCases: {
+      list: (query) => get('/collections/cases', query),
+      get: (id) => get(`/collections/cases/${id}`),
+      create: (body) => post('/collections/cases', body),
+      update: (id, body) => patch(`/collections/cases/${id}`, body),
+      recordAction: (id, body) => post(`/collections/cases/${id}/actions`, body),
+    },
+    workItems: {
+      list: (query) => get('/billing/work-items', query),
+      get: (id) => get(`/billing/work-items/${id}`),
+      finalize: (id) => post(`/billing/work-items/${id}/finalize`, {}),
+    },
+    clarifications: {
+      request: (workItemId, body) => post(`/billing/work-items/${workItemId}/clarifications`, body),
+      respond: (id, response) => post(`/billing/clarifications/${id}/response`, { response }),
+    },
+    draftInvoices: {
+      addCatalogueLine: (invoiceId, body) => post(`/billing/draft-invoices/${invoiceId}/catalogue-lines`, body),
+      addCustomLine: (invoiceId, body) => post(`/billing/draft-invoices/${invoiceId}/custom-lines`, body),
+      updateLine: (lineId, body) => patch(`/billing/draft-invoices/lines/${lineId}`, body),
+      excludeLine: (lineId, reason) => post(`/billing/draft-invoices/lines/${lineId}/exclude`, { reason }),
+      restoreLine: (lineId) => post(`/billing/draft-invoices/lines/${lineId}/restore`, {}),
+      applyBespokePrice: (lineId, agreementId) => post(`/billing/draft-invoices/lines/${lineId}/bespoke-price`, { agreementId }),
+      reorder: (invoiceId, lineIds) => post(`/billing/draft-invoices/${invoiceId}/reorder`, { lineIds }),
+      setPatientNote: (invoiceId, note) => patch(`/billing/draft-invoices/${invoiceId}/patient-note`, { note }),
+    },
+    bespokePrices: {
+      create: (patientId, body) => post(`/patients/${patientId}/bespoke-prices`, body),
+      approve: (id) => post(`/bespoke-prices/${id}/approve`, {}),
+    },
   },
 
   claims: {

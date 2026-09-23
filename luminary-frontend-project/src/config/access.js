@@ -1,6 +1,7 @@
 import {
   CalendarDays, CreditCard, FileText, LayoutGrid, MessageSquare,
   BrainCircuit, ScrollText, ShieldCheck, SlidersHorizontal, Stethoscope, Users, ClipboardList, Table,
+  ListChecks,
 } from 'lucide-react';
 
 /**
@@ -26,6 +27,7 @@ export const navItems = [
   { id: 'patients', label: 'Patients', icon: Users },
   { id: 'appointments', label: 'Appointments', icon: CalendarDays },
   { id: 'billing', label: 'Billing', icon: CreditCard },
+  { id: 'billing-handoff', label: 'Billing queue', icon: ListChecks },
   { id: 'clinical', label: 'Clinical', icon: Stethoscope },
   { id: 'orders', label: 'Orders', icon: ClipboardList },
   { id: 'claims', label: 'Claims', icon: ShieldCheck },

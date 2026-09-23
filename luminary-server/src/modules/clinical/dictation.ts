@@ -123,7 +123,7 @@ async function openAiStructure(transcript: string): Promise<StructuredDictation>
   // watching a spinner for as long as the request takes to fail, which reads
   // as "broken" long before the real error ever surfaces.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   let response: Response;
   try {
     response = await fetch('https://api.openai.com/v1/responses', {

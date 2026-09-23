@@ -937,6 +937,107 @@ export const clinicalService = {
     return rows[0];
   },
 
+  /**
+   * Issue several medications from one consultation as a single unit. The
+   * allergy review gate and the prescriber snapshot are resolved once for the
+   * whole batch; the allergy *clash* check still runs per drug, since each
+   * one is a different name against the same recorded allergy list. All rows
+   * are written on the caller's transaction, so a rejection anywhere in the
+   * batch — a bad allergy match, a lapsed registration — leaves nothing
+   * partially issued.
+   */
+  async prescribeBatch(
+    client: PoolClient,
+    actor: Actor,
+    input: {
+      patientId: string; encounterId?: string | null; allergiesReviewed?: boolean;
+      items: Array<{ drug: string; form?: string; strength?: string; dose?: string; route?: string;
+        frequency?: string; durationDays?: number; quantity?: number; refills?: number;
+        indication?: string; pharmacy?: string; substitutionAllowed?: boolean; instructions?: string }>;
+    },
+  ) {
+    if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot prescribe');
+    if (actor.registrationLapsed) {
+      throw new Forbidden('Your practising registration has lapsed — you cannot prescribe until it is renewed');
+    }
+    if (input.items.length === 0) throw new BadRequest('Add at least one medication');
+    if (input.items.length > 20) throw new BadRequest('That is too many medications for a single batch');
+
+    if (input.encounterId) {
+      const encounter = await requireEncounterInTenant(client, input.encounterId);
+      assertSamePatient(encounter.patient_id, input.patientId, 'That encounter does not belong to this patient');
+    }
+
+    const { rows: patient } = await client.query(
+      `SELECT full_name, allergies, allergies_reviewed FROM luminary.patient WHERE id = $1`,
+      [input.patientId],
+    );
+    if (!patient[0]) throw new NotFound('Patient not found');
+
+    const allergies: string[] = patient[0].allergies ?? [];
+    if (patient[0].allergies_reviewed !== true && input.allergiesReviewed !== true) {
+      throw new Conflict('Review and acknowledge this patient\'s allergies before prescribing', {
+        code: 'ALLERGY_REVIEW_REQUIRED',
+        allergiesReviewed: false,
+      });
+    }
+
+    for (const item of input.items) {
+      const clash = allergies.find((a) =>
+        a.toLowerCase().split(/[^a-z]+/).filter(Boolean)
+          .some((word) => word.length > 3 && item.drug.toLowerCase().includes(word)),
+      );
+      if (clash) {
+        throw new Conflict(`${patient[0].full_name} has a recorded allergy: "${clash}". Prescribing ${item.drug} is blocked.`);
+      }
+    }
+
+    if (patient[0].allergies_reviewed !== true && input.allergiesReviewed === true) {
+      await client.query(
+        `UPDATE luminary.patient SET allergies_reviewed = true, updated_at = now()
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [input.patientId],
+      );
+      await client.query(
+        `SELECT luminary.write_audit('Reviewed allergies before prescribing', 'patient', $1, $2, $3, 'notice')`,
+        [input.patientId, patient[0].full_name, input.items.map((i) => i.drug).join(', ')],
+      );
+    }
+
+    const { rows: prescriber } = await client.query(
+      `SELECT display_name, registration_number FROM luminary.app_user WHERE id = $1`,
+      [actor.userId],
+    );
+
+    const created: Record<string, unknown>[] = [];
+    for (const item of input.items) {
+      const { rows } = await client.query(
+        `INSERT INTO luminary.prescription
+           (practice_id, patient_id, encounter_id, prescriber_id, drug, form, strength, dose, route,
+            frequency, duration_days, quantity, refills, indication, pharmacy, substitution_allowed,
+            instructions, issued_at, prescriber_name, prescriber_registration)
+         VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                 $14, $15, $16, now(), $17, $18)
+         RETURNING *`,
+        [input.patientId, input.encounterId ?? null, actor.userId, item.drug, item.form ?? null,
+         item.strength ?? null, item.dose ?? null, item.route ?? null, item.frequency ?? null,
+         item.durationDays ?? null, item.quantity ?? null, item.refills ?? 0, item.indication ?? null,
+         item.pharmacy ?? null, item.substitutionAllowed ?? null, item.instructions ?? null,
+         prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null],
+      );
+      created.push(rows[0]);
+    }
+
+    await client.query(
+      `SELECT luminary.write_audit('Prescribed', 'patient', $1, $2, $3, 'notice')`,
+      [
+        input.patientId, patient[0].full_name,
+        `${input.items.length} medications: ${input.items.map((i) => i.drug).join(', ')}`,
+      ],
+    );
+    return created;
+  },
+
   async cancelPrescription(client: PoolClient, actor: Actor, id: string, reason: string) {
     if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot cancel prescriptions');
     const { rows } = await client.query(

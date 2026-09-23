@@ -235,6 +235,7 @@ export const api = {
 
   prescriptions: {
     create: (prescription) => post('/prescriptions', prescription),
+    createBatch: (batch) => post('/prescriptions/batch', batch),
   },
 
   patientExports: {

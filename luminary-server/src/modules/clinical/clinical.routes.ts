@@ -492,6 +492,35 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  app.post('/prescriptions/batch', {
+    preHandler: requirePermission('prescribe'),
+    handler: async (request, reply) => {
+      const body = z.object({
+        patientId: z.string().uuid(),
+        encounterId: z.string().uuid().nullable().optional(),
+        allergiesReviewed: z.boolean().optional(),
+        items: z.array(z.object({
+          drug: z.string().trim().min(1).max(180),
+          form: z.string().trim().max(80).optional(),
+          strength: z.string().trim().min(1).max(120),
+          dose: z.string().trim().max(120).optional(),
+          route: z.string().trim().min(1).max(80),
+          frequency: z.string().trim().min(1).max(240),
+          durationDays: z.number().int().positive().optional(),
+          quantity: z.number().int().positive().optional(),
+          refills: z.number().int().min(0).max(12).optional(),
+          indication: z.string().trim().max(500).optional(),
+          pharmacy: z.string().trim().max(180).optional(),
+          substitutionAllowed: z.boolean().optional(),
+          instructions: z.string().trim().max(1000).optional(),
+        })).min(1, 'Add at least one medication').max(20, 'That is too many medications for a single batch'),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const created = await run(actor, (client) => clinicalService.prescribeBatch(client, actor, body));
+      return reply.code(201).send(created);
+    },
+  });
+
   app.post('/prescriptions/:id/cancel', {
     preHandler: requirePermission('prescribe'),
     handler: async (request) => {

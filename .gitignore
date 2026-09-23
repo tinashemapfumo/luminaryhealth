@@ -11,6 +11,9 @@ build/
 .env.local
 .env.*.local
 luminary-server/env/*.env
+# test.env holds no real credentials (unit tests fake the DB client) and is
+# needed by anyone running `npm run test:clinical`, so it stays tracked.
+!luminary-server/env/test.env
 luminary-frontend-project/.env.local-clean
 luminary-frontend-project/.env.local-demo
 luminary-frontend-project/.env.online-clean

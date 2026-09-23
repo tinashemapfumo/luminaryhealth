@@ -68,6 +68,7 @@ export const ENDPOINTS = {
 
   prescriptions: {
     create: { method: 'POST', path: '/prescriptions', permission: 'prescribe', note: '409 ALLERGY_REVIEW_REQUIRED if allergies unreviewed; hard-blocks on a recorded allergy match' },
+    createBatch: { method: 'POST', path: '/prescriptions/batch', permission: 'prescribe', note: 'all-or-nothing: allergy review/clash checked once against the whole batch before any row is written, 1-20 items' },
   },
 
   patientExports: {

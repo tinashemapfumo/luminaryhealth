@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Moon,
+  Plus,
   Search,
   Settings,
   Sun,
@@ -860,6 +861,49 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       [patient.id]: {
         ...prev[patient.id],
         prescriptions: [mapped, ...(prev[patient.id]?.prescriptions ?? [])],
+      },
+    }));
+    return mapped;
+  };
+
+  /**
+   * Issue several medications from one consultation as a single unit — a
+   * consultation regularly produces more than one drug, and looping the
+   * single-create call client-side would risk ending up with some issued and
+   * some not if a later row failed. The server writes all rows on one
+   * transaction instead, so this either returns every prescription or none.
+   */
+  const createPrescriptionBatch = async ({ patient, encounterId, allergiesReviewed, items }) => {
+    if (!live) {
+      notify('Prescriptions require the live API');
+      return null;
+    }
+    const created = await api.prescriptions.createBatch({
+      patientId: patient.patientId ?? patient.id,
+      encounterId: encounterId || null,
+      allergiesReviewed: Boolean(allergiesReviewed),
+      items: items.map((item) => ({
+        drug: item.drug?.trim(),
+        form: item.form?.trim() || undefined,
+        strength: item.strength?.trim(),
+        dose: item.dose?.trim() || undefined,
+        route: item.route?.trim(),
+        frequency: item.frequency?.trim(),
+        durationDays: item.durationDays !== undefined && item.durationDays !== '' ? Number(item.durationDays) : undefined,
+        quantity: item.quantity !== undefined && item.quantity !== '' ? Number(item.quantity) : undefined,
+        refills: item.refills !== undefined && item.refills !== '' ? Number(item.refills) : 0,
+        indication: item.indication?.trim() || undefined,
+        pharmacy: item.pharmacy?.trim() || undefined,
+        substitutionAllowed: item.substitutionAllowed,
+        instructions: item.instructions?.trim() || undefined,
+      })),
+    });
+    const mapped = created.map((rx) => prescriptionFromApi(rx, roleInfo.person ?? currentUser.name));
+    setPatientRecords((prev) => ({
+      ...prev,
+      [patient.id]: {
+        ...prev[patient.id],
+        prescriptions: [...mapped, ...(prev[patient.id]?.prescriptions ?? [])],
       },
     }));
     return mapped;
@@ -2303,45 +2347,60 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     notify(`${service.displayName} billed, ${invoice.id}, patient ${formatMoney(priced.estimatedPatient, billingCurrency)}`);
   };
 
+  const blankPrescriptionItem = () => ({
+    drug: '', form: '', strength: '', dose: '', route: '', frequency: '', durationDays: '',
+    quantity: '', refills: '0', indication: '', pharmacy: '', substitutionAllowed: '', instructions: '',
+  });
+  const addPrescriptionItem = () => setForm((prev) => ({
+    ...prev, items: [...(prev.items || []), blankPrescriptionItem()],
+  }));
+  const updatePrescriptionItem = (index, key, value) => setForm((prev) => {
+    const items = prev.items?.length ? prev.items : [blankPrescriptionItem()];
+    return { ...prev, items: items.map((item, i) => (i === index ? { ...item, [key]: value } : item)) };
+  });
+  const removePrescriptionItem = (index) => setForm((prev) => ({
+    ...prev, items: (prev.items || []).filter((_, i) => i !== index),
+  }));
+
   const submitPrescription = async (event) => {
     event.preventDefault();
     const patient = form.patient;
     const record = patient ? patientRecords[patient.id] : null;
+    const items = form.items?.length ? form.items : [];
+    const itemErrors = items.map((item) => {
+      const e = {};
+      if (!item.drug?.trim()) e.drug = 'Medication name is required';
+      if (!item.strength?.trim()) e.strength = 'Strength is required';
+      if (!item.route?.trim()) e.route = 'Route is required';
+      if (!item.frequency?.trim()) e.frequency = 'Frequency or directions are required';
+      if (!item.durationDays) e.durationDays = 'Duration is required';
+      return e;
+    });
     const errors = {};
-    if (!form.drug?.trim()) errors.drug = 'Medication name is required';
-    if (!form.strength?.trim()) errors.strength = 'Strength is required';
-    if (!form.route?.trim()) errors.route = 'Route is required';
-    if (!form.frequency?.trim()) errors.frequency = 'Frequency or directions are required';
-    if (!form.durationDays) errors.durationDays = 'Duration is required';
+    if (items.length === 0) errors.items = 'Add at least one medication';
+    else if (itemErrors.some((e) => Object.keys(e).length)) errors.items = 'Fix the highlighted fields below';
     if (!record?.allergiesRecorded && !form.allergiesReviewed) {
       errors.allergiesReviewed = 'Confirm allergy review before issuing';
     }
-    setFormErrors(errors);
+    setFormErrors({ ...errors, itemErrors });
     if (Object.keys(errors).length) return;
 
     try {
-      const rx = await createPrescription({
+      const mapped = await createPrescriptionBatch({
         patient,
-        drug: form.drug,
-        form: form.form,
-        strength: form.strength,
-        dose: form.dose,
-        route: form.route,
-        frequency: form.frequency,
-        durationDays: form.durationDays,
-        quantity: form.quantity,
-        refills: form.refills ?? 0,
-        indication: form.indication,
-        pharmacy: form.pharmacy,
-        substitutionAllowed: form.substitutionAllowed === '' || form.substitutionAllowed === undefined
-          ? undefined : form.substitutionAllowed === 'true',
-        instructions: form.instructions,
+        items: items.map((item) => ({
+          ...item,
+          substitutionAllowed: item.substitutionAllowed === '' || item.substitutionAllowed === undefined
+            ? undefined : item.substitutionAllowed === 'true',
+        })),
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
       closeDialog();
-      notify(`Prescription issued for ${patient.name} — ${rx.drug} ${rx.strength || ''}`.trim());
+      notify(`${mapped.length} prescription${mapped.length === 1 ? '' : 's'} issued for ${patient.name}`);
     } catch (error) {
       setFormErrors({
+        ...errors,
+        itemErrors,
         submit: error.code === 'conflict' && error.details?.code === 'ALLERGY_REVIEW_REQUIRED'
           ? 'Review this patient’s allergies and confirm the checkbox before issuing.'
           : error.message,
@@ -2378,22 +2437,22 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       const structured = await api.dictations.structure(dictation.id);
       const draft = structured.structured_draft || {};
       const medicationsMentioned = Array.isArray(draft.medicationsMentioned) ? draft.medicationsMentioned : [];
-      setForm((prev) => ({
-        ...prev,
-        structuring: false,
-        dictationId: dictation.id,
-        medicationsMentioned,
-        selectedMedicationIndex: medicationsMentioned.length ? 0 : null,
-        ...(medicationsMentioned[0] ? {
-          drug: medicationsMentioned[0].drug || '',
-          strength: medicationsMentioned[0].strength || '',
-          route: medicationsMentioned[0].route || '',
-          frequency: medicationsMentioned[0].frequency || '',
-          durationDays: medicationsMentioned[0].durationDays || '',
-        } : {}),
-      }));
+      // Every recognised drug becomes an editable row, same shape as the
+      // manual multi-drug form — a dictation naming three medications should
+      // not force three separate trips through this dialog.
+      const items = medicationsMentioned.length
+        ? medicationsMentioned.map((med) => ({
+            ...blankPrescriptionItem(),
+            drug: med.drug || '',
+            strength: med.strength || '',
+            route: med.route || '',
+            frequency: med.frequency || '',
+            durationDays: med.durationDays || '',
+          }))
+        : [blankPrescriptionItem()];
+      setForm((prev) => ({ ...prev, structuring: false, dictationId: dictation.id, items }));
       if (medicationsMentioned.length === 0) {
-        notify('No medication was recognised in that dictation — check the fields below before approving');
+        notify('No medication was recognised in that dictation — fill in the fields below before issuing');
       }
     } catch (error) {
       setForm((prev) => ({ ...prev, structuring: false }));
@@ -2401,53 +2460,41 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
   };
 
-  const selectDictatedMedication = (index) => {
-    const med = form.medicationsMentioned?.[index];
-    if (!med) return;
-    setForm((prev) => ({
-      ...prev,
-      selectedMedicationIndex: index,
-      drug: med.drug || '',
-      strength: med.strength || '',
-      route: med.route || '',
-      frequency: med.frequency || '',
-      durationDays: med.durationDays || '',
-    }));
-  };
-
+  /**
+   * Issues every reviewed row through the same batch endpoint the manual
+   * multi-drug form uses, rather than /dictations/:id/approve-prescription —
+   * that endpoint (and the dictation row's approved_prescription_id column)
+   * can only ever link one prescription, so it cannot represent "this
+   * dictation produced three prescriptions." The dictation itself stays
+   * structured rather than being marked approved; the transcript and
+   * extracted draft remain on record either way.
+   */
   const approveDictatedPrescription = async (event) => {
     event.preventDefault();
     const patient = form.patient;
     const record = patient ? patientRecords[patient.id] : null;
+    const items = form.items?.length ? form.items : [];
+    const itemErrors = items.map((item) => (!item.drug?.trim() ? { drug: 'Medication name is required' } : {}));
     const errors = {};
-    if (!form.drug?.trim()) errors.drug = 'Medication name is required';
+    if (items.length === 0) errors.items = 'Add at least one medication';
+    else if (itemErrors.some((e) => Object.keys(e).length)) errors.items = 'Fix the highlighted fields below';
     if (!record?.allergiesRecorded && !form.allergiesReviewed) {
       errors.allergiesReviewed = 'Confirm allergy review before issuing';
     }
-    setFormErrors(errors);
+    setFormErrors({ ...errors, itemErrors });
     if (Object.keys(errors).length) return;
 
     try {
-      const result = await api.dictations.approvePrescription(form.dictationId, {
-        drug: form.drug,
-        strength: form.strength || undefined,
-        route: form.route || undefined,
-        frequency: form.frequency || undefined,
-        durationDays: form.durationDays ? Number(form.durationDays) : undefined,
+      const mapped = await createPrescriptionBatch({
+        patient,
+        items,
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
-      const mapped = prescriptionFromApi(result.prescription, roleInfo.person ?? currentUser.name);
-      setPatientRecords((prev) => ({
-        ...prev,
-        [patient.id]: {
-          ...prev[patient.id],
-          prescriptions: [mapped, ...(prev[patient.id]?.prescriptions ?? [])],
-        },
-      }));
       closeDialog();
-      notify(`Prescription issued for ${patient.name} — ${mapped.drug} ${mapped.strength || ''}`.trim());
+      notify(`${mapped.length} prescription${mapped.length === 1 ? '' : 's'} issued for ${patient.name}`);
     } catch (error) {
       setFormErrors({
+        itemErrors,
         submit: error.code === 'conflict' && error.details?.code === 'ALLERGY_REVIEW_REQUIRED'
           ? 'Review this patient’s allergies and confirm the checkbox before issuing.'
           : error.message,
@@ -4587,14 +4634,17 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         onClose={closeDialog}
         title="New prescription"
         subtitle={form.patient ? `${form.patient.name} · ${form.patient.id}` : undefined}
-        width="max-w-2xl"
+        width="max-w-3xl"
         footer={<>
           <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
-          <Button type="submit" form="prescription-form">Issue prescription</Button>
+          <Button type="submit" form="prescription-form">
+            Issue {form.items?.length > 1 ? `${form.items.length} prescriptions` : 'prescription'}
+          </Button>
         </>}
       >
         {form.patient && (() => {
           const record = patientRecords[form.patient.id];
+          const items = form.items?.length ? form.items : [blankPrescriptionItem()];
           return (
             <form id="prescription-form" onSubmit={submitPrescription} className="space-y-4">
               <div className="rounded-lg border border-line bg-surface p-3 text-sm">
@@ -4612,68 +4662,96 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 </p>
               </div>
 
-              <div className="grid gap-3.5 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Field label="Medication" required error={formErrors.drug}>
-                    <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin" />
-                  </Field>
-                </div>
-                <Field label="Form">
-                  <Select
-                    value={form.form || ''}
-                    onChange={setField('form')}
-                    options={['', 'tablet', 'capsule', 'cream', 'inhaler', 'syrup', 'injection', 'drops', 'ointment']}
-                    render={(v) => v || 'Choose a form…'}
-                  />
-                </Field>
-                <Field label="Strength" required error={formErrors.strength}>
-                  <Input value={form.strength || ''} onChange={setField('strength')} placeholder="e.g. 500 mg" />
-                </Field>
-                <Field label="Dose">
-                  <Input value={form.dose || ''} onChange={setField('dose')} placeholder="e.g. 1 capsule" />
-                </Field>
-                <Field label="Route" required error={formErrors.route}>
-                  <Select
-                    value={form.route || ''}
-                    onChange={setField('route')}
-                    options={['', 'oral', 'topical', 'IM', 'IV', 'subcutaneous', 'inhaled', 'rectal', 'ophthalmic', 'other']}
-                    render={(v) => v || 'Choose a route…'}
-                  />
-                </Field>
-                <Field label="Frequency / directions" required error={formErrors.frequency}>
-                  <Input value={form.frequency || ''} onChange={setField('frequency')} placeholder="e.g. three times daily" />
-                </Field>
-                <Field label="Duration (days)" required error={formErrors.durationDays}>
-                  <Input type="number" min="1" value={form.durationDays || ''} onChange={setField('durationDays')} />
-                </Field>
-                <Field label="Quantity to dispense">
-                  <Input type="number" min="1" value={form.quantity || ''} onChange={setField('quantity')} />
-                </Field>
-                <Field label="Refills" hint="0–12">
-                  <Input type="number" min="0" max="12" value={form.refills ?? '0'} onChange={setField('refills')} />
-                </Field>
-                <Field label="Substitution">
-                  <Select
-                    value={form.substitutionAllowed ?? ''}
-                    onChange={setField('substitutionAllowed')}
-                    options={['', 'true', 'false']}
-                    render={(v) => (v === 'true' ? 'Substitution allowed' : v === 'false' ? 'Do not substitute' : 'Per pharmacist judgement')}
-                  />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Field label="Indication" hint="Optional but recommended">
-                    <Input value={form.indication || ''} onChange={setField('indication')} placeholder="e.g. Acute bacterial sinusitis" />
-                  </Field>
-                </div>
-                <Field label="Pharmacy" hint="Optional">
-                  <Input value={form.pharmacy || ''} onChange={setField('pharmacy')} placeholder="Dispense at patient pharmacy" />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Field label="Additional instructions" hint="Optional">
-                    <Textarea value={form.instructions || ''} onChange={setField('instructions')} placeholder="e.g. Take after food" />
-                  </Field>
-                </div>
+              <div className="space-y-3">
+                {items.map((item, index) => {
+                  const itemError = formErrors.itemErrors?.[index] || {};
+                  return (
+                    <div key={index} className="rounded-lg border border-edge p-3.5">
+                      <div className="mb-2.5 flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Medication {index + 1}</p>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removePrescriptionItem(index)}
+                            className="text-xs font-medium text-danger hover:underline"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid gap-3.5 sm:grid-cols-2">
+                        <div className="sm:col-span-2">
+                          <Field label="Medication" required error={itemError.drug}>
+                            <Input value={item.drug || ''} onChange={(e) => updatePrescriptionItem(index, 'drug', e.target.value)} placeholder="e.g. Amoxicillin" />
+                          </Field>
+                        </div>
+                        <Field label="Form">
+                          <Select
+                            value={item.form || ''}
+                            onChange={(e) => updatePrescriptionItem(index, 'form', e.target.value)}
+                            options={['', 'tablet', 'capsule', 'cream', 'inhaler', 'syrup', 'injection', 'drops', 'ointment']}
+                            render={(v) => v || 'Choose a form…'}
+                          />
+                        </Field>
+                        <Field label="Strength" required error={itemError.strength}>
+                          <Input value={item.strength || ''} onChange={(e) => updatePrescriptionItem(index, 'strength', e.target.value)} placeholder="e.g. 500 mg" />
+                        </Field>
+                        <Field label="Dose">
+                          <Input value={item.dose || ''} onChange={(e) => updatePrescriptionItem(index, 'dose', e.target.value)} placeholder="e.g. 1 capsule" />
+                        </Field>
+                        <Field label="Route" required error={itemError.route}>
+                          <Select
+                            value={item.route || ''}
+                            onChange={(e) => updatePrescriptionItem(index, 'route', e.target.value)}
+                            options={['', 'oral', 'topical', 'IM', 'IV', 'subcutaneous', 'inhaled', 'rectal', 'ophthalmic', 'other']}
+                            render={(v) => v || 'Choose a route…'}
+                          />
+                        </Field>
+                        <Field label="Frequency / directions" required error={itemError.frequency}>
+                          <Input value={item.frequency || ''} onChange={(e) => updatePrescriptionItem(index, 'frequency', e.target.value)} placeholder="e.g. three times daily" />
+                        </Field>
+                        <Field label="Duration (days)" required error={itemError.durationDays}>
+                          <Input type="number" min="1" value={item.durationDays || ''} onChange={(e) => updatePrescriptionItem(index, 'durationDays', e.target.value)} />
+                        </Field>
+                        <Field label="Quantity to dispense">
+                          <Input type="number" min="1" value={item.quantity || ''} onChange={(e) => updatePrescriptionItem(index, 'quantity', e.target.value)} />
+                        </Field>
+                        <Field label="Refills" hint="0–12">
+                          <Input type="number" min="0" max="12" value={item.refills ?? '0'} onChange={(e) => updatePrescriptionItem(index, 'refills', e.target.value)} />
+                        </Field>
+                        <Field label="Substitution">
+                          <Select
+                            value={item.substitutionAllowed ?? ''}
+                            onChange={(e) => updatePrescriptionItem(index, 'substitutionAllowed', e.target.value)}
+                            options={['', 'true', 'false']}
+                            render={(v) => (v === 'true' ? 'Substitution allowed' : v === 'false' ? 'Do not substitute' : 'Per pharmacist judgement')}
+                          />
+                        </Field>
+                        <div className="sm:col-span-2">
+                          <Field label="Indication" hint="Optional but recommended">
+                            <Input value={item.indication || ''} onChange={(e) => updatePrescriptionItem(index, 'indication', e.target.value)} placeholder="e.g. Acute bacterial sinusitis" />
+                          </Field>
+                        </div>
+                        <Field label="Pharmacy" hint="Optional">
+                          <Input value={item.pharmacy || ''} onChange={(e) => updatePrescriptionItem(index, 'pharmacy', e.target.value)} placeholder="Dispense at patient pharmacy" />
+                        </Field>
+                        <div className="sm:col-span-2">
+                          <Field label="Additional instructions" hint="Optional">
+                            <Textarea value={item.instructions || ''} onChange={(e) => updatePrescriptionItem(index, 'instructions', e.target.value)} placeholder="e.g. Take after food" />
+                          </Field>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+
+              <Button variant="secondary" type="button" onClick={addPrescriptionItem}>
+                <Plus size={13} /> Add another drug
+              </Button>
+              {formErrors.items && (
+                <p className="text-sm text-danger">{formErrors.items}</p>
+              )}
 
               {!record?.allergiesRecorded && (
                 <label className="flex items-center gap-2 text-sm text-body">
@@ -4704,11 +4782,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         onClose={closeDialog}
         title="Dictate prescription"
         subtitle={form.patient ? `${form.patient.name} · ${form.patient.id}` : undefined}
-        width="max-w-2xl"
+        width="max-w-3xl"
         footer={<>
           <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
           {form.dictationId
-            ? <Button type="submit" form="prescription-dictation-approve-form">Approve prescription</Button>
+            ? <Button type="submit" form="prescription-dictation-approve-form">
+                Issue {form.items?.length > 1 ? `${form.items.length} prescriptions` : 'prescription'}
+              </Button>
             : <Button type="submit" form="prescription-dictation-transcript-form" disabled={form.structuring}>
                 {form.structuring ? 'Structuring…' : 'Structure'}
               </Button>}
@@ -4749,52 +4829,60 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
 
               {form.dictationId && (
                 <form id="prescription-dictation-approve-form" onSubmit={approveDictatedPrescription} className="space-y-4">
-                  {form.medicationsMentioned?.length > 1 && (
-                    <div>
-                      <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Medications heard in the dictation</p>
-                      <div className="flex flex-wrap gap-2">
-                        {form.medicationsMentioned.map((med, index) => (
-                          <button
-                            key={`${med.drug}-${index}`}
-                            type="button"
-                            onClick={() => selectDictatedMedication(index)}
-                            className={`rounded border px-2.5 py-1.5 text-sm transition ${
-                              form.selectedMedicationIndex === index
-                                ? 'border-brand bg-brand-soft text-brand-deep'
-                                : 'border-edge text-body hover:border-brand'
-                            }`}
-                          >
-                            {med.drug} {med.strength || ''}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {(!form.medicationsMentioned || form.medicationsMentioned.length === 0) && (
-                    <p className="rounded border border-warning-strong bg-warning-soft p-3 text-sm text-warning-deep">
-                      No medication was recognised automatically — fill in the fields below from the transcript.
-                    </p>
-                  )}
+                  <p className="text-xs text-muted">
+                    {form.items?.length > 1
+                      ? `${form.items.length} medications recognised — review each, remove any that were misheard, or add one that wasn't caught.`
+                      : 'Review the medication below, or add another if the dictation named more than one.'}
+                  </p>
 
-                  <div className="grid gap-3.5 sm:grid-cols-2">
-                    <div className="sm:col-span-2">
-                      <Field label="Medication" required error={formErrors.drug}>
-                        <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin" />
-                      </Field>
-                    </div>
-                    <Field label="Strength">
-                      <Input value={form.strength || ''} onChange={setField('strength')} placeholder="e.g. 500 mg" />
-                    </Field>
-                    <Field label="Route">
-                      <Input value={form.route || ''} onChange={setField('route')} placeholder="e.g. oral" />
-                    </Field>
-                    <Field label="Frequency / directions">
-                      <Input value={form.frequency || ''} onChange={setField('frequency')} placeholder="e.g. three times daily" />
-                    </Field>
-                    <Field label="Duration (days)">
-                      <Input type="number" min="1" value={form.durationDays || ''} onChange={setField('durationDays')} />
-                    </Field>
+                  <div className="space-y-3">
+                    {(form.items?.length ? form.items : [blankPrescriptionItem()]).map((item, index) => {
+                      const itemError = formErrors.itemErrors?.[index] || {};
+                      const items = form.items?.length ? form.items : [blankPrescriptionItem()];
+                      return (
+                        <div key={index} className="rounded-lg border border-edge p-3.5">
+                          <div className="mb-2.5 flex items-center justify-between">
+                            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Medication {index + 1}</p>
+                            {items.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removePrescriptionItem(index)}
+                                className="text-xs font-medium text-danger hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid gap-3.5 sm:grid-cols-2">
+                            <div className="sm:col-span-2">
+                              <Field label="Medication" required error={itemError.drug}>
+                                <Input value={item.drug || ''} onChange={(e) => updatePrescriptionItem(index, 'drug', e.target.value)} placeholder="e.g. Amoxicillin" />
+                              </Field>
+                            </div>
+                            <Field label="Strength">
+                              <Input value={item.strength || ''} onChange={(e) => updatePrescriptionItem(index, 'strength', e.target.value)} placeholder="e.g. 500 mg" />
+                            </Field>
+                            <Field label="Route">
+                              <Input value={item.route || ''} onChange={(e) => updatePrescriptionItem(index, 'route', e.target.value)} placeholder="e.g. oral" />
+                            </Field>
+                            <Field label="Frequency / directions">
+                              <Input value={item.frequency || ''} onChange={(e) => updatePrescriptionItem(index, 'frequency', e.target.value)} placeholder="e.g. three times daily" />
+                            </Field>
+                            <Field label="Duration (days)">
+                              <Input type="number" min="1" value={item.durationDays || ''} onChange={(e) => updatePrescriptionItem(index, 'durationDays', e.target.value)} />
+                            </Field>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  <Button variant="secondary" type="button" onClick={addPrescriptionItem}>
+                    <Plus size={13} /> Add another drug
+                  </Button>
+                  {formErrors.items && (
+                    <p className="text-sm text-danger">{formErrors.items}</p>
+                  )}
 
                   {!record?.allergiesRecorded && (
                     <label className="flex items-center gap-2 text-sm text-body">

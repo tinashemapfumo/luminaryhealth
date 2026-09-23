@@ -52,6 +52,7 @@
     "test:agent": "tsx --test src/modules/agent/*.test.ts",
     "test:catalogue": "tsx --test src/modules/catalogue/*.test.ts",
     "test:billing": "tsx --test src/modules/billing/*.test.ts",
+    "test:clinical": "node --env-file=env/test.env --import tsx --test src/modules/clinical/*.test.ts",
     "verify:claims": "tsx scripts/verify-claims.ts",
     "verify:scenario013": "node --import tsx scripts/scenario013-smoke.mjs",
     "verify:scenario014": "node --import tsx scripts/scenario014-smoke.mjs",

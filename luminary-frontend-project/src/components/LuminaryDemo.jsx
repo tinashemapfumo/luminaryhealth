@@ -224,11 +224,15 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
    */
   const [seedRows, setSeedRows] = usePersistentState('patients', initialPatientRows);
   const [seedRecords, setSeedRecords] = usePersistentState('patientRecords', initialPatientRecords);
+  const announceNewPatients = useCallback((count) => {
+    notify(`${count} new patient${count === 1 ? '' : 's'} added to the practice`);
+  }, [notify]);
   const patientDirectory = usePatientDirectory({
     practiceId: currentUser.practiceId,
     seedRows,
     seedRecords,
     onError: notify,
+    onPatientsAdded: announceNewPatients,
   });
   const live = patientDirectory.live;
   const liveWorkspace = useLiveWorkspaceData({ enabled: live, onError: notify });

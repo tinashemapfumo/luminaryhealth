@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, isLive, ApiError } from './api';
 
 /**
@@ -249,31 +249,66 @@ export function patchFromChanges(before, after) {
  * Returns the same shape either way, so the shell holds one pair of collections
  * rather than branching on mode everywhere it reads them.
  */
-export function usePatientDirectory({ practiceId, seedRows, seedRecords, scope, search, onError }) {
+export function usePatientDirectory({
+  practiceId, seedRows, seedRecords, scope, search, onError, onPatientsAdded,
+}) {
   const live = isLive();
   const [rows, setRows] = useState(live ? [] : seedRows);
   const [records, setRecords] = useState(live ? {} : seedRecords);
   const [loading, setLoading] = useState(live);
   const [error, setError] = useState(null);
+  const rowsRef = useRef(rows);
+  const requestInFlightRef = useRef(false);
 
-  const reload = useCallback(async () => {
-    if (!live) return;
-    setLoading(true);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  const reload = useCallback(async ({ silent = false, announce = false } = {}) => {
+    if (!live || requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const payload = await api.patients.list({ scope, search });
-      setRows(payload.map((p) => rowFromApi(p, practiceId)));
+      const nextRows = payload.map((p) => rowFromApi(p, practiceId));
+      if (announce && rowsRef.current.length > 0) {
+        const knownIds = new Set(rowsRef.current.map((patient) => patient.id));
+        const added = nextRows.filter((patient) => !knownIds.has(patient.id)).length;
+        if (added > 0) onPatientsAdded?.(added);
+      }
+      rowsRef.current = nextRows;
+      setRows(nextRows);
     } catch (err) {
       setError(err);
-      onError?.(err.message);
+      if (!silent) onError?.(err.message);
     } finally {
-      setLoading(false);
+      requestInFlightRef.current = false;
+      if (!silent) setLoading(false);
     }
-  }, [live, scope, search, practiceId, onError]);
+  }, [live, scope, search, practiceId, onError, onPatientsAdded]);
 
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!live) return undefined;
+
+    const refresh = () => reload({ silent: true, announce: true });
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [live, reload]);
 
   /**
    * Open a chart.

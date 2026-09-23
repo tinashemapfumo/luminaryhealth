@@ -269,7 +269,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState(null);
   const [patientSearch, setPatientSearch] = useState('');
-  const [sortKey, setSortKey] = useState({ column: 'next', direction: 'asc' });
+  const [sortKey, setSortKey] = useState({ column: 'registeredAt', direction: 'desc' });
   const [visitStatuses, setVisitStatuses] = useState(() =>
     Object.fromEntries(initialSchedule.map((item) => [item.patient, 'Booked']))
   );

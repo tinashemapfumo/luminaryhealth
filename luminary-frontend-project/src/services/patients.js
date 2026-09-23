@@ -85,6 +85,7 @@ export function rowFromApi(patient, practiceId) {
     id: patient.reference || patient.id,
     patientId: patient.id,
     practiceId,
+    registeredAt: patient.created_at || '',
     name: patient.full_name,
     lastVisit: shortDate(patient.last_visit_at),
     next: nextVisitLabel(patient.next_visit_at),

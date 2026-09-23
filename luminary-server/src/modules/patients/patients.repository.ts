@@ -24,6 +24,7 @@ export interface PatientRow {
   merge_reason?: string | null;
   sex: string | null;
   phone: string | null;
+  created_at: string;
   status: string;
   balance: string;
   primary_provider_id: string | null;
@@ -140,7 +141,7 @@ export const patientsRepository = {
 
     const { rows } = await client.query<PatientRow>(
       `SELECT p.id, p.reference, p.full_name, p.date_of_birth, p.sex, p.national_id,
-              p.phone, p.merged_into_id, p.merged_at, p.merge_reason,
+              p.created_at, p.phone, p.merged_into_id, p.merged_at, p.merge_reason,
               p.status, p.balance, p.primary_provider_id, p.allergies,
               p.allergies_reviewed, p.member_number,
               u.display_name AS primary_provider_name,
@@ -163,7 +164,7 @@ export const patientsRepository = {
             ORDER BY a.starts_at ASC LIMIT 1
          ) next_visit ON true
         WHERE ${where.join(' AND ')}
-        ORDER BY p.full_name
+        ORDER BY p.created_at DESC, p.id DESC
         LIMIT $${params.length}`,
       params,
     );

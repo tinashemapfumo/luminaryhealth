@@ -353,7 +353,7 @@ export default function PatientsPage() {
                 {filteredPatients.length} of {registrySource.length} patients
                 {patientSearch && <> matching “{patientSearch}”</>}
               </p>
-              <p className="text-xs text-muted">Sorted by {columns.find((c) => c.key === sortKey.column)?.label} · {sortKey.direction === 'asc' ? 'ascending' : 'descending'}</p>
+              <p className="text-xs text-muted">Sorted by {columns.find((c) => c.key === sortKey.column)?.label || 'Recently added'} · {sortKey.direction === 'asc' ? 'ascending' : 'descending'}</p>
             </div>
 
             <div className="lh-table-shell">

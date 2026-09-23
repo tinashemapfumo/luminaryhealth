@@ -1856,7 +1856,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
 
   const advanceVisitStatus = async (patient) => {
     if (live) {
-      const appointment = todaysSchedule.find((item) => item.patient === patient);
+      // Any booked visit can be actioned, not only today's — practiceSchedule
+      // covers every day, todaysSchedule only day 0, and this silently found
+      // nothing (and did nothing) for a visit on any other day.
+      const appointment = practiceSchedule.find((item) => item.patient === patient);
       const currentIndex = visitStatusFlow.indexOf(visitStatuses[patient]);
       if (!appointment || currentIndex < 0 || currentIndex >= visitStatusFlow.length - 1) return;
       try {
@@ -1900,8 +1903,11 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       return;
     }
     if (live) {
-      const appointment = todaysSchedule.find((item) => item.patient === form.patient);
-      if (!appointment) return;
+      const appointment = practiceSchedule.find((item) => item.patient === form.patient);
+      if (!appointment) {
+        setFormErrors({ reason: 'Could not find that visit — refresh the schedule and try again.' });
+        return;
+      }
       try {
         await api.appointments.setStatus(appointment.id, form.status, reason);
         await liveWorkspace.reload();
@@ -4263,11 +4269,18 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             <Select value={form.mode || 'In-person'} onChange={setField('mode')} options={['In-person', 'Telehealth']} />
           </Field>
           <div className="sm:col-span-2">
-            <Field label="Day">
+            <Field label="Date" hint="The calendar shows a rolling 6-day window">
               <Select
                 value={String(form.day ?? 0)}
                 onChange={setField('day')}
                 options={['0', '1', '2', '3', '4', '5']}
+                render={(value) => {
+                  const offset = Number(value);
+                  const date = new Date();
+                  date.setDate(date.getDate() + offset);
+                  const label = date.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' });
+                  return offset === 0 ? `Today · ${label}` : offset === 1 ? `Tomorrow · ${label}` : label;
+                }}
               />
             </Field>
           </div>

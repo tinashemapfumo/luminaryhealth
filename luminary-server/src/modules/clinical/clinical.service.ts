@@ -187,9 +187,11 @@ export const clinicalService = {
         [patientId],
       ),
       client.query(
-        `SELECT p.id, p.patient_id, p.encounter_id, p.drug, p.strength, p.route,
-                p.frequency, p.duration_days, p.refills, p.pharmacy, p.status,
-                p.created_at, u.display_name AS prescriber_name
+        `SELECT p.id, p.patient_id, p.encounter_id, p.drug, p.form, p.strength, p.dose, p.route,
+                p.frequency, p.duration_days, p.quantity, p.refills, p.indication, p.pharmacy,
+                p.substitution_allowed, p.instructions, p.status, p.created_at, p.issued_at,
+                COALESCE(p.prescriber_name, u.display_name) AS prescriber_name,
+                COALESCE(p.prescriber_registration, u.registration_number) AS prescriber_registration
            FROM luminary.prescription p
            JOIN luminary.app_user u ON u.id = p.prescriber_id
           WHERE p.patient_id = $1 AND p.deleted_at IS NULL
@@ -789,9 +791,10 @@ export const clinicalService = {
   async prescribe(
     client: PoolClient,
     actor: Actor,
-    input: { patientId: string; encounterId?: string | null; drug: string; strength?: string;
-             route?: string; frequency?: string; durationDays?: number; refills?: number; pharmacy?: string;
-             allergiesReviewed?: boolean },
+    input: { patientId: string; encounterId?: string | null; drug: string; form?: string; strength?: string;
+             dose?: string; route?: string; frequency?: string; durationDays?: number; quantity?: number;
+             refills?: number; indication?: string; pharmacy?: string; substitutionAllowed?: boolean;
+             instructions?: string; allergiesReviewed?: boolean },
   ) {
     if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot prescribe');
     if (actor.registrationLapsed) {
@@ -838,15 +841,24 @@ export const clinicalService = {
       );
     }
 
+    const { rows: prescriber } = await client.query(
+      `SELECT display_name, registration_number FROM luminary.app_user WHERE id = $1`,
+      [actor.userId],
+    );
+
     const { rows } = await client.query(
       `INSERT INTO luminary.prescription
-         (practice_id, patient_id, encounter_id, prescriber_id, drug, strength, route,
-          frequency, duration_days, refills, pharmacy)
-       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         (practice_id, patient_id, encounter_id, prescriber_id, drug, form, strength, dose, route,
+          frequency, duration_days, quantity, refills, indication, pharmacy, substitution_allowed,
+          instructions, issued_at, prescriber_name, prescriber_registration)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+               $14, $15, $16, now(), $17, $18)
        RETURNING *`,
-      [input.patientId, input.encounterId ?? null, actor.userId, input.drug, input.strength ?? null,
-       input.route ?? null, input.frequency ?? null, input.durationDays ?? null,
-       input.refills ?? 0, input.pharmacy ?? null],
+      [input.patientId, input.encounterId ?? null, actor.userId, input.drug, input.form ?? null,
+       input.strength ?? null, input.dose ?? null, input.route ?? null, input.frequency ?? null,
+       input.durationDays ?? null, input.quantity ?? null, input.refills ?? 0, input.indication ?? null,
+       input.pharmacy ?? null, input.substitutionAllowed ?? null, input.instructions ?? null,
+       prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null],
     );
     await client.query(
       `SELECT luminary.write_audit('Prescribed', 'patient', $1, $2, $3, 'notice')`,

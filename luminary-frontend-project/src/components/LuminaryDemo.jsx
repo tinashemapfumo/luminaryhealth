@@ -830,18 +830,26 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
     const durationDays = fields.durationDays !== undefined && fields.durationDays !== ''
       ? Number(fields.durationDays) : undefined;
+    const quantity = fields.quantity !== undefined && fields.quantity !== ''
+      ? Number(fields.quantity) : undefined;
     const refills = fields.refills !== undefined && fields.refills !== ''
       ? Number(fields.refills) : 0;
     const rx = await api.prescriptions.create({
       patientId: patient.patientId ?? patient.id,
       encounterId: fields.encounterId || null,
       drug: fields.drug?.trim(),
+      form: fields.form?.trim() || undefined,
       strength: fields.strength?.trim() || undefined,
+      dose: fields.dose?.trim() || undefined,
       route: fields.route?.trim() || undefined,
       frequency: fields.frequency?.trim() || undefined,
       durationDays,
+      quantity,
       refills,
+      indication: fields.indication?.trim() || undefined,
       pharmacy: fields.pharmacy?.trim() || undefined,
+      substitutionAllowed: fields.substitutionAllowed,
+      instructions: fields.instructions?.trim() || undefined,
       allergiesReviewed: Boolean(allergiesReviewed),
     });
     const mapped = prescriptionFromApi(rx, roleInfo.person ?? currentUser.name);
@@ -2307,12 +2315,19 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       const rx = await createPrescription({
         patient,
         drug: form.drug,
+        form: form.form,
         strength: form.strength,
+        dose: form.dose,
         route: form.route,
         frequency: form.frequency,
         durationDays: form.durationDays,
+        quantity: form.quantity,
         refills: form.refills ?? 0,
+        indication: form.indication,
         pharmacy: form.pharmacy,
+        substitutionAllowed: form.substitutionAllowed === '' || form.substitutionAllowed === undefined
+          ? undefined : form.substitutionAllowed === 'true',
+        instructions: form.instructions,
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
       closeDialog();
@@ -4475,11 +4490,22 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               <div className="grid gap-3.5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <Field label="Medication" required error={formErrors.drug}>
-                    <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin (include form, e.g. capsule, in the name if relevant)" />
+                    <Input value={form.drug || ''} onChange={setField('drug')} placeholder="e.g. Amoxicillin" />
                   </Field>
                 </div>
+                <Field label="Form">
+                  <Select
+                    value={form.form || ''}
+                    onChange={setField('form')}
+                    options={['', 'tablet', 'capsule', 'cream', 'inhaler', 'syrup', 'injection', 'drops', 'ointment']}
+                    render={(v) => v || 'Choose a form…'}
+                  />
+                </Field>
                 <Field label="Strength" required error={formErrors.strength}>
                   <Input value={form.strength || ''} onChange={setField('strength')} placeholder="e.g. 500 mg" />
+                </Field>
+                <Field label="Dose">
+                  <Input value={form.dose || ''} onChange={setField('dose')} placeholder="e.g. 1 capsule" />
                 </Field>
                 <Field label="Route" required error={formErrors.route}>
                   <Select
@@ -4495,12 +4521,31 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 <Field label="Duration (days)" required error={formErrors.durationDays}>
                   <Input type="number" min="1" value={form.durationDays || ''} onChange={setField('durationDays')} />
                 </Field>
+                <Field label="Quantity to dispense">
+                  <Input type="number" min="1" value={form.quantity || ''} onChange={setField('quantity')} />
+                </Field>
                 <Field label="Refills" hint="0–12">
                   <Input type="number" min="0" max="12" value={form.refills ?? '0'} onChange={setField('refills')} />
                 </Field>
+                <Field label="Substitution">
+                  <Select
+                    value={form.substitutionAllowed ?? ''}
+                    onChange={setField('substitutionAllowed')}
+                    options={['', 'true', 'false']}
+                    render={(v) => (v === 'true' ? 'Substitution allowed' : v === 'false' ? 'Do not substitute' : 'Per pharmacist judgement')}
+                  />
+                </Field>
                 <div className="sm:col-span-2">
-                  <Field label="Pharmacy" hint="Optional">
-                    <Input value={form.pharmacy || ''} onChange={setField('pharmacy')} placeholder="Dispense at patient pharmacy" />
+                  <Field label="Indication" hint="Optional but recommended">
+                    <Input value={form.indication || ''} onChange={setField('indication')} placeholder="e.g. Acute bacterial sinusitis" />
+                  </Field>
+                </div>
+                <Field label="Pharmacy" hint="Optional">
+                  <Input value={form.pharmacy || ''} onChange={setField('pharmacy')} placeholder="Dispense at patient pharmacy" />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Additional instructions" hint="Optional">
+                    <Textarea value={form.instructions || ''} onChange={setField('instructions')} placeholder="e.g. Take after food" />
                   </Field>
                 </div>
               </div>

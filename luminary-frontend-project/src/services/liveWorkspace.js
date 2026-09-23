@@ -266,18 +266,27 @@ export const prescriptionFromApi = (row, fallbackPrescriberName) => ({
   patientId: row.patient_id,
   encounterId: row.encounter_id,
   drug: row.drug,
+  form: row.form || '',
   strength: row.strength || '',
+  dose: row.dose || '',
   route: row.route || '',
   frequency: row.frequency || '',
   directions: row.frequency || '',
   duration: row.duration_days ? `${row.duration_days} day${Number(row.duration_days) === 1 ? '' : 's'}` : '',
   durationDays: row.duration_days ?? null,
+  quantity: row.quantity ?? null,
   refills: row.refills ?? 0,
+  indication: row.indication || '',
   pharmacy: row.pharmacy || '',
+  substitutionAllowed: row.substitution_allowed ?? null,
+  notes: row.instructions || '',
   status: titleCase(row.status || 'active'),
   tone: statusTone(row.status),
   prescriber: row.prescriber_name || fallbackPrescriberName || '',
-  issuedAt: row.created_at ? `${shortDate(row.created_at)} ${timeLabel(row.created_at)}` : '',
+  prescriberRegistration: row.prescriber_registration || '',
+  issuedAt: row.issued_at
+    ? `${shortDate(row.issued_at)} ${timeLabel(row.issued_at)}`
+    : row.created_at ? `${shortDate(row.created_at)} ${timeLabel(row.created_at)}` : '',
 });
 
 export const auditFromApi = (row) => ({

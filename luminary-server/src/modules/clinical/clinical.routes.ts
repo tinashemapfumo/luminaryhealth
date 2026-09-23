@@ -418,12 +418,18 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
         patientId: z.string().uuid(),
         encounterId: z.string().uuid().nullable().optional(),
         drug: z.string().min(1),
+        form: z.string().optional(),
         strength: z.string().optional(),
+        dose: z.string().optional(),
         route: z.string().optional(),
         frequency: z.string().optional(),
         durationDays: z.number().int().positive().optional(),
+        quantity: z.number().int().positive().optional(),
         refills: z.number().int().min(0).max(12).optional(),
+        indication: z.string().optional(),
         pharmacy: z.string().optional(),
+        substitutionAllowed: z.boolean().optional(),
+        instructions: z.string().optional(),
         allergiesReviewed: z.boolean().optional(),
       }).parse(request.body);
       const actor = actorOf(request);

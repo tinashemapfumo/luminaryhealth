@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Clock3, Video } from 'lucide-react';
+import { SegmentedControl } from './ui';
 
 /**
  * Clinical scheduling grid.
@@ -142,9 +143,9 @@ export default function ScheduleCalendar({
   };
 
   return (
-    <div className="rounded-lg border border-line bg-white/95 shadow-[0_16px_42px_-34px_rgba(11,21,36,0.55)]">
+    <div className="lh-surface min-w-0 overflow-hidden">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 px-4 py-3">
         <div className="flex items-center gap-2">
           {view !== 'Week' && (
             <div className="flex items-center gap-0.5">
@@ -152,54 +153,41 @@ export default function ScheduleCalendar({
                 type="button"
                 onClick={() => setDayOffset((d) => d - 1)}
                 aria-label="Previous day"
-                className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-ink"
+                className="lh-btn-icon h-8 w-8"
               >
-                <ChevronLeft size={14} />
+                <ChevronLeft size={17} strokeWidth={1.8} />
               </button>
               <button
                 type="button"
                 onClick={() => setDayOffset((d) => d + 1)}
                 aria-label="Next day"
-                className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-ink"
+                className="lh-btn-icon h-8 w-8"
               >
-                <ChevronRight size={14} />
+                <ChevronRight size={17} strokeWidth={1.8} />
               </button>
             </div>
           )}
           <div>
-            <p className="text-md font-semibold text-ink">
+            <p className="text-section font-semibold tracking-heading text-ink">
               {view === 'Week' ? 'This week' : todayLabel}
             </p>
-            <p className="text-xs text-muted">
+            <p className="text-caption text-muted">
               {visible.length} appointment{visible.length === 1 ? '' : 's'}
               {dayOffset !== 0 && view !== 'Week' && ' · not today'}
             </p>
           </div>
           {dayOffset !== 0 && view !== 'Week' && (
-            <button type="button" onClick={() => setDayOffset(0)} className="ml-1 text-sm font-medium text-brand hover:underline">
+            <button type="button" onClick={() => setDayOffset(0)} className="lh-btn-tertiary ml-1 h-8 px-2.5 text-caption">
               Back to today
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border border-edge bg-white/80 p-0.5">
-          {['Day', 'Week', 'Rooms'].map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setView(option)}
-              className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-                view === option ? 'bg-brand text-white shadow-[0_8px_18px_-14px_rgba(8,114,222,0.55)]' : 'text-body hover:bg-surface'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label="Calendar view" options={['Day', 'Week', 'Rooms']} value={view} onChange={setView} />
       </div>
 
       {canSchedule && (
-        <p className="border-b border-line bg-surface px-4 py-2 text-xs text-muted">
+        <p className="border-b border-line/60 bg-surface/50 px-4 py-2 text-caption text-muted">
           Drag an appointment to reschedule it · click an empty slot to book
         </p>
       )}
@@ -209,7 +197,7 @@ export default function ScheduleCalendar({
         <div className="min-w-[680px]">
           {/* Column headers */}
           <div
-            className="sticky top-0 z-20 grid border-b border-line bg-white"
+            className="sticky top-0 z-20 grid border-b border-line/70 bg-white/95 backdrop-blur"
             style={{ gridTemplateColumns: `58px repeat(${columns.length}, minmax(0, 1fr))` }}
           >
             <div className="border-r border-line" />
@@ -217,8 +205,8 @@ export default function ScheduleCalendar({
               const count = byColumn[column]?.length || 0;
               return (
                 <div key={column} className="border-r border-line px-2 py-2 text-center last:border-r-0">
-                  <p className="truncate text-sm font-semibold text-ink">{column}</p>
-                  <p className="text-2xs text-muted">{count} booked</p>
+                  <p className="truncate text-small font-semibold text-ink">{column}</p>
+                  <p className="text-caption text-muted tnum">{count} booked</p>
                 </div>
               );
             })}
@@ -315,7 +303,7 @@ export default function ScheduleCalendar({
                       onClick={(e) => { e.stopPropagation(); onSelect(item); }}
                       style={{ top, height, width, left }}
                       title={`${item.time} · ${item.patient} · ${item.type} · ${item.provider}`}
-                      className={`absolute overflow-hidden rounded border px-1.5 py-1 text-left transition ${palette[status] || palette.Booked} ${
+                      className={`absolute overflow-hidden rounded-sm border px-2 py-1 text-left shadow-hairline transition duration-fast ${palette[status] || palette.Booked} ${
                         isSelected ? 'ring-2 ring-brand ring-offset-1' : ''
                       } ${dragging === item.id ? 'opacity-40' : ''} ${canSchedule ? 'cursor-grab active:cursor-grabbing' : ''}`}
                     >
@@ -349,7 +337,7 @@ export default function ScheduleCalendar({
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line/60 px-4 py-2.5">
         {[
           ['Booked', 'Booked', 'bg-wash border-brand-edge'],
           ['Checked in', 'Checked in', 'bg-warning-wash border-warning-edge'],
@@ -359,7 +347,7 @@ export default function ScheduleCalendar({
         ].map(([value, label, className]) => (
           <span key={value} className="flex items-center gap-1.5">
             <span className={`h-2.5 w-2.5 rounded-sm border ${className}`} />
-            <span className="text-xs text-muted">{label}</span>
+            <span className="text-caption text-muted">{label}</span>
           </span>
         ))}
       </div>

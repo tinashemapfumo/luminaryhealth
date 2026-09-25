@@ -69,7 +69,7 @@ export default function AppointmentsPage() {
         </div>
       </div>
 
-      <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <ScheduleCalendar
           appointments={practiceSchedule}
           providers={configuredProviders}
@@ -92,34 +92,34 @@ export default function AppointmentsPage() {
           restrictToProvider={access.ownPatientsOnly ? doctorIdentity : null}
         />
 
-        <div className="lh-card-pad lh-side-panel">
+        <div className="lh-card-pad xl:lh-sticky-panel">
           <p className="lh-section-label">Visit details</p>
 
-          <div className="lh-card-soft mt-4 p-4">
+          <div className="mt-3 rounded-lg bg-surface/70 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-lg font-semibold tracking-heading text-ink">{selectedAppointment.patient}</p>
-                <p className="mt-1 text-sm text-body">{selectedAppointment.type}</p>
+                <p className="text-section font-semibold tracking-heading text-ink">{selectedAppointment.patient}</p>
+                <p className="mt-0.5 text-small text-muted">{selectedAppointment.type}</p>
               </div>
               <StatusPill label={visitStatuses[selectedAppointment.id] || 'Booked'} tone={visitStatusTone[visitStatuses[selectedAppointment.id]] || 'neutral'} />
             </div>
 
-            <div className="mt-5 space-y-3 text-base text-body">
-              <div className="flex items-center justify-between border-b border-line pb-2">
+            <div className="mt-4 space-y-2.5 text-small text-body">
+              <div className="flex items-center justify-between border-b border-line/60 pb-2.5">
                 <span>Time</span>
                 <span className="font-medium text-ink">{selectedAppointment.time}</span>
               </div>
               {selectedAppointment.origin === 'walk_in' && (
-                <div className="flex items-center justify-between border-b border-line pb-2">
+                <div className="flex items-center justify-between border-b border-line/60 pb-2.5">
                   <span>Origin</span>
                   <span className="font-medium text-ink">Walk-in{selectedAppointment.arrivalTime ? `, arrived ${selectedAppointment.arrivalTime}` : ''}</span>
                 </div>
               )}
-              <div className="flex items-center justify-between border-b border-line pb-2">
+              <div className="flex items-center justify-between border-b border-line/60 pb-2.5">
                 <span>Provider</span>
                 <span className="font-medium text-ink">{selectedAppointment.provider}</span>
               </div>
-              <div className="flex items-center justify-between border-b border-line pb-2">
+              <div className="flex items-center justify-between border-b border-line/60 pb-2.5">
                 <span>Room</span>
                 <span className="font-medium text-ink">{selectedAppointment.room}</span>
               </div>
@@ -130,7 +130,7 @@ export default function AppointmentsPage() {
             </div>
           </div>
 
-          <div className="mt-5 rounded-lg border border-line bg-white p-4 shadow-[0_8px_24px_-24px_rgba(11,21,36,0.35)]">
+          <div className="mt-5">
             <div className="flex items-center justify-between">
               <p className="lh-section-label">Visit progress</p>
               <StatusPill
@@ -139,30 +139,41 @@ export default function AppointmentsPage() {
               />
             </div>
 
-            <div className="mt-4 flex items-center gap-1.5">
+            {/* A vertical stepper: six steps do not fit side by side in a
+                320px panel without breaking their names across lines. */}
+            <ol className="mt-3 space-y-0.5">
               {visitStatusFlow.map((step, index) => {
                 const currentStatus = visitStatuses[selectedAppointment.id] || 'Booked';
                 const currentIndex = visitStatusFlow.indexOf(currentStatus);
                 const reached = currentIndex >= index;
+                const current = currentIndex === index;
                 return (
-                  <div key={step} className="flex-1">
-                    <div className={`h-1.5 rounded-full ${reached ? 'bg-ink' : 'bg-line'}`} />
-                    <p className={`mt-1.5 text-caption font-medium ${reached ? 'text-brand' : 'text-faint'}`}>{step}</p>
-                  </div>
+                  <li key={step} aria-current={current ? 'step' : undefined} className="relative flex items-center gap-3 py-1 pl-0.5">
+                    {index < visitStatusFlow.length - 1 && (
+                      <span className={`absolute left-[7px] top-[18px] h-[calc(100%-6px)] w-px ${currentIndex > index ? 'bg-brand' : 'bg-line'}`} aria-hidden="true" />
+                    )}
+                    <span
+                      className={`relative z-10 h-3 w-3 shrink-0 rounded-full border-2 transition-colors duration-normal ${
+                        current ? 'border-brand bg-brand ring-4 ring-brand/15' : reached ? 'border-brand bg-brand' : 'border-edge bg-white'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span className={`text-small ${current ? 'font-semibold text-ink' : reached ? 'text-body' : 'text-muted'}`}>{step}</span>
+                  </li>
                 );
               })}
-            </div>
+            </ol>
 
             <div className="mt-4 flex flex-wrap gap-2">
               {!access.can.checkIn && (
-                <p className="text-sm text-muted">Check-in is handled by reception and nursing staff.</p>
+                <p className="text-small text-muted">Check-in is handled by reception and nursing staff.</p>
               )}
               {access.can.checkIn && !['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.id]) && (
                 <>
                   <button
                     type="button"
                     onClick={() => advanceVisitStatus(selectedAppointment.id)}
-                    className="lh-primary-button px-3.5 text-sm"
+                    className="lh-btn-primary"
                   >
                     {visitStatuses[selectedAppointment.id] === 'Booked'
                       ? 'Check in patient'
@@ -179,14 +190,14 @@ export default function AppointmentsPage() {
                       <button
                         type="button"
                         onClick={() => markNoShow(selectedAppointment)}
-                        className="rounded-lg border border-danger-strong bg-white px-3.5 py-2 text-sm font-medium text-danger transition hover:border-danger-line"
+                        className="lh-btn-danger"
                       >
                         Mark no show
                       </button>
                       <button
                         type="button"
                         onClick={() => cancelVisit(selectedAppointment)}
-                        className="rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-medium text-ink transition hover:border-danger-line hover:text-danger"
+                        className="lh-btn-secondary"
                       >
                         Cancel visit
                       </button>
@@ -195,7 +206,7 @@ export default function AppointmentsPage() {
                 </>
               )}
               {access.can.checkIn && ['Completed', 'No-show', 'Cancelled'].includes(visitStatuses[selectedAppointment.id]) && (
-                <p className="text-sm text-body">
+                <p className="text-small text-body">
                   {visitStatuses[selectedAppointment.id] === 'Completed'
                     ? 'Visit completed, note ready for sign off.'
                     : visitStatuses[selectedAppointment.id] === 'No-show'
@@ -208,12 +219,12 @@ export default function AppointmentsPage() {
                   was for. Billing it should not mean retyping any of that. */}
               {access.can.createInvoice && visitStatuses[selectedAppointment.id] === 'Completed' && (
                 billed ? (
-                  <p className="text-sm text-success">Billed · {billed.id}</p>
+                  <p className="text-small font-medium text-success">Billed · {billed.id}</p>
                 ) : (
                   <button
                     type="button"
                     onClick={() => billVisit(selectedAppointment)}
-                    className="lh-primary-button px-3.5 text-sm"
+                    className="lh-btn-primary"
                   >
                     Bill this visit
                   </button>
@@ -222,11 +233,11 @@ export default function AppointmentsPage() {
             </div>
           </div>
 
-          <div className="mt-5 space-y-4">
+          <div className="mt-6 divide-y divide-line/60 border-t border-line/60">
             {[{ title: 'Check in reminder sweep', detail: '7 patients with automated text follow up due in 20 minutes' }, { title: 'Room allocation', detail: 'Confirm room usage for afternoon consults' }, { title: 'Insurance sync', detail: '3 eligibility checks pending approval' }].map((task) => (
-              <div key={task.title} className="lh-card-soft p-3">
-                <p className="font-medium text-ink">{task.title}</p>
-                <p className="mt-2 text-sm text-body">{task.detail}</p>
+              <div key={task.title} className="py-3">
+                <p className="text-small font-medium text-ink">{task.title}</p>
+                <p className="mt-0.5 text-caption text-muted">{task.detail}</p>
               </div>
             ))}
           </div>

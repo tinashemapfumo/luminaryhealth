@@ -6,7 +6,7 @@ calls, permissions, routing, break-glass rules or workflows are touched.
 
 - **Branch:** `design/ocean-flow-2`, cut from `main` at `22be4b4`.
 - **Restore point:** tag `restore-point-2026-09-25`.
-- **Status:** Phase 1 and Phase 2 are done. Phases 3–5 have not started.
+- **Status:** Phases 1–3 are done. Phases 4 and 5 have not started.
 
 ---
 
@@ -164,8 +164,8 @@ sentence case. Sentence case is applied with `first-letter:uppercase`, so
 | Phase | Scope | Files | Status |
 |---|---|---|---|
 | 1. Foundation | Tokens, CSS variables, dark-mode variables, verifier scales | `tailwind.config.js`, `index.css`, `scripts/verify-tokens.mjs`, `scripts/verify-contrast.mjs` | **Done** (`89f3816`) |
-| 2. Primitives | Shared classes and `ui.jsx` components, StatusPill, EmptyState consolidation | `index.css`, `ui.jsx`, `shared/StatusPill.jsx`, `shared/EmptyState.jsx` | **Done** |
-| 3. Shell | Sidebar grouping (Care / Finance / Engagement / Intelligence, still role-filtered), nav item styling, header search trigger, alerts, account and workspace menus → `lh-popover`, command palette, fewer waves | `LuminaryDemo.jsx` (chrome markup only), `config/access.js` (adds a `group` field to `navItems`; permissions untouched) | Not started |
+| 2. Primitives | Shared classes and `ui.jsx` components, StatusPill, EmptyState consolidation | `index.css`, `ui.jsx`, `shared/StatusPill.jsx`, `shared/EmptyState.jsx` | **Done** (`6ed1603`) |
+| 3. Shell | Sidebar grouping (Care / Finance / Engagement / Intelligence, still role-filtered), nav item styling, header search trigger, alerts, account and workspace menus → `lh-popover`, command palette, fewer waves | `LuminaryDemo.jsx` (chrome markup only), `config/access.js` (adds a presentation-only `navGroups` list; permissions untouched) | **Done** (`536d9ba`) |
 | 4. Context | Patient context bar → `lh-context-bar`, patient file banner, allergy and break-glass strips | `LuminaryDemo.jsx`, `PatientFile.jsx` | Not started |
 | 5. Pages | In order: Overview, Patients, Patient file, Appointments (and `ScheduleCalendar`), Clinical (and `EncounterNote`), Orders, Billing, Billing queue, Claims, Tariffs, Communications, Reports, Luminary AI, Audit, Settings | `components/pages/*`, `PatientFile.jsx`, `EncounterNote.jsx`, `ScheduleCalendar.jsx` | Not started |
 

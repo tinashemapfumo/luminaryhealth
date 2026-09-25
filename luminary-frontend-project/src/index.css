@@ -3,20 +3,40 @@
 @tailwind utilities;
 
 /* -----------------------------------------------------------------------------
- * The palette lives in tailwind.config.js. These three exist only because the
- * page chrome below is plain CSS with no class to hang a utility on, and they
- * are kept deliberately few: the previous seventeen were used three times
- * between them, and three of the unused ones had drifted from the values
- * actually shipping — including a grey that failed contrast.
+ * Ocean Flow 2 / Clinical Glass — runtime variables.
+ *
+ * The palette, type, radius, shadow and motion scales live in
+ * tailwind.config.js. These variables exist for what a utility cannot express:
+ * page chrome with no class to hang a utility on, and the translucent glass
+ * layers, whose rgba fills must swap wholesale in dark mode.
  * -------------------------------------------------------------------------- */
 :root {
-  --canvas: #f7fafe;
+  --canvas: #f5f8fc;
+  --canvas-top: #f9fbfe;
+  --canvas-bottom: #eef4fa;
   --ink: #10233f;
   --brand: #0872de;
   --luminary-bg-soft: #f2f7fd;
   --luminary-surface: rgba(255, 255, 255, 0.94);
   --luminary-border: rgba(49, 93, 137, 0.11);
-  --luminary-transition: 150ms cubic-bezier(.2,.8,.2,1);
+
+  /* Glass: three intensities, used only where a surface floats. */
+  --lh-glass-subtle: rgba(255, 255, 255, 0.62);
+  --lh-glass: rgba(255, 255, 255, 0.78);
+  --lh-glass-elevated: rgba(255, 255, 255, 0.9);
+  --lh-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+
+  /* Solid data surfaces: tables, ledgers, forms. Calm, not translucent. */
+  --lh-surface: #ffffff;
+  --lh-surface-soft: rgba(242, 247, 253, 0.72);
+
+  /* Motion. Mirrors transitionDuration/transitionTimingFunction in the config. */
+  --lh-ease: cubic-bezier(.2, .8, .2, 1);
+  --lh-dur-instant: 80ms;
+  --lh-dur-fast: 120ms;
+  --lh-dur-normal: 180ms;
+  --lh-dur-slow: 240ms;
+  --luminary-transition: var(--lh-dur-normal) var(--lh-ease);
 }
 
 /* -----------------------------------------------------------------------------
@@ -24,7 +44,8 @@
  *
  * Every value in the app, in one place, because getting this wrong has now cost
  * two bugs — an account menu whose trigger sat under its own backdrop, and the
- * same menu rendering behind the page content.
+ * same menu rendering behind the page content. The same numbers are available
+ * as z-header / z-backdrop / z-menu / z-modal / z-palette / z-toast.
  *
  *   0   page content ................ no z-index; the default
  *   20  header ...................... must outrank content, must not reach modals
@@ -35,96 +56,301 @@
  *   60  toast ....................... always visible, over everything
  *
  * The trap: `backdrop-blur` creates a stacking context. Anything blurred — the
- * header, the patient context bar, and every .lh-card, .lh-metric and
- * .lh-page-hero below — confines its children's z-index to itself. A dropdown
- * inside a blurred header cannot escape it by raising its own z-index; only the
- * blurred ancestor's z-index decides where the whole subtree lands. That is why
- * the header carries one and its dropdowns' 30/40 are purely internal.
+ * header, the patient context bar, every glass surface, and every .lh-card,
+ * .lh-metric and .lh-page-hero below — confines its children's z-index to
+ * itself. A dropdown inside a blurred header cannot escape it by raising its
+ * own z-index; only the blurred ancestor's z-index decides where the whole
+ * subtree lands. That is why the header carries one and its dropdowns' 30/40
+ * are purely internal.
  * -------------------------------------------------------------------------- */
 
 @layer components {
+  /* ------------------------------------------------------------ glass */
+  .lh-glass-subtle {
+    background-color: var(--lh-glass-subtle);
+    @apply backdrop-blur-subtle backdrop-saturate-subtle;
+  }
+
+  .lh-glass {
+    background-color: var(--lh-glass);
+    @apply border border-white/60 shadow-raised backdrop-blur-glass backdrop-saturate-glass;
+  }
+
+  .lh-glass-elevated {
+    background-color: var(--lh-glass-elevated);
+    @apply border border-white/70 shadow-float backdrop-blur-elevated backdrop-saturate-elevated;
+  }
+
+  /* ------------------------------------------------------------ surfaces */
+  .lh-surface {
+    background-color: var(--lh-surface);
+    @apply rounded-2xl border border-line/70 shadow-hairline;
+  }
+
+  .lh-surface-soft {
+    background-color: var(--lh-surface-soft);
+    @apply rounded-xl;
+  }
+
+  /* ------------------------------------------------------------ page header */
   .lh-page-hero {
     @apply p-0;
   }
 
   .lh-page-kicker {
-    @apply text-xs font-medium text-muted;
+    @apply text-caption font-medium text-muted;
   }
 
   .lh-page-title {
-    @apply mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-ink;
+    @apply mt-1 text-page font-semibold leading-tight tracking-title text-ink;
   }
 
   .lh-page-subtitle {
-    @apply mt-1 max-w-3xl text-sm leading-5 text-body;
+    @apply mt-1.5 max-w-3xl text-copy-lg leading-6 text-body;
   }
 
+  .lh-section-title {
+    @apply text-section font-semibold tracking-heading text-ink;
+  }
+
+  /* ------------------------------------------------------------ cards */
   .lh-card {
-    @apply rounded-lg border border-line/70 bg-white/[0.9] shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)] backdrop-blur;
+    @apply rounded-2xl border border-line/60 bg-white/90 shadow-card backdrop-blur;
   }
 
   .lh-card-pad {
-    @apply rounded-lg border border-line/70 bg-white/[0.9] p-4 shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)] backdrop-blur;
+    @apply rounded-2xl border border-line/60 bg-white/90 p-5 shadow-card backdrop-blur;
+  }
+
+  .lh-card-flat {
+    @apply rounded-2xl bg-surface/70;
+  }
+
+  .lh-card-elevated {
+    @apply rounded-2xl border border-white/70 bg-white/95 shadow-raised backdrop-blur-glass;
   }
 
   .lh-card-soft {
-    @apply rounded-md border border-line bg-surface/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.74)];
+    @apply rounded-lg border border-line/70 bg-surface/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.74)];
   }
 
+  /* ------------------------------------------------------------ metrics */
   .lh-metric {
-    @apply rounded-lg border border-line/70 bg-white/[0.92] p-3.5 shadow-[0_7px_22px_-20px_rgba(33,97,156,0.18)] backdrop-blur;
+    @apply rounded-2xl border border-line/60 bg-white/90 p-4 shadow-card backdrop-blur;
   }
 
   .lh-metric-icon {
-    @apply flex h-8 w-8 items-center justify-center rounded-md border border-line bg-brand-soft text-brand-deep;
+    @apply flex h-8 w-8 items-center justify-center rounded-md bg-brand-soft text-brand-deep;
   }
 
+  .lh-metric-value {
+    @apply text-metric font-semibold leading-none tracking-title text-ink tnum;
+  }
+
+  .lh-metric-label {
+    @apply mt-1.5 text-caption text-muted;
+  }
+
+  /* ------------------------------------------------------------ buttons */
+  .lh-btn {
+    @apply inline-flex h-control select-none items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 text-small font-semibold transition duration-fast;
+  }
+
+  .lh-btn:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  .lh-btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .lh-btn-primary {
+    @apply lh-btn bg-brand text-white shadow-control hover:bg-brand-deep hover:brightness-110;
+  }
+
+  .lh-btn-secondary {
+    @apply lh-btn border border-line bg-white/80 text-ink shadow-hairline hover:border-brand-edge hover:bg-white;
+  }
+
+  .lh-btn-tertiary {
+    @apply lh-btn text-brand-deep hover:bg-brand-soft;
+  }
+
+  /* Restrained until the destructive decision is actually being confirmed. */
+  .lh-btn-danger {
+    @apply lh-btn border border-danger-line bg-white/80 text-danger hover:border-danger hover:bg-danger-soft;
+  }
+
+  .lh-btn-danger-solid {
+    @apply lh-btn bg-danger text-white hover:bg-danger-deep;
+  }
+
+  .lh-btn-icon {
+    @apply inline-flex h-control w-control shrink-0 items-center justify-center rounded-md text-body transition duration-fast hover:bg-ink/5 hover:text-ink;
+  }
+
+  .lh-btn-icon:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  /* The original names, kept so every existing call site moves with the system. */
   .lh-primary-button {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-60;
+    @apply lh-btn-primary;
   }
 
   .lh-secondary-button {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white/90 px-3 py-2 text-xs font-semibold text-ink transition hover:border-brand-edge hover:bg-white;
+    @apply lh-btn-secondary;
   }
 
   .lh-icon-button {
-    @apply inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-white/90 text-brand transition hover:border-brand-edge hover:bg-white;
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-line bg-white/80 text-brand transition duration-fast hover:border-brand-edge hover:bg-white;
   }
 
+  /* ------------------------------------------------------------ form controls */
+  .lh-label {
+    @apply mb-1.5 flex items-center gap-1 text-caption font-medium text-body;
+  }
+
+  .lh-input {
+    @apply block h-control-lg w-full rounded-md border border-line bg-white/80 px-3 text-control text-ink shadow-hairline outline-none transition duration-fast placeholder:text-muted/80 hover:border-edge focus:border-brand-vivid/60 focus:bg-white focus:shadow-focus disabled:cursor-not-allowed disabled:bg-surface disabled:text-muted;
+  }
+
+  .lh-select {
+    @apply lh-input pr-8;
+  }
+
+  .lh-textarea {
+    @apply lh-input h-auto min-h-[88px] resize-y py-2.5 leading-5;
+  }
+
+  /* ------------------------------------------------------------ segmented / tabs */
+  .lh-segmented {
+    @apply relative inline-flex items-center gap-0.5 rounded-md bg-ink/[0.05] p-0.5;
+  }
+
+  .lh-segmented-item {
+    @apply relative z-10 inline-flex h-control-sm items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 text-small font-medium text-body transition duration-fast hover:text-ink;
+  }
+
+  .lh-segmented-item[aria-checked='true'] {
+    @apply text-ink;
+  }
+
+  /* The capsule that slides under the selected item. */
+  .lh-segmented-thumb {
+    @apply pointer-events-none absolute bottom-0.5 top-0.5 z-0 rounded-sm bg-white shadow-control transition-all duration-normal ease-spring;
+  }
+
+  .lh-tabs {
+    @apply flex items-center gap-1 overflow-x-auto border-b border-line/70;
+    scrollbar-width: none;
+  }
+
+  .lh-tab {
+    @apply relative -mb-px inline-flex h-control shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 border-transparent px-3 text-small font-medium text-muted transition duration-fast hover:text-ink;
+  }
+
+  .lh-tab[aria-selected='true'] {
+    @apply border-brand text-ink;
+  }
+
+  /* ------------------------------------------------------------ lists and tables */
   .lh-list-row {
-    @apply rounded-md border border-line bg-white/80 transition hover:border-brand-edge hover:bg-brand-soft/60 hover:shadow-[0_8px_24px_-22px_rgba(33,97,156,0.28)];
+    @apply rounded-lg border border-line/70 bg-white/80 transition duration-fast hover:border-brand-edge hover:bg-brand-soft/60;
   }
 
   .lh-list-row-active {
-    @apply border-brand-edge bg-brand-soft shadow-[0_10px_28px_-24px_rgba(8,114,222,0.45)];
+    @apply border-brand-edge bg-brand-soft shadow-nav-active;
   }
 
   .lh-table-shell {
-    @apply overflow-x-auto rounded-lg border border-line/80 bg-white/95 shadow-[0_8px_24px_-22px_rgba(33,97,156,0.18)];
+    @apply overflow-x-auto rounded-xl border border-line/70 bg-white shadow-hairline;
   }
 
   .lh-table-head {
-    @apply bg-surface/80 text-muted;
+    @apply bg-surface/70 text-muted;
+  }
+
+  .lh-table-row {
+    @apply h-11 border-t border-line/60 transition-colors duration-instant hover:bg-brand-soft/40;
   }
 
   .lh-section-label {
-    @apply text-2xs font-semibold uppercase tracking-[0.01em] text-muted;
+    @apply text-caption font-semibold text-muted;
+  }
+
+  /* Small system metadata where uppercase genuinely helps scanning. */
+  .lh-eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.06em] text-muted;
   }
 
   .lh-status-strip {
-    @apply inline-flex items-center gap-2 rounded-lg border border-line bg-white/[0.78] px-3 py-2 text-xs font-medium shadow-[0_8px_24px_-22px_rgba(33,97,156,0.22)] backdrop-blur;
+    @apply inline-flex items-center gap-2 rounded-lg border border-line/70 bg-white/80 px-3 py-2 text-xs font-medium shadow-hairline backdrop-blur;
   }
 
   .lh-side-panel {
     min-width: 0;
   }
 
+  /* ------------------------------------------------------------ floating layers */
+  .lh-popover {
+    @apply lh-glass-elevated animate-pop-in rounded-2xl p-1.5;
+  }
+
+  .lh-menu-item {
+    @apply flex min-h-[36px] w-full items-center gap-2.5 rounded-md px-2.5 text-left text-small text-ink-soft transition duration-instant hover:bg-ink/5 hover:text-ink;
+  }
+
+  .lh-modal {
+    @apply lh-glass-elevated animate-modal-in rounded-4xl shadow-modal;
+  }
+
+  .lh-backdrop {
+    @apply animate-fade-in bg-ink/20 backdrop-blur-[3px];
+  }
+
+  .lh-context-bar {
+    @apply lh-glass rounded-2xl;
+  }
+
+  /* ------------------------------------------------------------ status */
+  .lh-pill {
+    @apply inline-flex h-[22px] items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-medium leading-none ring-1 ring-inset;
+  }
+
+  /* ------------------------------------------------------------ Luminary AI */
+  .lh-ai-surface {
+    @apply relative overflow-hidden rounded-2xl border border-brand-edge/40 bg-white/85 shadow-raised backdrop-blur-glass;
+    background-image:
+      radial-gradient(120% 80% at 0% 0%, rgba(86, 168, 255, 0.1), transparent 55%),
+      radial-gradient(90% 70% at 100% 0%, rgba(14, 143, 168, 0.08), transparent 60%);
+  }
+
+  .lh-ai-thinking {
+    background-image: linear-gradient(90deg, rgba(86, 168, 255, 0) 0%, rgba(86, 168, 255, 0.16) 50%, rgba(86, 168, 255, 0) 100%);
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  .lh-skeleton {
+    background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 100%);
+    background-size: 200% 100%;
+    @apply animate-shimmer rounded-sm bg-ink/[0.06];
+  }
+
   .lh-chat-user {
-    @apply bg-brand text-white shadow-[0_12px_30px_-22px_rgba(8,114,222,0.45)];
+    @apply bg-brand text-white shadow-control;
   }
 
   .lh-chat-ai {
-    @apply border border-line bg-surface text-ink-soft shadow-[0_8px_24px_-22px_rgba(33,97,156,0.22)];
+    @apply border border-line/70 bg-surface text-ink-soft shadow-hairline;
+  }
+}
+
+@layer utilities {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
   }
 }
 
@@ -140,28 +366,37 @@ body,
   min-height: 100%;
   background: var(--canvas);
   color: var(--ink);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "cv05" 1, "ss01" 1;
 }
 
 body {
   min-height: 100vh;
   background:
-    linear-gradient(180deg, #f8fbff 0%, #f5f9fe 52%, #f1f7fd 100%);
+    linear-gradient(180deg, var(--canvas-top) 0%, var(--canvas) 52%, var(--canvas-bottom) 100%);
 }
 
+/* Dark: closer to dark macOS than to navy SaaS — an almost-black navy canvas,
+   translucent deep surfaces, soft white text, restrained blue. */
 body.lh-dark {
-  --canvas: #07111f;
-  --ink: #edf6ff;
+  --canvas: #0a1019;
+  --canvas-top: #0c131d;
+  --canvas-bottom: #0f1824;
+  --ink: #edf3fa;
   --brand: #62b3ff;
-  --luminary-bg-soft: #0d1a2b;
-  --luminary-surface: rgba(13, 28, 46, 0.92);
-  --luminary-border: rgba(151, 184, 218, 0.18);
+  --luminary-bg-soft: #111a26;
+  --luminary-surface: rgba(17, 26, 38, 0.92);
+  --luminary-border: rgba(151, 184, 218, 0.16);
+  --lh-glass-subtle: rgba(15, 26, 40, 0.62);
+  --lh-glass: rgba(15, 26, 40, 0.7);
+  --lh-glass-elevated: rgba(19, 30, 45, 0.86);
+  --lh-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --lh-surface: rgba(17, 26, 38, 0.94);
+  --lh-surface-soft: rgba(23, 34, 49, 0.72);
   background:
-    linear-gradient(180deg, #081322 0%, #0b1828 52%, #0f1e30 100%);
+    linear-gradient(180deg, var(--canvas-top) 0%, var(--canvas) 52%, var(--canvas-bottom) 100%);
   color: var(--ink);
 }
 
@@ -205,15 +440,15 @@ body.lh-dark .text-danger-deep {
 }
 
 body.lh-dark .bg-canvas {
-  background-color: #07111f !important;
+  background-color: #0a1019 !important;
 }
 
 body.lh-dark [class*="bg-white"] {
-  background-color: rgba(13, 28, 46, 0.88) !important;
+  background-color: rgba(17, 26, 38, 0.88) !important;
 }
 
 body.lh-dark [class*="bg-surface"] {
-  background-color: rgba(16, 34, 55, 0.88) !important;
+  background-color: rgba(23, 34, 49, 0.88) !important;
 }
 
 body.lh-dark [class*="bg-line"] {
@@ -251,12 +486,14 @@ body.lh-dark [class*="border-white"] {
 
 body.lh-dark .lh-card,
 body.lh-dark .lh-card-pad,
+body.lh-dark .lh-card-elevated,
 body.lh-dark .lh-metric,
+body.lh-dark .lh-surface,
 body.lh-dark .lh-table-shell,
 body.lh-dark .lh-status-strip {
-  background: rgba(11, 24, 39, 0.9) !important;
-  border-color: rgba(151, 184, 218, 0.17) !important;
-  box-shadow: 0 18px 45px -34px rgba(0, 0, 0, 0.86);
+  background: rgba(17, 26, 38, 0.9) !important;
+  border-color: rgba(151, 184, 218, 0.14) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 45px -34px rgba(0, 0, 0, 0.86);
 }
 
 body.lh-dark .lh-card-soft,
@@ -290,6 +527,108 @@ body.lh-dark .lh-list-row:hover,
 body.lh-dark .lh-list-row-active {
   background-color: rgba(30, 77, 116, 0.64) !important;
   border-color: rgba(98, 179, 255, 0.42) !important;
+}
+
+/* Clinical Glass primitives. Their fills come from @apply, not from a class
+   attribute the [class*=…] rules above can see, so each is named here. */
+body.lh-dark .lh-glass,
+body.lh-dark .lh-glass-elevated,
+body.lh-dark .lh-popover,
+body.lh-dark .lh-modal,
+body.lh-dark .lh-context-bar {
+  border-color: rgba(151, 184, 218, 0.14);
+}
+
+body.lh-dark .lh-glass,
+body.lh-dark .lh-context-bar {
+  box-shadow: var(--lh-glass-highlight), 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+body.lh-dark .lh-glass-elevated,
+body.lh-dark .lh-popover,
+body.lh-dark .lh-modal {
+  box-shadow: var(--lh-glass-highlight), 0 32px 72px -16px rgba(0, 0, 0, 0.7);
+}
+
+body.lh-dark .lh-backdrop {
+  background-color: rgba(3, 7, 12, 0.5);
+}
+
+body.lh-dark .lh-card-flat,
+body.lh-dark .lh-segmented {
+  background-color: rgba(151, 184, 218, 0.08);
+}
+
+body.lh-dark .lh-segmented-thumb {
+  background-color: rgba(52, 70, 94, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+body.lh-dark .lh-segmented-item,
+body.lh-dark .lh-tab {
+  color: #8fa4bb;
+}
+
+body.lh-dark .lh-segmented-item[aria-checked='true'],
+body.lh-dark .lh-tab[aria-selected='true'] {
+  color: #edf3fa;
+}
+
+body.lh-dark .lh-tabs {
+  border-color: rgba(151, 184, 218, 0.14);
+}
+
+body.lh-dark .lh-btn-secondary,
+body.lh-dark .lh-btn-danger {
+  background-color: rgba(17, 26, 38, 0.86);
+  border-color: rgba(151, 184, 218, 0.2);
+  box-shadow: none;
+}
+
+body.lh-dark .lh-btn-secondary {
+  color: #edf3fa;
+}
+
+body.lh-dark .lh-btn-danger {
+  color: #ff8fa1;
+  border-color: rgba(255, 143, 161, 0.3);
+}
+
+body.lh-dark .lh-btn-icon,
+body.lh-dark .lh-menu-item {
+  color: #bed0e3;
+}
+
+body.lh-dark .lh-btn-icon:hover,
+body.lh-dark .lh-menu-item:hover {
+  background-color: rgba(151, 184, 218, 0.1);
+  color: #edf3fa;
+}
+
+body.lh-dark .lh-label {
+  color: #bed0e3;
+}
+
+body.lh-dark .lh-table-row {
+  border-color: rgba(151, 184, 218, 0.12);
+}
+
+body.lh-dark .lh-table-row:hover {
+  background-color: rgba(98, 179, 255, 0.06);
+}
+
+body.lh-dark .lh-ai-surface {
+  background-color: rgba(17, 26, 38, 0.88);
+  border-color: rgba(98, 179, 255, 0.22);
+}
+
+body.lh-dark .lh-pill {
+  --tw-ring-color: rgba(151, 184, 218, 0.14);
+}
+
+body.lh-dark .lh-skeleton {
+  background-color: rgba(151, 184, 218, 0.1);
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.06) 50%, rgba(255, 255, 255, 0) 100%);
 }
 
 body.lh-dark .rounded-full.bg-line,
@@ -336,8 +675,7 @@ button {
 }
 
 /* Figures must align in columns — currency, counts, percentages, dates. */
-table,
-.tnum {
+table {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }

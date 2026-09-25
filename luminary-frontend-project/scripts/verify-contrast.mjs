@@ -51,7 +51,10 @@ const walk = (dir, out = []) => {
 };
 
 /** Sizes at or above this are "large text" and may use the 3:1 threshold. */
-const LARGE = new Set(['text-lg', 'text-xl', 'text-2xl']);
+const LARGE = new Set([
+  'text-lg', 'text-xl', 'text-2xl',
+  'text-section', 'text-heading', 'text-page', 'text-page-lg', 'text-metric', 'text-display',
+]);
 
 const failures = [];
 const pairsSeen = new Set();

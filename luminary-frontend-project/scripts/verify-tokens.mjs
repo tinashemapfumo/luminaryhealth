@@ -2,7 +2,7 @@
  * The design system stays a system.
  *
  * Consolidating it was the easy half: 75 hex values became 41 named colours,
- * fifteen font sizes became eight, six radii became three. Keeping it that way
+ * fifteen font sizes became one named scale, six radii became one named scale. Keeping it that way
  * is the half that fails silently, because a single pasted `text-[#5a6d87]`
  * costs nothing today and there were 1,032 of them by the time anyone counted.
  *
@@ -45,12 +45,12 @@ const rules = [
   {
     name: 'font size',
     pattern: /(?:^|[\s"'`{])text-\[[0-9.]+(?:px|rem|em)\]/g,
-    fix: 'use a step from the fontSize scale (2xs xs sm base md lg xl 2xl)',
+    fix: 'use a step from the fontSize scale (micro caption small copy copy-lg control section heading page page-lg metric display, or legacy 2xs–2xl)',
   },
   {
     name: 'radius',
     pattern: /(?:^|[\s"'`{])rounded(?:-[trbl]{1,2})?-\[[0-9.]+(?:px|rem)\]/g,
-    fix: 'use rounded-sm (4px), rounded (6px) or rounded-lg (8px)',
+    fix: 'use a step from the radius scale (xs 6, sm 8, DEFAULT 10, md 12, lg 14, xl 16, 2xl 20, 3xl 24, 4xl 28, full)',
   },
 ];
 

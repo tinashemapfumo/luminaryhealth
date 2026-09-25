@@ -3673,7 +3673,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       <aside className={`${sidebarCollapsed ? 'w-[76px]' : 'w-[232px]'} lh-glass-subtle relative hidden min-h-0 shrink-0 flex-col overflow-hidden border-r border-line/60 px-3 pb-3 pt-4 text-shell-on transition-[width] duration-normal lg:flex`}>
         <OceanWaveDecoration className="absolute -bottom-36 left-0 h-72 w-[158%] -translate-x-14 opacity-40" />
         <div className={`relative flex items-center pb-3 pt-0.5 ${sidebarCollapsed ? 'flex-col gap-3' : 'justify-between px-1.5'}`}>
-          {sidebarCollapsed ? <LuminaryMark size={30} /> : <LuminaryLogo size={30} />}
+          {sidebarCollapsed ? <LuminaryMark size={30} onDark={darkMode} /> : <LuminaryLogo size={30} onDark={darkMode} />}
 
           <button
             type="button"
@@ -4063,54 +4063,70 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         </nav>
 
         {/* Patient context follows the user across modules — clinicians must always
-            know whose record is in focus before they act on it. */}
-        {['patients', 'clinical', 'claims', 'billing'].includes(activeView) && (
-          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-white/70 px-4 py-2.5 backdrop-blur sm:px-6">
-            <div className="flex items-center gap-2.5">
-              <HumanAvatar
-                initials={selectedPatient.name.split(' ').map((part) => part[0]).join('')}
-                label={selectedPatient.name}
-                className="h-7 w-7"
-              />
-              <div>
-                <p className="text-base font-semibold leading-tight text-ink">{selectedPatient.name}</p>
-                <p className="text-xs leading-tight text-muted">{selectedPatient.id} · {String(selectedPatient.memberNo ?? '').replace(/Self-pay/g, 'Self pay')}</p>
+            know whose record is in focus before they act on it. It sits outside
+            the scroller, so it never scrolls away. Identity leads; balance is
+            quiet metadata; break-glass and allergies are the loud parts. */}
+        {['patients', 'clinical', 'claims', 'billing'].includes(activeView) && (() => {
+          const rel = careRelationship(currentUser, selectedPatient, accessContext);
+          const isBreakGlass = rel?.type === RELATIONSHIP.BREAK_GLASS;
+          // Allergies are clinical information, so only roles that read clinical
+          // notes see them here — this bar also shows on Billing and Claims.
+          const showAllergies = access.can.viewClinicalNotes && selectedPatient.allergiesRecorded !== undefined;
+          const allergyList = selectedPatient.allergies || [];
+          return (
+            <div className={`lh-context-bar relative flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5 sm:px-6 ${isBreakGlass ? 'shadow-[inset_3px_0_0_rgba(185,67,80,0.9)]' : ''}`}>
+              <div key={selectedPatient.id} className="flex min-w-0 animate-fade-in items-center gap-3">
+                <HumanAvatar
+                  initials={selectedPatient.name.split(' ').map((part) => part[0]).join('')}
+                  label={selectedPatient.name}
+                  className="h-9 w-9"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-copy font-semibold leading-tight text-ink">{selectedPatient.name}</p>
+                  <p className="truncate text-caption leading-tight text-muted tnum">{selectedPatient.id} · {String(selectedPatient.memberNo ?? '').replace(/Self-pay/g, 'Self pay')}</p>
+                </div>
+                <StatusPill label={selectedPatient.status} tone={patientStatusTone[selectedPatient.status]} />
               </div>
-            </div>
-            <span className="hidden h-6 w-px bg-edge-strong sm:block" />
-            <p className="text-xs text-muted">Next visit <span className="font-medium text-ink">{selectedPatient.next}</span></p>
-            <p className="text-xs text-muted">Balance <span className="font-medium text-ink">{currency(selectedPatient.balance)}</span></p>
-            <p className="text-xs text-muted">Provider <span className="font-medium text-ink">{selectedPatient.provider}</span></p>
-            <StatusPill label={selectedPatient.status} tone={patientStatusTone[selectedPatient.status]} />
 
-            {/* Say on what grounds this chart is open. Break-glass is called
-                out loudly, because the user should never forget they are in it. */}
-            {(() => {
-              const rel = careRelationship(currentUser, selectedPatient, accessContext);
-              if (!rel) return null;
-              const isBreakGlass = rel.type === RELATIONSHIP.BREAK_GLASS;
-              return (
+              {/* Say on what grounds this chart is open. Break-glass is called
+                  out loudly, because the user should never forget they are in it. */}
+              {rel && (
                 <span
                   title={rel.detail}
-                  className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-2xs font-semibold uppercase tracking-[0.08em] ${
-                    isBreakGlass ? 'bg-danger-soft text-danger' : 'bg-brand-soft text-brand-deep'
-                  }`}
+                  className={`lh-pill ${isBreakGlass ? 'bg-danger font-semibold uppercase tracking-[0.06em] text-white ring-danger-deep' : 'bg-brand/[0.08] text-brand-deep ring-brand-edge/40'}`}
                 >
-                  {isBreakGlass && <AlertTriangle size={10} />}
+                  {isBreakGlass ? <AlertTriangle size={12} strokeWidth={2.2} /> : <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden="true" />}
                   {rel.type}
                 </span>
-              );
-            })()}
+              )}
 
-            <button
-              type="button"
-              onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }}
-              className="text-xs font-medium text-brand hover:underline sm:ml-auto"
-            >
-              Switch patient
-            </button>
-          </div>
-        )}
+              {showAllergies && (allergyList.length > 0 || !selectedPatient.allergiesRecorded) && (
+                <span
+                  className={`lh-pill max-w-[320px] font-semibold ${allergyList.length > 0 ? 'bg-danger-soft text-danger-deep ring-danger-line' : 'bg-warning-soft text-warning-deep ring-warning-line'}`}
+                  title={allergyList.length > 0 ? `Allergies: ${allergyList.join('; ')}` : 'Allergies not yet reviewed'}
+                >
+                  <AlertTriangle size={12} strokeWidth={2.2} className="shrink-0" />
+                  <span className="truncate">{allergyList.length > 0 ? `Allergy: ${allergyList.join('; ')}` : 'Allergies not reviewed'}</span>
+                </span>
+              )}
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted lg:ml-auto">
+                <span>Next visit <span className="font-medium text-ink">{selectedPatient.next}</span></span>
+                <span className="hidden xl:inline">Provider <span className="font-medium text-ink">{selectedPatient.provider}</span></span>
+                <span>Balance <span className="font-medium text-ink tnum">{currency(selectedPatient.balance)}</span></span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }}
+                className="inline-flex h-8 items-center gap-1 rounded-sm px-2.5 text-caption font-medium text-brand-deep transition duration-fast hover:bg-brand/[0.08]"
+              >
+                Switch patient
+                <ChevronRight size={14} strokeWidth={1.8} />
+              </button>
+            </div>
+          );
+        })()}
 
         <div className="relative z-10 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 lg:px-8 lg:py-6">
           <WorkspaceProvider value={workspace}>{renderActiveView()}</WorkspaceProvider>

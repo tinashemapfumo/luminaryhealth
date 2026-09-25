@@ -37,6 +37,13 @@
   --lh-dur-normal: 180ms;
   --lh-dur-slow: 240ms;
   --luminary-transition: var(--lh-dur-normal) var(--lh-ease);
+
+  /* Sticky geometry inside the workspace scroller. --lh-chrome is roughly the
+     header plus the patient context bar plus bottom padding; a pinned panel is
+     capped so its own scroll never runs off-screen. Pages with a sticky tab bar
+     raise --lh-sticky-top (see .lh-has-sticky-bar) so panels pin below it. */
+  --lh-chrome: 10rem;
+  --lh-sticky-top: 0px;
 }
 
 /* -----------------------------------------------------------------------------
@@ -310,7 +317,44 @@
   }
 
   .lh-context-bar {
-    @apply lh-glass rounded-2xl;
+    @apply lh-glass-subtle border-b border-line/50;
+  }
+
+  /* A page's own toolbar (section tabs, filters) that pins under the chrome
+     while the page scrolls. It bleeds to the scroller's edges so content
+     passes cleanly beneath it; the hairline and shadow appear only once it
+     is actually stuck (data-stuck, set by <StickyBar>). */
+  .lh-sticky-bar {
+    /* Sticky offsets are measured inside the scroller's padding (p-4, sm:p-6),
+       so the bar sticks at minus that padding to sit flush under the chrome,
+       and one pixel more so it is clipped — which is how it knows it is stuck. */
+    @apply sticky -top-[17px] z-10 -mx-4 px-4 py-2 duration-normal sm:-top-[25px] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8;
+    @apply border-b border-transparent;
+    transition-property: background-color, border-color, box-shadow;
+  }
+
+  /* Only once pinned does it become a surface — more opaque than sidebar
+     glass, because text scrolls directly beneath it. */
+  .lh-sticky-bar[data-stuck='true'] {
+    background-color: var(--lh-glass-elevated);
+    @apply border-line/60 shadow-hairline backdrop-blur-glass backdrop-saturate-glass;
+  }
+
+  /* Pinned panels on a page with a sticky bar start just below it. */
+  .lh-has-sticky-bar {
+    --lh-sticky-top: 2.25rem;
+  }
+
+  /* A preview or side panel that stays put while the list beside it scrolls.
+     Apply it at the breakpoint where the layout is two columns (e.g.
+     xl:lh-sticky-panel); in a single column it would sit over the content. */
+  .lh-sticky-panel {
+    position: sticky;
+    top: var(--lh-sticky-top);
+    max-height: calc(100vh - var(--lh-chrome) - var(--lh-sticky-top));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
 
   /* ------------------------------------------------------------ status */
@@ -506,8 +550,8 @@ body.lh-dark .lh-chat-ai {
 @media (min-width: 1536px) {
   .lh-side-panel {
     position: sticky;
-    top: 1rem;
-    max-height: calc(100vh - 9rem);
+    top: var(--lh-sticky-top);
+    max-height: calc(100vh - var(--lh-chrome) - var(--lh-sticky-top));
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-right: 0.25rem;
@@ -539,8 +583,7 @@ body.lh-dark .lh-context-bar {
   border-color: rgba(151, 184, 218, 0.14);
 }
 
-body.lh-dark .lh-glass,
-body.lh-dark .lh-context-bar {
+body.lh-dark .lh-glass {
   box-shadow: var(--lh-glass-highlight), 0 12px 32px rgba(0, 0, 0, 0.35);
 }
 
@@ -548,6 +591,11 @@ body.lh-dark .lh-glass-elevated,
 body.lh-dark .lh-popover,
 body.lh-dark .lh-modal {
   box-shadow: var(--lh-glass-highlight), 0 32px 72px -16px rgba(0, 0, 0, 0.7);
+}
+
+body.lh-dark .lh-sticky-bar[data-stuck='true'] {
+  border-color: rgba(151, 184, 218, 0.14);
+  box-shadow: 0 8px 20px -16px rgba(0, 0, 0, 0.7);
 }
 
 body.lh-dark .lh-backdrop {

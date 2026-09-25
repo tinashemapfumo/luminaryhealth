@@ -16,10 +16,11 @@ import {
   ShieldCheck,
   Stethoscope,
   AlertTriangle,
+  CheckCircle2,
   User,
   Upload,
 } from 'lucide-react';
-import { Field, Input, Select, Textarea, Button, EmptyState, Modal } from './ui';
+import { Field, Input, Select, Textarea, Button, EmptyState, Modal, StickyBar } from './ui';
 import PrescriptionPrintDocument from './shared/PrescriptionPrintDocument';
 import {
   ageFromDob,
@@ -265,97 +266,117 @@ export default function PatientFile({
     }, 0);
   };
 
+  // Allergy strip tone: red when allergies are recorded, amber when nobody has
+  // asked yet, calm only when the answer is genuinely "none known".
+  const allergyAlert = !record.allergiesRecorded || record.allergies?.length > 0;
+  const allergyTone = !record.allergiesRecorded
+    ? 'border-warning-line bg-warning-soft text-warning-deep'
+    : record.allergies?.length
+      ? 'border-danger-line bg-danger-soft text-danger-deep'
+      : 'border-line/70 bg-surface/60 text-body';
+
   return (
     <>
     <PrescriptionPrintDocument prescription={prescriptionToPrint} patient={record} practice={practice} />
     <div className="space-y-5">
-      {/* Chart banner — identity and the facts you must not act without. */}
-      <div className="rounded-lg border border-line bg-white/95 shadow-[0_16px_42px_-34px_rgba(11,21,36,0.55)]">
-        <div className="flex flex-wrap items-start justify-between gap-4 p-5">
-          <div className="flex items-start gap-4">
+      {/* Chart banner — identity and the facts you must not act without. The
+          patient is the subject of the page, so identity leads; the allergy
+          strip is its own row because it is a safety control, not metadata. */}
+      <div className="lh-surface overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-5 p-5 sm:p-6">
+          <div className="flex min-w-0 items-start gap-4">
             <button
               type="button"
               onClick={onBack}
               aria-label="Back to registry"
-              className="mt-1 rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-ink"
+              className="lh-btn-icon -ml-2 mt-2 h-control-sm w-control-sm"
             >
-              <ArrowLeft size={15} />
+              <ArrowLeft size={17} strokeWidth={1.8} />
             </button>
-            <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-ink text-lg font-semibold text-white">
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-soft text-lg font-semibold text-brand-deep ring-1 ring-inset ring-brand-edge/50">
               {initials}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-xl font-semibold tracking-[-0.02em] text-ink">{record.name}</h1>
+                <h1 className="text-heading font-semibold tracking-heading text-ink">{record.name}</h1>
                 <StatusPill label={registry.status} tone={statusTone[registry.status]} />
                 {record.risk === 'High risk' && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.08em] text-danger">
-                    <AlertTriangle size={10} /> High risk
+                  <span className="lh-pill bg-danger-soft font-semibold text-danger-deep ring-danger-line">
+                    <AlertTriangle size={12} strokeWidth={2} /> High risk
                   </span>
                 )}
               </div>
-              <p className="mt-1.5 text-base text-body">
+              <p className="mt-1 text-copy text-body tnum">
                 {record.id} · {age} yrs · {record.sex || 'Sex not recorded'} · {record.bloodType || 'Blood type unknown'}
               </p>
-              <p className="mt-0.5 text-sm text-muted">
+              <p className="mt-0.5 text-small text-muted">
                 {displayText(record.coverPlan)} · {displayText(record.memberNo)} · Registered {record.registered}
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-2.5">
-            {can.exportPatientRecord && (
-              <Button variant="secondary" type="button" onClick={() => setExportOpen(true)}>
-                <Download size={13} /> Export file
-              </Button>
-            )}
-            {canEdit && !editing && (
-              <Button variant="secondary" type="button" onClick={() => startEdit('all')}>
-                <Pencil size={13} /> Edit record
-              </Button>
-            )}
-            <div className="w-52">
-              <div className="flex items-center justify-between text-xs">
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              {can.exportPatientRecord && (
+                <Button variant="secondary" type="button" onClick={() => setExportOpen(true)}>
+                  <Download size={15} strokeWidth={1.8} /> Export file
+                </Button>
+              )}
+              {canEdit && !editing && (
+                <Button variant="secondary" type="button" onClick={() => startEdit('all')}>
+                  <Pencil size={15} strokeWidth={1.8} /> Edit record
+                </Button>
+              )}
+            </div>
+            <div className="w-56">
+              <div className="flex items-center justify-between text-caption">
                 <span className="text-muted">Record completeness</span>
-                <span className={`font-semibold ${completeness.percent === 100 ? 'text-success' : 'text-warning'}`}>
+                <span className={`font-semibold tnum ${completeness.percent === 100 ? 'text-success' : 'text-warning'}`}>
                   {completeness.percent}%
                 </span>
               </div>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-ink/[0.06]">
                 <div
-                  className={`h-full rounded-full ${completeness.percent === 100 ? 'bg-success-bright' : 'bg-warning-bright'}`}
+                  className={`h-full rounded-full transition-[width] duration-slow ${completeness.percent === 100 ? 'bg-success-bright' : 'bg-warning-bright'}`}
                   style={{ width: `${completeness.percent}%` }}
                 />
               </div>
-              <p className="mt-1 text-2xs text-muted">
+              <p className="mt-1 text-caption text-muted">
                 {completeness.captured} of {completeness.total} required fields
               </p>
             </div>
           </div>
         </div>
 
-        {/* Allergy banner is deliberately loud — this is a safety control. */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-line bg-surface px-5 py-2.5 text-sm">
-          <span className={record.allergies?.length ? 'font-medium text-danger' : 'text-muted'}>
+        {/* Allergy banner is deliberately loud — this is a safety control. Red
+            when allergies are recorded, amber when nobody has asked yet, calm
+            only when the answer is genuinely "none known". */}
+        <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 border-t px-5 py-3 sm:px-6 ${allergyTone}`}>
+          <span role={allergyAlert ? 'alert' : undefined} className="inline-flex items-center gap-2 text-small font-semibold">
+            {allergyAlert
+              ? <AlertTriangle size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+              : <CheckCircle2 size={16} strokeWidth={1.8} className="shrink-0 text-success" aria-hidden="true" />}
             {record.allergiesRecorded
               ? record.allergies?.length
                 ? `Allergies: ${record.allergies.join('; ')}`
                 : 'Allergies: none known'
               : '⚠ Allergies not yet reviewed'}
           </span>
-          <span className="text-muted">Balance <strong className="font-semibold text-ink">{currency(registry.balance)}</strong></span>
-          <span className="text-muted">Next visit <strong className="font-semibold text-ink">{registry.next}</strong></span>
-          <span className="text-muted">Provider <strong className="font-semibold text-ink">{registry.provider}</strong></span>
+          <span className="flex flex-wrap items-center gap-x-5 gap-y-1 text-small text-muted sm:ml-auto">
+            <span>Balance <strong className="font-semibold text-ink tnum">{currency(registry.balance)}</strong></span>
+            <span>Next visit <strong className="font-semibold text-ink">{registry.next}</strong></span>
+            <span>Provider <strong className="font-semibold text-ink">{registry.provider}</strong></span>
+          </span>
         </div>
 
         {completeness.missing.length > 0 && !editing && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-warning-line bg-warning-soft px-5 py-2.5">
-            <AlertTriangle size={14} className="text-warning" />
-            <span className="text-sm text-warning-deep">
+          <div className="flex flex-wrap items-center gap-2 border-t border-warning-line bg-warning-soft/70 px-5 py-2.5 sm:px-6">
+            <AlertTriangle size={15} strokeWidth={1.8} className="text-warning" />
+            <span className="text-small text-warning-deep">
               Missing: {completeness.missing.map((field) => field.label).join(', ')}
             </span>
             {canEdit && (
-              <button type="button" onClick={() => startEdit('all')} className="text-sm font-semibold text-brand hover:underline">
+              <button type="button" onClick={() => startEdit('all')} className="text-small font-semibold text-brand hover:underline">
                 Complete now
               </button>
             )}
@@ -363,22 +384,23 @@ export default function PatientFile({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-1.5" role="tablist">
-        {TABS.map((item) => (
-          <button
-            key={item}
-            role="tab"
-            type="button"
-            aria-selected={tab === item}
-            onClick={() => setTab(item)}
-            className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
-              tab === item ? 'bg-brand text-white' : 'bg-white text-body ring-1 ring-inset ring-line hover:ring-brand-edge'
-            }`}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
+      {/* The tab row pins while a long chart scrolls. */}
+      <StickyBar className="py-0">
+        <div className="lh-tabs border-b-0" role="tablist" aria-label="Patient file sections">
+          {TABS.map((item) => (
+            <button
+              key={item}
+              role="tab"
+              type="button"
+              aria-selected={tab === item}
+              onClick={() => setTab(item)}
+              className="lh-tab"
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </StickyBar>
 
       {editing ? (
         <form onSubmit={save} className="space-y-4">

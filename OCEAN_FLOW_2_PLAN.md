@@ -6,7 +6,7 @@ calls, permissions, routing, break-glass rules or workflows are touched.
 
 - **Branch:** `design/ocean-flow-2`, cut from `main` at `22be4b4`.
 - **Restore point:** tag `restore-point-2026-09-25`.
-- **Status:** Phases 1–3 are done. Phases 4 and 5 have not started.
+- **Status:** Phases 1–4 are done, including pinned page toolbars and panels. Phase 5 has not started.
 
 ---
 
@@ -166,13 +166,32 @@ sentence case. Sentence case is applied with `first-letter:uppercase`, so
 | 1. Foundation | Tokens, CSS variables, dark-mode variables, verifier scales | `tailwind.config.js`, `index.css`, `scripts/verify-tokens.mjs`, `scripts/verify-contrast.mjs` | **Done** (`89f3816`) |
 | 2. Primitives | Shared classes and `ui.jsx` components, StatusPill, EmptyState consolidation | `index.css`, `ui.jsx`, `shared/StatusPill.jsx`, `shared/EmptyState.jsx` | **Done** (`6ed1603`) |
 | 3. Shell | Sidebar grouping (Care / Finance / Engagement / Intelligence, still role-filtered), nav item styling, header search trigger, alerts, account and workspace menus → `lh-popover`, command palette, fewer waves | `LuminaryDemo.jsx` (chrome markup only), `config/access.js` (adds a presentation-only `navGroups` list; permissions untouched) | **Done** (`536d9ba`) |
-| 4. Context | Patient context bar → `lh-context-bar`, patient file banner, allergy and break-glass strips | `LuminaryDemo.jsx`, `PatientFile.jsx` | Not started |
+| 4. Context | Patient context bar → `lh-context-bar`, patient file banner, allergy and break-glass strips, plus pinned page toolbars (`StickyBar`) and panels (`lh-sticky-panel`) on Patients, Billing, Claims and the patient file | `LuminaryDemo.jsx`, `PatientFile.jsx`, `LuminaryLogo.jsx`, `ui.jsx`, `index.css`, `PatientsPage.jsx`, `BillingPage.jsx`, `ClaimsPage.jsx` | **Done** |
 | 5. Pages | In order: Overview, Patients, Patient file, Appointments (and `ScheduleCalendar`), Clinical (and `EncounterNote`), Orders, Billing, Billing queue, Claims, Tariffs, Communications, Reports, Luminary AI, Audit, Settings | `components/pages/*`, `PatientFile.jsx`, `EncounterNote.jsx`, `ScheduleCalendar.jsx` | Not started |
 
 Each phase is its own commit, or several for Phase 5 (one per page), so any
 single step can be undone with `git revert`.
 
 ---
+
+### Scrolling model (added in Phase 4)
+
+Only the workspace content area scrolls; the window never does. The header
+and the patient context bar sit outside that scroller, so they never move.
+Inside a page:
+
+- **`StickyBar`** (`ui.jsx`) pins a page's own section tabs or filters flush
+  under the chrome. It sticks at minus the scroller's padding (Chrome measures
+  sticky offsets inside the padding) and shows its surface, hairline and
+  shadow only once actually stuck.
+- **`lh-sticky-panel`** pins a preview or side panel beside a scrolling list,
+  with its own capped scroll. Apply it at the two-column breakpoint only
+  (`xl:lh-sticky-panel`). Pages with a sticky bar add `lh-has-sticky-bar` so
+  panels pin below it.
+- In use: Patients (preview panel), Billing (section tabs), Claims (module
+  tabs and work queue), patient file (tab row). Verified in headless Chrome at
+  1440×900 and 1100×900: after scrolling, the header stays at 0, the context
+  bar at 56–113, the bars pin at 112, and the window scroll stays 0.
 
 ## 5. Regression risks and how each is checked
 

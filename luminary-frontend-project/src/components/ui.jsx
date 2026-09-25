@@ -398,3 +398,32 @@ export function Badge({ children, className = '' }) {
 export function Skeleton({ className = 'h-4 w-full' }) {
   return <span className={`lh-skeleton block ${className}`} aria-hidden="true" />;
 }
+
+/**
+ * A page toolbar that pins under the workspace chrome while the page scrolls.
+ * It sticks at `top: -1px`, so the moment it pins one pixel is clipped by the
+ * scroller and its intersection ratio drops below 1 — that is when the
+ * hairline and shadow appear. At rest it sits flush with the page instead of
+ * looking like a band across it.
+ */
+export function StickyBar({ children, className = '', label }) {
+  const barRef = useRef(null);
+  const [stuck, setStuck] = useState(false);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => setStuck(entry.intersectionRatio < 1 && entry.boundingClientRect.top < window.innerHeight / 2),
+      { threshold: [1] },
+    );
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={barRef} role={label ? 'region' : undefined} aria-label={label} data-stuck={stuck} className={`lh-sticky-bar ${className}`}>
+      {children}
+    </div>
+  );
+}

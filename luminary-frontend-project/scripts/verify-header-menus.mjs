@@ -164,7 +164,7 @@ const BLURRED_COMPONENT_CLASSES = [
   'lh-page-hero', 'lh-card', 'lh-card-pad', 'lh-card-elevated', 'lh-metric', 'lh-status-strip',
   // Clinical Glass layers — every one of them sets a backdrop-filter.
   'lh-glass-subtle', 'lh-glass', 'lh-glass-elevated', 'lh-popover', 'lh-modal', 'lh-backdrop',
-  'lh-context-bar', 'lh-ai-surface',
+  'lh-context-bar', 'lh-ai-surface', 'lh-sticky-bar',
 ];
 
 const isStackingContext = (element) => {

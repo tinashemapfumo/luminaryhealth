@@ -22,6 +22,7 @@ import {
 import { claimStatusTone } from '../../data/billing';
 import { StatusPill } from '../shared/StatusPill';
 import { EmptyState } from '../shared/EmptyState';
+import { StickyBar } from '../ui';
 import { useWorkspace } from '../../lib/workspace';
 
 const ACTION_STATUSES = new Set(['Validation failed', 'Rejected', 'Requires action', 'Query', 'Failed']);
@@ -246,7 +247,7 @@ export default function ClaimsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="lh-has-sticky-bar space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -332,7 +333,7 @@ export default function ClaimsPage() {
         </div>
       </section>
 
-      <div className={`grid gap-4 ${queueOpen ? 'xl:grid-cols-[420px,minmax(0,1fr)]' : 'xl:grid-cols-[88px,minmax(0,1fr)]'}`}>
+      <div className={`grid items-start gap-4 ${queueOpen ? 'xl:grid-cols-[420px,minmax(0,1fr)]' : 'xl:grid-cols-[88px,minmax(0,1fr)]'}`}>
         <ClaimsQueue
           claims={filteredClaims}
           selectedClaim={visibleSelectedClaim}
@@ -377,29 +378,32 @@ export default function ClaimsPage() {
 
 function ModuleNav({ activeModule, counts, onSelect }) {
   return (
-    <nav className="flex gap-2 overflow-x-auto rounded-lg border border-line bg-white/90 p-1">
-      {MODULES.map((module) => {
-        const active = activeModule === module.id;
-        return (
-          <button
-            key={module.id}
-            type="button"
-            onClick={() => onSelect(module.id)}
-            title={module.detail}
-            className={`flex min-h-[40px] shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition ${active ? 'bg-ink text-white shadow-sm' : 'text-body hover:bg-line hover:text-ink'}`}
-          >
-            <span>{module.label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-2xs ${active ? 'bg-white/15 text-white' : 'bg-line text-muted'}`}>{counts[module.id] ?? 0}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <StickyBar label="Claims modules">
+      <nav className="flex gap-1 overflow-x-auto">
+        {MODULES.map((module) => {
+          const active = activeModule === module.id;
+          return (
+            <button
+              key={module.id}
+              type="button"
+              onClick={() => onSelect(module.id)}
+              title={module.detail}
+              aria-current={active ? 'page' : undefined}
+              className={`inline-flex h-control-sm shrink-0 items-center gap-2 rounded-sm px-3 text-small font-medium transition duration-fast ${active ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
+            >
+              <span>{module.label}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-xs tnum leading-none ${active ? 'bg-brand/10 text-brand-deep' : 'bg-ink/[0.05] text-muted'}`}>{counts[module.id] ?? 0}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </StickyBar>
   );
 }
 
 function ClaimsQueue({ claims, selectedClaim, queueOpen, setQueueOpen, onSelect }) {
   return (
-    <section className={`${queueOpen ? 'block' : 'hidden xl:block'} lh-card-pad space-y-3`}>
+    <section className={`${queueOpen ? 'block' : 'hidden xl:block'} lh-card-pad space-y-3 xl:lh-sticky-panel`}>
       {queueOpen ? (
         <>
           <div className="flex items-center justify-between gap-3">
@@ -414,7 +418,7 @@ function ClaimsQueue({ claims, selectedClaim, queueOpen, setQueueOpen, onSelect 
             ) : null}
           </div>
 
-          <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-[680px] space-y-2 overflow-y-auto pr-1 xl:max-h-none xl:overflow-visible">
             {claims.length ? claims.map((claim) => (
               <ClaimQueueItem key={claim.id} claim={claim} selected={selectedClaim?.id === claim.id} onSelect={() => onSelect(claim)} />
             )) : (

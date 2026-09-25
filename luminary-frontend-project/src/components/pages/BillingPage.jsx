@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { StatusPill } from '../shared/StatusPill';
 import { EmptyState } from '../shared/EmptyState';
-import { Modal } from '../ui';
+import { Modal, StickyBar } from '../ui';
 import { useWorkspace } from '../../lib/workspace';
 import {
   methodLabel,
@@ -320,21 +320,25 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="lh-has-sticky-bar space-y-6">
       <PageHeader openDialog={openDialog} canCreate={access.can.createInvoice} />
 
-      <nav className="flex gap-2 overflow-x-auto rounded-lg border border-line bg-white/90 p-1">
-        {BILLING_TABS.map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setActiveTab(tab)}
-            className={`shrink-0 rounded-md px-3 py-2 text-sm font-semibold transition ${activeTab === tab ? 'bg-ink text-white shadow-sm' : 'text-body hover:bg-line hover:text-ink'}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </nav>
+      {/* Section tabs stay reachable while a long ledger or queue scrolls. */}
+      <StickyBar label="Billing sections">
+        <nav className="flex gap-1 overflow-x-auto">
+          {BILLING_TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              aria-current={activeTab === tab ? 'page' : undefined}
+              className={`inline-flex h-control-sm shrink-0 items-center rounded-sm px-3 text-small font-medium transition duration-fast ${activeTab === tab ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+      </StickyBar>
 
       <BillingRangeBar
         range={billingRange}

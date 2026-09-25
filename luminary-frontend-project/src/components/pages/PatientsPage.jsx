@@ -339,8 +339,10 @@ export default function PatientsPage() {
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-          <div className="lh-card p-4">
+        {/* The registry scrolls; the preview beside it stays put, so the
+            selected patient never scrolls away from the list. */}
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="lh-card min-w-0 p-4">
             {/* A clinician's list is the default view. Widening to the whole
                 practice is allowed and explicit. Opening a chart from the
                 wider set is what triggers break-glass, not seeing the name. */}
@@ -475,7 +477,7 @@ export default function PatientsPage() {
             </div>
           </div>
 
-          <aside className="lh-card-pad">
+          <aside className="lh-card-pad xl:lh-sticky-panel">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="lh-section-label">Selected patient</p>

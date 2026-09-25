@@ -41,13 +41,13 @@ export function LuminaryLogo({ size = 36, onDark = false, className = '' }) {
       <div className="leading-none">
         <p
           className="text-md font-semibold uppercase tracking-[0.16em]"
-          style={{ color: '#10233f' }}
+          style={{ color: onDark ? '#edf3fa' : '#10233f' }}
         >
           Luminary
         </p>
         <p
           className="mt-1 text-2xs font-medium uppercase tracking-[0.34em]"
-          style={{ color: '#0872de' }}
+          style={{ color: onDark ? '#86c7ff' : '#0872de' }}
         >
           Health
         </p>

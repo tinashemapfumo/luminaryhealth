@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Info, X } from 'lucide-react';
 
 export function OceanWaveDecoration({ className = '' }) {
   return (
@@ -56,7 +56,7 @@ export function OceanWaveDecoration({ className = '' }) {
 export function HumanAvatar({ initials, label = 'User avatar', className = '' }) {
   return (
     <span
-      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white bg-brand-soft shadow-[0_6px_18px_-14px_rgba(8,114,222,0.55)] ${className}`}
+      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white bg-brand-soft shadow-control ${className}`}
       role="img"
       aria-label={label}
       title={label}
@@ -132,34 +132,34 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/30 p-4 pt-[8vh] backdrop-blur-[2px]">
+    <div className="lh-backdrop fixed inset-0 z-modal flex items-start justify-center overflow-y-auto p-4 pt-[8vh]">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative w-full ${width} rounded-lg border border-line bg-white/95 shadow-[0_24px_60px_-18px_rgba(33,97,156,0.28)] backdrop-blur-xl`}
+        className={`lh-modal relative w-full ${width}`}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</h2>
-            {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+        <div className="flex items-start justify-between gap-4 px-6 pb-3 pt-5">
+          <div className="min-w-0">
+            <h2 className="text-section font-semibold tracking-heading text-ink">{title}</h2>
+            {subtitle && <p className="mt-1 text-small leading-5 text-body">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close dialog"
-            className="rounded p-1.5 text-muted transition hover:bg-surface hover:text-ink"
+            className="-mr-2 -mt-1 inline-flex h-control-sm w-control-sm shrink-0 items-center justify-center rounded-full text-muted transition duration-fast hover:bg-ink/5 hover:text-ink"
           >
-            <X size={16} />
+            <X size={16} strokeWidth={1.8} />
           </button>
         </div>
 
-        <div className="px-5 py-4">{children}</div>
+        <div className="px-6 pb-5 pt-2">{children}</div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-line bg-surface px-5 py-3.5">
+          <div className="flex items-center justify-end gap-2 rounded-b-4xl border-t border-line/60 bg-surface/50 px-6 py-4">
             {footer}
           </div>
         )}
@@ -168,28 +168,29 @@ export function Modal({ open, onClose, title, subtitle, children, footer, width 
   );
 }
 
-const controlClass =
-  'w-full rounded-lg border border-line bg-white/75 px-3 py-2.5 text-xs text-ink outline-none transition placeholder:text-faint hover:border-edge focus:border-brand-bright focus:bg-white focus:ring-2 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-surface disabled:text-muted';
-
+/**
+ * Form field. Labels are sentence case at caption size — the words carry the
+ * meaning, so they no longer need to shout in 9px capitals to be found.
+ */
 export function Field({ label, hint, error, children, required }) {
   return (
     <label className="block">
-      <span className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.01em] text-muted">
+      <span className="lh-label">
         {label}
-        {required && <span className="text-danger">*</span>}
+        {required && <span className="text-danger" aria-hidden="true">*</span>}
       </span>
       {children}
       {error ? (
-        <span className="mt-1 block text-xs text-danger">{error}</span>
+        <span className="mt-1.5 block text-caption text-danger">{error}</span>
       ) : (
-        hint && <span className="mt-1 block text-xs text-muted">{hint}</span>
+        hint && <span className="mt-1.5 block text-caption text-muted">{hint}</span>
       )}
     </label>
   );
 }
 
 export function Input(props) {
-  return <input {...props} className={controlClass} />;
+  return <input {...props} className="lh-input" />;
 }
 
 /**
@@ -201,7 +202,7 @@ export function Input(props) {
  */
 export function Select({ options, render, ...props }) {
   return (
-    <select {...props} className={controlClass}>
+    <select {...props} className="lh-select">
       {options.map((option) => (
         <option key={option} value={option}>
           {render ? render(option) : String(option).replace(/-/g, ' ')}
@@ -212,19 +213,27 @@ export function Select({ options, render, ...props }) {
 }
 
 export function Textarea(props) {
-  return <textarea {...props} className={`${controlClass} min-h-[84px] resize-y`} />;
+  return <textarea {...props} className="lh-textarea" />;
 }
 
-export function Button({ variant = 'primary', children, ...props }) {
-  const variants = {
-    primary: 'bg-brand text-white hover:bg-brand-deep',
-    secondary: 'border border-line bg-white text-ink hover:border-brand-edge',
-    danger: 'border border-danger-strong bg-white text-danger hover:border-danger',
-  };
+const BUTTON_VARIANTS = {
+  primary: 'lh-btn-primary',
+  secondary: 'lh-btn-secondary',
+  tertiary: 'lh-btn-tertiary',
+  danger: 'lh-btn-danger',
+  'danger-solid': 'lh-btn-danger-solid',
+};
+
+/**
+ * `danger` stays an outline on purpose: most destructive actions open a
+ * confirmation, and the solid red belongs to the button inside it
+ * (`danger-solid`), where the decision is actually being made.
+ */
+export function Button({ variant = 'primary', className = '', children, ...props }) {
   return (
     <button
       {...props}
-      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${variants[variant]}`}
+      className={`${BUTTON_VARIANTS[variant] || BUTTON_VARIANTS.primary}${className ? ` ${className}` : ''}`}
     >
       {children}
     </button>
@@ -238,25 +247,154 @@ export function Toast({ message }) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-lg border border-brand-deep bg-ink px-4 py-2.5 text-xs font-semibold text-white shadow-[0_12px_32px_-8px_rgba(33,97,156,0.35)]"
+      className="fixed bottom-6 left-1/2 z-toast flex max-w-[calc(100vw-2rem)] animate-toast-in items-center gap-2.5 rounded-xl border border-white/10 bg-ink/90 py-2.5 pl-3 pr-4 text-small font-medium text-white shadow-float backdrop-blur-glass"
+      style={{ transform: 'translateX(-50%)' }}
     >
-      {message}
+      <Info size={16} strokeWidth={1.8} className="shrink-0 text-brand-edge" aria-hidden="true" />
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }
 
-/** Shown when a list has no rows — never leave a blank panel. */
+/**
+ * Shown when a list has no rows — never leave a blank panel. Quiet on
+ * purpose: an empty queue is an ordinary state, not an event.
+ */
 export function EmptyState({ icon: Icon, title, detail, action }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-edge bg-surface/80 px-6 py-10 text-center">
+    <div className="lh-surface-soft flex flex-col items-center justify-center px-6 py-12 text-center">
       {Icon && (
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-soft text-brand">
-          <Icon size={18} />
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white text-brand shadow-hairline">
+          <Icon size={20} strokeWidth={1.7} />
         </div>
       )}
-      <p className="text-md font-medium text-ink">{title}</p>
-      {detail && <p className="mt-1.5 max-w-sm text-sm leading-5 text-muted">{detail}</p>}
+      <p className="text-copy font-semibold text-ink">{title}</p>
+      {detail && <p className="mt-1.5 max-w-sm text-small leading-5 text-muted">{detail}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
+}
+
+/**
+ * Apple-style segmented control: one shared track, with a capsule that slides
+ * to the selected option. Options are `{ value, label, icon? }` or plain
+ * strings. Arrow keys move the selection, as they do in a radio group.
+ */
+export function SegmentedControl({ options, value, onChange, label, size = 'md', className = '' }) {
+  const items = options.map((option) => (typeof option === 'string' ? { value: option, label: option } : option));
+  const trackRef = useRef(null);
+  const [thumb, setThumb] = useState(null);
+
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!track) return undefined;
+    const measure = () => {
+      const selected = track.querySelector('[aria-checked="true"]');
+      setThumb(selected ? { left: selected.offsetLeft, width: selected.offsetWidth } : null);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [value, options]);
+
+  const onKeyDown = (event) => {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const index = items.findIndex((item) => item.value === value);
+    const step = event.key === 'ArrowRight' ? 1 : -1;
+    const next = items[(index + step + items.length) % items.length];
+    onChange?.(next.value);
+    trackRef.current?.querySelector(`[data-value="${CSS.escape(String(next.value))}"]`)?.focus();
+  };
+
+  return (
+    <div ref={trackRef} role="radiogroup" aria-label={label} className={`lh-segmented ${className}`} onKeyDown={onKeyDown}>
+      {thumb && <span className="lh-segmented-thumb" style={{ left: thumb.left, width: thumb.width }} aria-hidden="true" />}
+      {items.map((item) => {
+        const selected = item.value === value;
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            data-value={item.value}
+            onClick={() => onChange?.(item.value)}
+            className={`lh-segmented-item ${size === 'sm' ? 'h-7 px-2.5 text-caption' : ''}`}
+          >
+            {Icon && <Icon size={15} strokeWidth={1.8} aria-hidden="true" />}
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Underlined tab bar for larger tab sets (the patient file's ten tabs) — it
+ * scrolls horizontally instead of squeezing, which a segmented control cannot.
+ */
+export function Tabs({ tabs, value, onChange, label, className = '' }) {
+  const items = tabs.map((tab) => (typeof tab === 'string' ? { value: tab, label: tab } : tab));
+  return (
+    <div role="tablist" aria-label={label} className={`lh-tabs ${className}`}>
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={item.value === value}
+            onClick={() => onChange?.(item.value)}
+            className="lh-tab"
+          >
+            {Icon && <Icon size={15} strokeWidth={1.8} aria-hidden="true" />}
+            {item.label}
+            {item.count != null && <span className="text-caption tnum text-muted">{item.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * A figure and what it measures. Unframed by default so a row of them reads
+ * as one overview rather than a wall of KPI tiles; `framed` for when a metric
+ * genuinely stands alone.
+ */
+export function Metric({ value, label, detail, icon: Icon, tone = 'neutral', framed = false }) {
+  const toneClass = { neutral: 'text-ink', alert: 'text-danger', warm: 'text-warning', success: 'text-success' }[tone] || 'text-ink';
+  return (
+    <div className={framed ? 'lh-metric' : 'min-w-0'}>
+      {Icon && (
+        <div className="lh-metric-icon mb-3">
+          <Icon size={16} strokeWidth={1.8} />
+        </div>
+      )}
+      <p className={`lh-metric-value ${toneClass}`}>{value}</p>
+      <p className="lh-metric-label">{label}</p>
+      {detail && <p className="mt-0.5 text-caption text-muted">{detail}</p>}
+    </div>
+  );
+}
+
+/** Neutral count or tag. Status belongs to StatusPill, which carries tone. */
+export function Badge({ children, className = '' }) {
+  return (
+    <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-ink/[0.06] px-1.5 text-xs font-medium tnum text-body ${className}`}>
+      {children}
+    </span>
+  );
+}
+
+/** Placeholder block while content loads. Prefer this to a spinner. */
+export function Skeleton({ className = 'h-4 w-full' }) {
+  return <span className={`lh-skeleton block ${className}`} aria-hidden="true" />;
 }

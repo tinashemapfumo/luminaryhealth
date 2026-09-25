@@ -1,5 +1,3 @@
-import React from 'react';
-
 /**
  * Nothing to show, said plainly.
  *
@@ -9,15 +7,12 @@ import React from 'react';
  * first record in the seed data, which for a second practice meant another
  * tenant's patient. Scoping that selection correctly makes the empty case
  * real, so it needs to look deliberate rather than broken.
+ *
+ * This used to be a second, differently styled empty state. It now re-exports
+ * the shared one from `ui.jsx` (same `title`, `detail`, `action` props, plus an
+ * optional `icon`), so every empty panel in the workspace looks the same.
  */
-export function EmptyState({ title, detail, action }) {
-  return (
-    <div className="lh-card-pad flex flex-col items-center justify-center gap-2 py-14 text-center">
-      <p className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</p>
-      <p className="max-w-md text-sm text-body">{detail}</p>
-      {action ? <div className="mt-3">{action}</div> : null}
-    </div>
-  );
-}
+import { EmptyState } from '../ui';
 
+export { EmptyState };
 export default EmptyState;

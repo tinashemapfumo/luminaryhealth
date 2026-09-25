@@ -644,8 +644,18 @@ export default function EncounterNote({
 
         {/* Safety strip: allergies must be visible while prescribing. */}
         {patientRecord && (
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-line px-4 py-2 text-sm">
-            <span className={patientRecord.allergies?.length ? 'font-medium text-danger' : 'text-muted'}>
+          <div className={`flex flex-wrap items-center gap-x-5 gap-y-1 border-t px-4 py-2.5 text-small ${
+            !patientRecord.allergiesRecorded
+              ? 'border-warning-line bg-warning-soft text-warning-deep'
+              : patientRecord.allergies?.length
+                ? 'border-danger-line bg-danger-soft text-danger-deep'
+                : 'border-line/70 bg-surface/60 text-body'
+          }`}>
+            <span
+              role={!patientRecord.allergiesRecorded || patientRecord.allergies?.length ? 'alert' : undefined}
+              className={`inline-flex items-center gap-2 ${!patientRecord.allergiesRecorded || patientRecord.allergies?.length ? 'font-semibold' : 'text-muted'}`}
+            >
+              {(!patientRecord.allergiesRecorded || patientRecord.allergies?.length > 0) && <AlertTriangle size={15} strokeWidth={2} className="shrink-0" aria-hidden="true" />}
               {patientRecord.allergiesRecorded
                 ? patientRecord.allergies?.length
                   ? `Allergies: ${patientRecord.allergies.join('; ')}`
@@ -1050,25 +1060,28 @@ export default function EncounterNote({
         <div className="space-y-4">
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-copy font-semibold text-ink">Clinical note</h2>
+              <h2 className="whitespace-nowrap text-copy font-semibold text-ink">Clinical note</h2>
               {canWrite && (
-                <Select
-                  value={draft.type}
-                  onChange={set('type')}
-                  options={NOTE_TYPES}
-                />
+                <div className="w-56">
+                  <Select
+                    value={draft.type}
+                    onChange={set('type')}
+                    options={NOTE_TYPES}
+                    aria-label="Note type"
+                  />
+                </div>
               )}
             </div>
 
             <div className="space-y-4">
               {sections.map((section) => (
-                <div key={section.key}>
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                    <label htmlFor={`note-${section.key}`} className="text-sm font-semibold text-ink">
+                <div key={section.key} className="border-t border-line/60 pt-4 first:border-0 first:pt-0">
+                  <div className="mb-2 flex items-baseline justify-between gap-3">
+                    <label htmlFor={`note-${section.key}`} className="text-copy font-semibold text-ink">
                       {section.label}
                       {canWrite && <span className="ml-1 text-danger">*</span>}
                     </label>
-                    <span className="text-xs text-muted">{section.hint}</span>
+                    <span className="text-right text-caption text-muted">{section.hint}</span>
                   </div>
                   {canWrite ? (
                     <>
@@ -1078,22 +1091,22 @@ export default function EncounterNote({
                         onChange={set(section.key)}
                         placeholder={`${section.label}…`}
                       />
-                      {errors[section.key] && <p className="mt-1 text-xs text-danger">{errors[section.key]}</p>}
+                      {errors[section.key] && <p className="mt-1.5 text-caption font-medium text-danger">{errors[section.key]}</p>}
                     </>
                   ) : (
-                    <p className="whitespace-pre-wrap rounded border border-line bg-surface p-3 text-base leading-6 text-ink-soft">
+                    <p className="whitespace-pre-wrap rounded-lg bg-surface/70 p-3.5 text-copy leading-6 text-ink">
                       {draft[section.key] || <span className="italic text-muted">Not documented</span>}
                     </p>
                   )}
                 </div>
               ))}
 
-              <div>
-                <label htmlFor="note-followup" className="mb-1.5 block text-sm font-semibold text-ink">Follow up</label>
+              <div className="border-t border-line/60 pt-4">
+                <label htmlFor="note-followup" className="mb-2 block text-copy font-semibold text-ink">Follow up</label>
                 {canWrite ? (
                   <Input id="note-followup" value={draft.followUp || ''} onChange={set('followUp')} placeholder="e.g. Review in 8 weeks" />
                 ) : (
-                  <p className="rounded border border-line bg-surface p-3 text-base text-ink-soft">
+                  <p className="rounded-lg bg-surface/70 p-3.5 text-copy text-ink">
                     {draft.followUp || <span className="italic text-muted">None specified</span>}
                   </p>
                 )}

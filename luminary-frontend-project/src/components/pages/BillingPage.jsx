@@ -518,8 +518,8 @@ function Metric({ label, value, detail, tone = 'neutral' }) {
   };
   return (
     <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
-      <p className="mt-2 text-xl font-semibold tracking-[-0.02em] text-ink tabular-nums">{value}</p>
+      <p className="text-caption font-semibold text-muted">{label}</p>
+      <p className="mt-2 text-xl font-semibold tracking-title text-ink tabular-nums">{value}</p>
       <p className="mt-1 text-xs text-body">{detail}</p>
     </div>
   );
@@ -544,7 +544,7 @@ function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo,
     <section className="rounded-lg border border-line bg-white/90 p-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">Billing range</p>
+          <p className="text-caption font-semibold text-muted">Billing range</p>
           <p className="mt-1 text-sm text-body">{shown} of {total} invoice record{total === 1 ? '' : 's'} in the current invoice-based view.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -562,7 +562,7 @@ function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo,
       </div>
       {range === 'custom' && (
         <div className="mt-3 grid gap-3 sm:grid-cols-2 md:w-[420px]">
-          <label className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+          <label className="text-caption font-semibold text-muted">
             From
             <input
               type="date"
@@ -571,7 +571,7 @@ function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo,
               className="mt-1 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft"
             />
           </label>
-          <label className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+          <label className="text-caption font-semibold text-muted">
             To
             <input
               type="date"
@@ -606,7 +606,7 @@ function OverviewView({ totals, aging, accounts, currency, formatMoney, openAcco
       <section className="lh-card-pad">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Accounts receivable</h2>
+            <h2 className="text-lg font-semibold tracking-heading text-ink">Accounts receivable</h2>
             <p className="mt-1 text-sm text-body">
               {aging.overdue > 0 ? `${formatMoney(aging.overdue)} of ${formatMoney(aging.total)} is past due.` : 'Nothing is past due.'}
             </p>
@@ -638,7 +638,7 @@ function OverviewView({ totals, aging, accounts, currency, formatMoney, openAcco
             return (
               <div key={bucket.key} className="lh-card-soft p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium uppercase tracking-[0.1em] text-muted">{bucket.label}</p>
+                  <p className="text-caption font-medium text-muted">{bucket.label}</p>
                   <StatusPill label={String(bucket.count)} tone={bucket.count ? bucket.tone : 'neutral'} />
                 </div>
                 <p className="mt-2.5 text-base font-semibold text-ink tabular-nums">{formatMoney(bucket.outstanding)}</p>
@@ -657,7 +657,7 @@ function OverviewView({ totals, aging, accounts, currency, formatMoney, openAcco
 
       <section className="lh-card-pad">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Accounts needing attention</h2>
+          <h2 className="text-lg font-semibold tracking-heading text-ink">Accounts needing attention</h2>
           <SectionSearch value={query} onChange={setQuery} placeholder="Search attention queue" />
         </div>
         <div className="mt-3 space-y-2">
@@ -683,7 +683,7 @@ function AccountsView({ accounts, query, setQuery, openAccount, formatMoney }) {
     <section className="lh-card-pad space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Patient accounts</h2>
+          <h2 className="text-lg font-semibold tracking-heading text-ink">Patient accounts</h2>
           <p className="mt-1 text-sm text-body">Open one account to work without seeing other patient names.</p>
         </div>
         <SectionSearch value={query} onChange={setQuery} placeholder="Search accounts" />
@@ -728,7 +728,7 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
       <section className="lh-card-pad space-y-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Patient statements</h2>
+            <h2 className="text-lg font-semibold tracking-heading text-ink">Patient statements</h2>
             <p className="mt-1 text-sm text-body">Choose one patient to view the full account ledger and balances.</p>
           </div>
           <SectionSearch value={query} onChange={setQuery} placeholder="Search statements" />
@@ -793,7 +793,7 @@ function StatementsView({ accounts, selectedPatient, setSelectedPatient, query, 
             <button type="button" onClick={() => setSelectedPatient('')} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-teal">
               <ArrowLeft size={14} /> All statements
             </button>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-ink">{selectedAccount.patient}</h2>
+            <h2 className="text-xl font-semibold tracking-title text-ink">{selectedAccount.patient}</h2>
             <p className="mt-1 text-sm text-body">Patient account statement. No other patient accounts are shown in this view.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1017,7 +1017,7 @@ function PatientAccountView({ account, statement, claims, onBack, openInvoice, o
             <button type="button" onClick={onBack} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-teal">
               <ArrowLeft size={14} /> All accounts
             </button>
-            <h2 className="text-xl font-semibold tracking-[-0.02em] text-ink">{account.patient}</h2>
+            <h2 className="text-xl font-semibold tracking-title text-ink">{account.patient}</h2>
             <p className="mt-1 text-sm text-body">Patient account view. Only this patient&apos;s billing records are shown.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1099,7 +1099,7 @@ function LedgerTable({ rows, formatMoney }) {
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-line bg-white">
       <table className="min-w-[760px] w-full text-left text-sm">
-        <thead className="bg-surface text-xs uppercase tracking-[0.08em] text-muted">
+        <thead className="bg-surface text-caption font-medium text-muted">
           <tr>
             <th className="px-3 py-2 font-semibold">Date</th>
             <th className="px-3 py-2 font-semibold">Type</th>
@@ -1146,7 +1146,7 @@ function InvoicesView({ invoices, selectedInvoice, openInvoice, takePayment, tak
     <div className="grid min-w-0 items-start gap-6 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)]">
       <section className="lh-card-pad">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Invoices</h2>
+          <h2 className="text-lg font-semibold tracking-heading text-ink">Invoices</h2>
           <SectionSearch value={query} onChange={setQuery} placeholder="Search invoices" />
         </div>
         <div className="mt-4 space-y-2">
@@ -1500,13 +1500,13 @@ function ClaimsExposureView({ invoices, claims, currency, openAccount, query, se
   return (
     <section className="lh-card-pad space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Claims and insurer exposure</h2>
+        <h2 className="text-lg font-semibold tracking-heading text-ink">Claims and insurer exposure</h2>
         <SectionSearch value={query} onChange={setQuery} placeholder="Search claims exposure" />
       </div>
       {rows.length ? (
       <div className="overflow-x-auto rounded-lg border border-line bg-white">
         <table className="min-w-[820px] w-full text-left text-sm">
-          <thead className="bg-surface text-xs uppercase tracking-[0.08em] text-muted">
+          <thead className="bg-surface text-caption font-medium text-muted">
             <tr>
               <th className="px-3 py-2 font-semibold">Invoice</th>
               <th className="px-3 py-2 font-semibold">Patient</th>
@@ -1551,7 +1551,7 @@ function ReceiptsView({ invoices, reprintReceipt, openReceipt, formatMoney, quer
   return (
     <section className="lh-card-pad space-y-4">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">Receipts</h2>
+        <h2 className="text-lg font-semibold tracking-heading text-ink">Receipts</h2>
         <SectionSearch value={query} onChange={setQuery} placeholder="Search receipts" />
       </div>
       <PaymentsList payments={payments} reprintReceipt={reprintReceipt} onOpenReceipt={openReceipt} formatMoney={formatMoney} />
@@ -1618,7 +1618,7 @@ function ReceiptModal({ payment, onClose, onPrint, formatMoney }) {
     >
       <div className="space-y-4">
         <div className={`rounded-lg border p-4 ${reversal ? 'border-danger-line bg-danger-soft' : 'border-brand-edge bg-brand-soft'}`}>
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{reversal ? 'Reversal entry' : 'Receipt amount'}</p>
+          <p className="text-caption font-semibold text-muted">{reversal ? 'Reversal entry' : 'Receipt amount'}</p>
           <p className={`mt-2 text-2xl font-semibold tabular-nums ${reversal ? 'text-danger-deep' : 'text-ink'}`}>
             {formatMoney(payment.amount, payment.currency)}
           </p>
@@ -1669,7 +1669,7 @@ function ReceiptBanner({ receipt, setReceipt, printReceipt, formatMoney }) {
     <div className="rounded-lg border border-brand-edge bg-white/85 p-5 shadow-[0_14px_36px_-28px_rgba(20,102,224,0.55)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.16em] text-brand">Receipt{receipt.number ? ` · ${receipt.number}` : ''}</p>
+          <p className="text-caption font-medium text-brand">Receipt{receipt.number ? ` · ${receipt.number}` : ''}</p>
           <p className="mt-2 text-md font-semibold text-ink">
             {formatMoney(receipt.tendered.amount, receipt.tendered.currency)} received from {receipt.patient}
           </p>
@@ -1712,7 +1712,7 @@ function ReceiptTray({ receipt, setReceipt, printReceipt, formatMoney, onViewRec
           <Receipt size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-2xs font-semibold uppercase tracking-[0.12em] text-brand">Receipt{receipt.number ? ` · ${receipt.number}` : ''}</p>
+          <p className="text-caption font-semibold text-brand">Receipt{receipt.number ? ` · ${receipt.number}` : ''}</p>
           <p className="mt-1 truncate text-sm font-semibold text-ink">
             {formatMoney(receipt.tendered.amount, receipt.tendered.currency)} received from {receipt.patient}
           </p>

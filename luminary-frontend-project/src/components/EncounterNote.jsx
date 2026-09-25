@@ -568,7 +568,7 @@ export default function EncounterNote({
             </button>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl font-semibold tracking-[-0.02em] text-ink">
+                <h1 className="text-xl font-semibold tracking-title text-ink">
                   {draft.type} · {draft.patientName}
                 </h1>
                 <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.08em] ${statusTone}`}>
@@ -664,7 +664,7 @@ export default function EncounterNote({
 
       {showAddendum && (
         <div className="rounded-lg border border-edge-strong bg-surface p-4">
-          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.1em] text-brand">New addendum</p>
+          <p className="mb-2 text-copy font-semibold text-brand-deep">New addendum</p>
           <Textarea
             value={addendumText}
             onChange={(e) => setAddendumText(e.target.value)}
@@ -805,7 +805,7 @@ export default function EncounterNote({
                   </Field>
                 ))}
                 <div className="rounded-lg border border-line bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">Diagnosis suggestions</p>
+                  <p className="text-caption font-semibold text-muted">Diagnosis suggestions</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(dictationDraft.diagnosesMentioned || []).length === 0 ? (
                       <span className="text-sm text-muted">No coded diagnosis suggested.</span>
@@ -817,7 +817,7 @@ export default function EncounterNote({
                   </div>
                 </div>
                 <div className="rounded-lg border border-line bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">Medication suggestions</p>
+                  <p className="text-caption font-semibold text-muted">Medication suggestions</p>
                   <div className="mt-2 space-y-2">
                     {(dictationDraft.medicationsMentioned || []).length === 0 ? (
                       <p className="text-sm text-muted">No medication suggested.</p>
@@ -838,7 +838,7 @@ export default function EncounterNote({
                 </div>
                 {dictationDraft.uncertainties?.length > 0 && (
                   <div className="rounded border border-warning-line bg-warning-soft p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-warning">Uncertainties</p>
+                    <p className="text-caption font-semibold text-warning">Uncertainties</p>
                     <ul className="mt-2 space-y-1">
                       {dictationDraft.uncertainties.map((item, index) => (
                         <li key={index} className="text-sm text-warning-deep">{item.text}: {item.reason}</li>
@@ -857,7 +857,7 @@ export default function EncounterNote({
         <div className="space-y-4">
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+              <h2 className="flex items-center gap-2 text-copy font-semibold text-ink">
                 <Activity size={14} className="text-brand" /> Vitals
               </h2>
               {draft.vitalsRecordedBy && (
@@ -898,7 +898,7 @@ export default function EncounterNote({
 
             {flags.length > 0 && (
               <div className="mt-3 rounded border border-warning-line bg-warning-soft p-2.5">
-                <p className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-warning">
+                <p className="mb-1 flex items-center gap-1.5 text-caption font-semibold text-warning">
                   <AlertTriangle size={11} /> Outside normal range
                 </p>
                 <ul className="space-y-0.5">
@@ -912,7 +912,7 @@ export default function EncounterNote({
 
           {/* Diagnoses */}
           <section className="lh-card-pad">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+            <h2 className="mb-3 flex items-center gap-2 text-copy font-semibold text-ink">
               <Stethoscope size={14} className="text-brand" /> Diagnoses (ICD-10)
             </h2>
 
@@ -962,7 +962,7 @@ export default function EncounterNote({
               feeds their queue. */}
           {can.captureEncounterServices && (
             <section className="lh-card-pad">
-              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+              <h2 className="mb-1 flex items-center gap-2 text-copy font-semibold text-ink">
                 <ClipboardList size={14} className="text-brand" /> Services and billing handoff
               </h2>
               <p className="mb-3 text-2xs text-muted">Finance-only. Billing staff see this, never the note text.</p>
@@ -1050,7 +1050,7 @@ export default function EncounterNote({
         <div className="space-y-4">
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.1em] text-muted">Clinical note</h2>
+              <h2 className="text-copy font-semibold text-ink">Clinical note</h2>
               {canWrite && (
                 <Select
                   value={draft.type}
@@ -1103,7 +1103,7 @@ export default function EncounterNote({
 
           {draft.addenda?.length > 0 && (
             <section className="lh-card-pad">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+              <h2 className="mb-3 text-copy font-semibold text-ink">
                 Addenda ({draft.addenda.length})
               </h2>
               <div className="space-y-3">

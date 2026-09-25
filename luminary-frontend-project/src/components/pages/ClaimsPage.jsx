@@ -251,10 +251,10 @@ export default function ClaimsPage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-teal">Claims operations across switch and email channels</p>
+            <p className="text-caption font-semibold text-teal">Claims operations across switch and email channels</p>
             <StatusPill label={`${practiceClaims.length} claims`} tone="neutral" />
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-ink sm:text-3xl">Medical aid claims</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-title text-ink sm:text-3xl">Medical aid claims</h1>
           <p className="mt-1 max-w-2xl text-sm text-body">
             Claims is split by job: prepare clean claims, submit verified claims, track payer responses, resolve exceptions, and post remittances.
           </p>
@@ -517,7 +517,7 @@ function ClaimModuleDetail({
             <StatusPill label={channel} tone="neutral" />
             {blockers ? <StatusPill label={`${blockers} blockers`} tone="alert" /> : <StatusPill label="Clean validation" tone="success" />}
           </div>
-          <h2 className="mt-3 truncate text-2xl font-semibold tracking-[-0.03em] text-ink">{claim.patient}</h2>
+          <h2 className="mt-3 truncate text-2xl font-semibold tracking-title text-ink">{claim.patient}</h2>
           <p className="mt-1 text-sm text-body">{claim.id} | {claim.invoice || 'No invoice'} | {displayCopy(claim.memberNo || 'No member number')}</p>
         </div>
         <ModuleActions
@@ -808,7 +808,7 @@ function LinesPanel({ claim, lines }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-line bg-white">
       <div className="min-w-[720px]">
-        <div className="grid grid-cols-[minmax(220px,1fr)_110px_110px_110px_120px] gap-3 border-b border-line bg-cream px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+        <div className="grid grid-cols-[minmax(220px,1fr)_110px_110px_110px_120px] gap-3 border-b border-line bg-cream px-4 py-3 text-caption font-semibold text-muted">
           <span>Service</span><span>Claimed</span><span>Approved</span><span>Rejected</span><span>Status</span>
         </div>
         {lines.length ? lines.map((line, index) => {
@@ -911,8 +911,8 @@ function SummaryTile({ label, value, detail, tone }) {
 
   return (
     <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
-      <p className="mt-2 truncate text-xl font-semibold tracking-[-0.02em] text-ink">{value}</p>
+      <p className="text-caption font-semibold text-muted">{label}</p>
+      <p className="mt-2 truncate text-xl font-semibold tracking-title text-ink">{value}</p>
       <p className="mt-1 truncate text-xs text-body">{detail}</p>
     </div>
   );

@@ -504,8 +504,8 @@ function MetricCard({ label, value, detail, tone }) {
 
   return (
     <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
-      <p className="mt-2 truncate text-xl font-semibold tracking-[-0.02em] text-ink">{value}</p>
+      <p className="text-caption font-semibold text-muted">{label}</p>
+      <p className="mt-2 truncate text-xl font-semibold tracking-title text-ink">{value}</p>
       <p className="mt-1 truncate text-xs text-body">{detail}</p>
     </div>
   );
@@ -555,8 +555,8 @@ function ReportHighlights({ title, highlights, rowCount }) {
     <aside className="lh-card-pad lh-side-panel">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.16em] text-muted">Breakdown</p>
-          <h2 className="mt-2 text-lg font-semibold tracking-[-0.01em] text-ink">{title}</h2>
+          <p className="text-caption font-medium text-muted">Breakdown</p>
+          <h2 className="mt-2 text-lg font-semibold tracking-heading text-ink">{title}</h2>
         </div>
         <StatusPill label={`${rowCount} rows`} tone="neutral" />
       </div>

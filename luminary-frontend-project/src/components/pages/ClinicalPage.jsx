@@ -102,7 +102,7 @@ export default function ClinicalPage() {
           ].map((tile) => (
             <div key={tile.label} className="lh-metric">
               <p className="lh-section-label">{tile.label}</p>
-              <p className={`mt-2 text-2xl font-semibold tracking-[-0.02em] ${tile.tone === 'alert' ? 'text-danger' : tile.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
+              <p className={`mt-2 text-2xl font-semibold tracking-title ${tile.tone === 'alert' ? 'text-danger' : tile.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
                 {tile.value}
               </p>
               <p className="mt-1 text-sm text-body">{tile.detail}</p>
@@ -114,7 +114,7 @@ export default function ClinicalPage() {
           {/* Today's list — the doctor's actual working queue */}
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+              <h2 className="text-copy font-semibold text-ink">
                 {access.ownPatientsOnly ? 'My patients today' : 'Clinic list today'}
               </h2>
               <span className="text-xs text-muted">{myPatients.length} scheduled</span>
@@ -169,7 +169,7 @@ export default function ClinicalPage() {
           <div className="space-y-4">
             {/* Notes awaiting signature */}
             <section className="lh-card-pad">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-muted">Notes to complete</h2>
+              <h2 className="mb-3 text-copy font-semibold text-ink">Notes to complete</h2>
               {unsigned.length === 0 ? (
                 <p className="text-base text-muted">Nothing waiting on you.</p>
               ) : (
@@ -194,7 +194,7 @@ export default function ClinicalPage() {
 
             {/* Abnormal results */}
             <section className="lh-card-pad">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-muted">Results to review</h2>
+              <h2 className="mb-3 text-copy font-semibold text-ink">Results to review</h2>
               {abnormalLabs.length === 0 ? (
                 <p className="text-base text-muted">No abnormal results outstanding.</p>
               ) : (
@@ -219,7 +219,7 @@ export default function ClinicalPage() {
 
             {/* Refills */}
             <section className="lh-card-pad">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-[0.1em] text-muted">Refills to action</h2>
+              <h2 className="mb-3 text-copy font-semibold text-ink">Refills to action</h2>
               {refillsDue.length === 0 ? (
                 <p className="text-base text-muted">No repeats due.</p>
               ) : (
@@ -250,7 +250,7 @@ export default function ClinicalPage() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-2xs uppercase tracking-[0.08em] text-muted">Prescriber only</span>
+                        <span className="text-caption font-medium text-muted">Prescriber only</span>
                       )}
                     </div>
                   ))}
@@ -272,7 +272,7 @@ export default function ClinicalPage() {
         <div className="lh-card-pad lh-side-panel">
           <div className="flex items-center justify-between">
             <p className="lh-section-label">Care coordination</p>
-            <button type="button" onClick={() => setActiveView('appointments')} className="text-xs font-medium uppercase tracking-[0.12em] text-brand hover:underline">Open schedule</button>
+            <button type="button" onClick={() => setActiveView('appointments')} className="text-caption font-medium text-brand hover:underline">Open schedule</button>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -297,8 +297,8 @@ export default function ClinicalPage() {
             {[{ label: 'Signed notes', value: '96%' }, { label: 'Medication review', value: '89%' }, { label: 'Care plans in sync', value: '94%' }].map((item) => (
               <div key={item.label} className="lh-card-soft p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm uppercase tracking-[0.12em] text-body">{item.label}</span>
-                  <span className="text-md font-semibold tracking-[-0.01em] text-ink">{item.value}</span>
+                  <span className="text-caption font-medium text-body">{item.label}</span>
+                  <span className="text-md font-semibold tracking-heading text-ink">{item.value}</span>
                 </div>
               </div>
             ))}

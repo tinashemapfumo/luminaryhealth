@@ -98,7 +98,7 @@ export default function AppointmentsPage() {
           <div className="lh-card-soft mt-4 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-lg font-semibold tracking-[-0.01em] text-ink">{selectedAppointment.patient}</p>
+                <p className="text-lg font-semibold tracking-heading text-ink">{selectedAppointment.patient}</p>
                 <p className="mt-1 text-sm text-body">{selectedAppointment.type}</p>
               </div>
               <StatusPill label={visitStatuses[selectedAppointment.id] || 'Booked'} tone={visitStatusTone[visitStatuses[selectedAppointment.id]] || 'neutral'} />
@@ -147,7 +147,7 @@ export default function AppointmentsPage() {
                 return (
                   <div key={step} className="flex-1">
                     <div className={`h-1.5 rounded-full ${reached ? 'bg-ink' : 'bg-line'}`} />
-                    <p className={`mt-1.5 text-2xs uppercase tracking-[0.08em] ${reached ? 'text-brand' : 'text-faint'}`}>{step}</p>
+                    <p className={`mt-1.5 text-caption font-medium ${reached ? 'text-brand' : 'text-faint'}`}>{step}</p>
                   </div>
                 );
               })}

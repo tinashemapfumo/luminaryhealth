@@ -258,7 +258,7 @@ export default function TariffImportPage() {
         <div className="lh-card-pad">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">{file.name}</h2>
+              <h2 className="text-lg font-semibold tracking-heading text-ink">{file.name}</h2>
               <p className="mt-1 text-sm text-body">
                 {parsed.rows.length} rows · {parsed.headers.length} columns
                 {appliedProfile && <span className="text-brand"> · mapped by “{appliedProfile.name}”</span>}
@@ -278,7 +278,7 @@ export default function TariffImportPage() {
 
           {isTariff && (
             <label className="mb-4 block max-w-sm">
-              <span className="mb-1.5 block text-2xs font-semibold uppercase tracking-[0.01em] text-muted">Medical aid</span>
+              <span className="mb-1.5 block text-caption font-semibold text-muted">Medical aid</span>
               <select
                 value={payerId}
                 onChange={(event) => setPayerId(event.target.value)}
@@ -293,7 +293,7 @@ export default function TariffImportPage() {
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {fields.map((field) => (
               <label key={field.key} className="block">
-                <span className="mb-1.5 flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.01em] text-muted">
+                <span className="mb-1.5 flex items-center gap-1.5 text-caption font-semibold text-muted">
                   {field.label}
                   {field.required && <span className="text-danger">*</span>}
                 </span>
@@ -320,7 +320,7 @@ export default function TariffImportPage() {
       {staged && summary && (
         <div className="lh-card-pad">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">What this would do</h2>
+            <h2 className="text-lg font-semibold tracking-heading text-ink">What this would do</h2>
             <div className="flex items-center gap-2">
               <button type="button" onClick={reset} className="lh-secondary-button">Cancel</button>
               <button
@@ -345,7 +345,7 @@ export default function TariffImportPage() {
               { label: 'Changed', value: summary.changed },
             ].map((tile) => (
               <div key={tile.label} className="lh-card-soft p-3">
-                <p className="text-xs uppercase tracking-[0.1em] text-muted">{tile.label}</p>
+                <p className="text-caption font-medium text-muted">{tile.label}</p>
                 <p className="mt-1.5 text-md font-semibold text-ink tabular-nums">{tile.value}</p>
               </div>
             ))}

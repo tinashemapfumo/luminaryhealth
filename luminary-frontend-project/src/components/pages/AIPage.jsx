@@ -30,7 +30,7 @@ function AnalystResponse({ message, copied, onCopy, onRetry, onFollowUp }) {
             const TrendIcon = Number(metric.changePercent) >= 0 ? ArrowUpRight : ArrowDownRight;
             return (
               <div key={`${metric.label}-${index}`} className="min-w-0 px-3 py-3 first:pl-0 sm:[&:nth-child(2n+1)]:pl-0 xl:[&:nth-child(2n+1)]:pl-3 xl:[&:nth-child(3n+1)]:pl-0">
-                <p className="truncate text-2xs uppercase tracking-[0.1em] text-muted">{metric.label}</p>
+                <p className="truncate text-caption font-medium text-muted">{metric.label}</p>
                 <p className="mt-1 break-words text-lg font-semibold text-ink">{metric.value}</p>
                 <div className="mt-1 flex min-h-[18px] flex-wrap items-center gap-1.5 text-xs">
                   {metric.changePercent != null && (
@@ -67,7 +67,7 @@ function AnalystResponse({ message, copied, onCopy, onRetry, onFollowUp }) {
 
       {sources.length > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-1.5">
-          <span className="text-2xs uppercase tracking-[0.1em] text-muted">Sources</span>
+          <span className="text-caption font-medium text-muted">Sources</span>
           {sources.map((source, index) => <span key={`${source}-${index}`} className="border-l border-line pl-1.5 text-xs text-body">{source}</span>)}
         </div>
       )}
@@ -198,8 +198,8 @@ export default function AIPage() {
               { label: 'Escalated to humans', value: '9', detail: 'Items needing staff judgement' },
             ].map((item) => (
               <div key={item.label} className="lh-metric">
-                <p className="text-xs uppercase tracking-[0.14em] text-muted">{item.label}</p>
-                <p className="mt-3 text-xl font-semibold tracking-[-0.02em] text-ink">{item.value}</p>
+                <p className="text-caption font-medium text-muted">{item.label}</p>
+                <p className="mt-3 text-xl font-semibold tracking-title text-ink">{item.value}</p>
                 <p className="mt-2 text-sm text-body">{item.detail}</p>
               </div>
             ))}
@@ -215,7 +215,7 @@ export default function AIPage() {
                     </div>
                     <div>
                       <p className="text-md font-semibold text-ink">{agent.name}</p>
-                      <p className="mt-0.5 text-xs uppercase tracking-[0.1em] text-muted">{agent.role}</p>
+                      <p className="mt-0.5 text-caption font-medium text-muted">{agent.role}</p>
                     </div>
                   </div>
                   <StatusPill label={agentStates[agent.id] ? 'Active' : 'Paused'} tone={agentStates[agent.id] ? 'success' : 'neutral'} />
@@ -226,8 +226,8 @@ export default function AIPage() {
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {agent.metrics.map((metric) => (
                     <div key={metric.label} className="lh-card-soft p-2.5">
-                      <p className="text-2xs uppercase tracking-[0.1em] text-muted">{metric.label}</p>
-                      <p className="mt-1 text-md font-semibold tracking-[-0.01em] text-ink">{metric.value}</p>
+                      <p className="text-caption font-medium text-muted">{metric.label}</p>
+                      <p className="mt-1 text-md font-semibold tracking-heading text-ink">{metric.value}</p>
                     </div>
                   ))}
                 </div>
@@ -254,12 +254,12 @@ export default function AIPage() {
           {smartInsights.map((insight) => (
             <div key={insight.title} className="lh-card-pad">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-md font-semibold tracking-[-0.01em] text-ink">{insight.title}</p>
+                <p className="text-md font-semibold tracking-heading text-ink">{insight.title}</p>
                 <StatusPill label={insight.severity} tone={insight.tone} />
               </div>
               <p className="mt-3 text-base leading-6 text-body">{insight.detail}</p>
               <div className="mt-4 flex items-center justify-between">
-                <span className="text-xs uppercase tracking-[0.1em] text-muted">{insight.source}</span>
+                <span className="text-caption font-medium text-muted">{insight.source}</span>
                 <button className="text-sm font-medium text-brand">Open workflow →</button>
               </div>
             </div>
@@ -270,7 +270,7 @@ export default function AIPage() {
       {aiTab === 'Ask Luminary' && (
         <div className="lh-card-pad">
           <div className="flex items-center gap-2">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted">Ask Luminary, searches every module</p>
+            <p className="text-caption font-medium text-muted">Ask Luminary, searches every module</p>
           </div>
 
           <div className="mt-4 max-h-[620px] space-y-3 overflow-y-auto pr-1">

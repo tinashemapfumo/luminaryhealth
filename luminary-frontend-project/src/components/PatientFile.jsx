@@ -59,7 +59,7 @@ function Panel({ title, icon: Icon, action, children }) {
   return (
     <section className="lh-card-pad">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.1em] text-muted">
+        <h3 className="flex items-center gap-2 text-copy font-semibold text-ink">
           {Icon && <Icon size={14} className="text-brand" />}
           {title}
         </h3>
@@ -73,7 +73,7 @@ function Panel({ title, icon: Icon, action, children }) {
 function EpisodeLinks({ title, items, empty }) {
   return (
     <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">{title}</p>
+      <p className="text-caption font-semibold text-muted">{title}</p>
       {items.length ? (
         <div className="mt-2 space-y-1.5">
           {items.map((item) => (
@@ -623,23 +623,23 @@ export default function PatientFile({
                   </Button>
                 ) : null}
               >
-                <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Active conditions</p>
+                <p className="mb-1.5 text-caption font-medium text-muted">Active conditions</p>
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {record.conditions?.length ? record.conditions.map((c) => (
                     <span key={c} className="rounded bg-brand-soft px-2 py-1 text-sm text-brand-deep">{c}</span>
                   )) : <span className="text-base text-muted">None recorded</span>}
                 </div>
-                <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Allergies</p>
+                <p className="mb-1.5 text-caption font-medium text-muted">Allergies</p>
                 <div className="mb-3 flex flex-wrap gap-1.5">
                   {record.allergies?.length ? record.allergies.map((a) => (
                     <span key={a} className="rounded bg-danger-soft px-2 py-1 text-sm font-medium text-danger">{a}</span>
                   )) : <span className="text-base text-muted">{record.allergiesRecorded ? 'None known' : 'Not yet reviewed'}</span>}
                 </div>
-                <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Family history</p>
+                <p className="mb-1.5 text-caption font-medium text-muted">Family history</p>
                 <ul className="mb-3 space-y-1 text-base text-ink-soft">
                   {record.familyHistory?.length ? record.familyHistory.map((f) => <li key={f}>• {f}</li>) : <li className="text-muted">None recorded</li>}
                 </ul>
-                <p className="mb-1.5 text-xs uppercase tracking-[0.1em] text-muted">Immunisations</p>
+                <p className="mb-1.5 text-caption font-medium text-muted">Immunisations</p>
                 <ul className="space-y-1 text-base text-ink-soft">
                   {record.immunisations?.length ? record.immunisations.map((i) => <li key={i}>• {i}</li>) : <li className="text-muted">None recorded</li>}
                 </ul>
@@ -689,7 +689,7 @@ export default function PatientFile({
                     </button>
                   </div>
                 )
-                : <span className="text-xs uppercase tracking-[0.08em] text-muted">Read only</span>}
+                : <span className="text-caption font-medium text-muted">Read only</span>}
             >
               {prescriptions.length === 0 ? (
                 <p className="text-base text-muted">No prescriptions on file.</p>
@@ -748,7 +748,7 @@ export default function PatientFile({
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-semibold tracking-[-0.01em] text-ink">{episode.title}</h3>
+                              <h3 className="text-lg font-semibold tracking-heading text-ink">{episode.title}</h3>
                               <StatusPill label={episode.status} tone={episodeStatusTone[episode.status] || 'neutral'} />
                             </div>
                             <p className="mt-1 text-sm text-body">{episode.reason || 'No reason recorded.'}</p>
@@ -774,7 +774,7 @@ export default function PatientFile({
 
                         {episode.outcome && (
                           <div className="mt-3 rounded-md border border-line bg-white p-3">
-                            <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">Outcome</p>
+                            <p className="text-caption font-semibold text-muted">Outcome</p>
                             <p className="mt-1 text-sm text-ink-soft">{episode.outcome}</p>
                           </div>
                         )}
@@ -916,7 +916,7 @@ export default function PatientFile({
                 <Row label="Effective from" value={record.coverEffectiveFrom} missing={!record.coverEffectiveFrom} />
                 <Row label="Valid until" value={record.coverValidUntil} missing={!record.coverValidUntil} />
                 <div className="lh-card-soft mt-3 p-3">
-                  <p className="text-xs uppercase tracking-[0.1em] text-muted">Cover status</p>
+                  <p className="text-caption font-medium text-muted">Cover status</p>
                   <p className={`mt-1 text-base font-medium ${record.coverStatus?.startsWith('Suspended') ? 'text-danger' : 'text-success'}`}>
                     {record.coverStatus}
                   </p>
@@ -969,7 +969,7 @@ export default function PatientFile({
                       ['Closing balance', patientOutstanding, patientOutstanding > 0 ? 'warm' : 'success'],
                     ].map(([label, value, tone]) => (
                       <div key={label} className={`rounded-lg border p-3 ${tone === 'success' ? 'border-success/20 bg-success-soft' : tone === 'warm' ? 'border-warning/20 bg-warning-wash' : tone === 'alert' ? 'border-danger/20 bg-danger-soft' : 'border-line bg-white'}`}>
-                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted">{label}</p>
+                        <p className="text-caption font-semibold text-muted">{label}</p>
                         <p className="mt-2 text-base font-semibold text-ink tabular-nums">
                           {formatMoney ? formatMoney(value, patientInvoices[0]?.currency) : currency(value)}
                         </p>
@@ -978,10 +978,10 @@ export default function PatientFile({
                   </div>
 
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Invoices</p>
+                    <p className="mb-2 text-caption font-semibold text-muted">Invoices</p>
                     <div className="overflow-x-auto rounded-lg border border-line bg-white">
                       <table className="min-w-full text-left text-md">
-                        <thead className="bg-surface text-xs uppercase tracking-[0.08em] text-muted">
+                        <thead className="bg-surface text-caption font-medium text-muted">
                           <tr>
                             <th className="px-3 py-2 font-semibold">Invoice</th>
                             <th className="px-3 py-2 font-semibold">Issued</th>
@@ -1009,7 +1009,7 @@ export default function PatientFile({
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Payments</p>
+                      <p className="mb-2 text-caption font-semibold text-muted">Payments</p>
                       {patientPayments.length ? (
                         <div className="space-y-2">
                           {patientPayments.map((payment) => (
@@ -1028,7 +1028,7 @@ export default function PatientFile({
                     </div>
 
                     <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Claims</p>
+                      <p className="mb-2 text-caption font-semibold text-muted">Claims</p>
                       {patientClaims.length ? (
                         <div className="space-y-2">
                           {patientClaims.map((claim) => (

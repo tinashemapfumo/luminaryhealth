@@ -34,7 +34,7 @@ export default function AuditPage() {
             className="rounded-lg border border-line/70 bg-white/80 px-3.5 py-3 shadow-[0_7px_22px_-20px_rgba(33,97,156,0.18)] backdrop-blur"
           >
             <p className="lh-section-label">{tile.label}</p>
-            <p className={`mt-1.5 text-xl font-semibold tracking-[-0.02em] ${tile.tone === 'alert' ? 'text-danger' : 'text-ink'}`}>
+            <p className={`mt-1.5 text-xl font-semibold tracking-title ${tile.tone === 'alert' ? 'text-danger' : 'text-ink'}`}>
               {tile.value}
             </p>
           </div>
@@ -43,7 +43,7 @@ export default function AuditPage() {
 
       <section className="rounded-lg border border-line/60 bg-white/55 px-3.5 py-3 backdrop-blur">
         <div className="mb-2.5 flex items-center justify-between">
-          <h2 className="text-sm font-semibold tracking-[-0.01em] text-ink">Access grants</h2>
+          <h2 className="text-sm font-semibold tracking-heading text-ink">Access grants</h2>
           <span className="text-xs text-muted">Standing and temporary</span>
         </div>
         {practiceGrants.length === 0 ? (
@@ -75,7 +75,7 @@ export default function AuditPage() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-[-0.01em] text-ink">Event trail</h2>
+        <h2 className="text-sm font-semibold tracking-heading text-ink">Event trail</h2>
         {scoped.length === 0 ? (
           <EmptyState icon={ShieldCheck} title="No events yet" detail="Access and changes will appear here as they happen." />
         ) : (

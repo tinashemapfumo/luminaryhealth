@@ -215,7 +215,7 @@ function WorkItemModal({ id, onClose, onChanged, access, currency, formatMoney }
         </div>
 
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Draft invoice lines</p>
+          <p className="mb-1.5 text-caption font-semibold text-muted">Draft invoice lines</p>
           {lines.length === 0 ? (
             <p className="text-sm text-muted">No lines yet.</p>
           ) : (
@@ -244,7 +244,7 @@ function WorkItemModal({ id, onClose, onChanged, access, currency, formatMoney }
           <div className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2">
             {access.can.addCatalogueInvoiceLine && (
               <div className="space-y-1.5">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Add catalogue line</p>
+                <p className="text-caption font-semibold text-muted">Add catalogue line</p>
                 <div className="relative">
                   <Input
                     value={newService ? `${newService.display_name} (${newService.internal_code})` : serviceQuery}
@@ -281,7 +281,7 @@ function WorkItemModal({ id, onClose, onChanged, access, currency, formatMoney }
             )}
             {access.can.addCustomInvoiceLine && (
               <div className="space-y-1.5">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Add custom line</p>
+                <p className="text-caption font-semibold text-muted">Add custom line</p>
                 <Input value={customDescription} onChange={(e) => setCustomDescription(e.target.value)} placeholder="Description" />
                 <div className="flex gap-2">
                   <Input type="number" min="1" value={customQuantity} onChange={(e) => setCustomQuantity(e.target.value)} placeholder="Qty" />
@@ -319,7 +319,7 @@ function WorkItemModal({ id, onClose, onChanged, access, currency, formatMoney }
         )}
 
         <div>
-          <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Clarifications</p>
+          <p className="mb-1.5 text-caption font-semibold text-muted">Clarifications</p>
           <div className="space-y-2">
             {(item.clarifications || []).length === 0 && <p className="text-sm text-muted">None requested.</p>}
             {(item.clarifications || []).map((c) => (
@@ -365,7 +365,7 @@ function WorkItemModal({ id, onClose, onChanged, access, currency, formatMoney }
 
         {access.can.editDraftInvoice && (
           <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Bespoke price agreements</p>
+            <p className="mb-1.5 text-caption font-semibold text-muted">Bespoke price agreements</p>
             {(item.bespokeAgreements || []).length === 0 && <p className="text-sm text-muted">None on file for this patient.</p>}
             {(item.bespokeAgreements || []).map((a) => (
               <div key={a.id} className="flex items-center justify-between rounded border border-line bg-white p-2 text-sm">

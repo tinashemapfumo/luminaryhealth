@@ -31,7 +31,7 @@ export default function CommunicationsPage() {
         ].map((item) => (
           <div key={item.label} className="lh-metric">
             <p className="lh-section-label">{item.label}</p>
-            <p className="mt-3 text-xl font-semibold tracking-[-0.02em] text-ink">{item.value}</p>
+            <p className="mt-3 text-xl font-semibold tracking-title text-ink">{item.value}</p>
             <p className="mt-2 text-sm text-body">{item.detail}</p>
           </div>
         ))}
@@ -42,7 +42,7 @@ export default function CommunicationsPage() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="lh-section-label">Message log</p>
-              <h2 className="mt-2 text-lg font-semibold tracking-[-0.01em] text-ink">Recent outreach</h2>
+              <h2 className="mt-2 text-lg font-semibold tracking-heading text-ink">Recent outreach</h2>
             </div>
             <button type="button" onClick={() => exportCsv('message-log.csv', [{ label: 'Patient', get: (r) => r.patient }, { label: 'Channel', get: (r) => r.channel }, { label: 'Type', get: (r) => r.type }, { label: 'Message', get: (r) => r.message }, { label: 'Status', get: (r) => r.status }, { label: 'Time', get: (r) => r.time }], practiceMessages)} className="lh-secondary-button">Export log</button>
           </div>
@@ -52,7 +52,7 @@ export default function CommunicationsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-md font-medium text-ink">{entry.patient}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.1em] text-muted">{entry.channel} · {entry.type}</p>
+                    <p className="mt-1 text-caption font-medium text-muted">{entry.channel} · {entry.type}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1.5">
                     <StatusPill label={entry.status} tone={entry.tone} />

@@ -395,14 +395,14 @@ export default function PatientsPage() {
                         <button
                           type="button"
                           onClick={() => toggleSort(column.key)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.08em] text-muted transition hover:text-brand"
+                          className="inline-flex items-center gap-1 text-caption font-semibold text-muted transition hover:text-brand"
                         >
                           {column.label}
                           <ArrowUpDown size={11} className={sortKey.column === column.key ? 'text-brand' : 'text-shell-muted'} />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.08em] text-muted">File</th>
+                    <th scope="col" className="px-4 py-2.5 text-caption font-semibold text-muted">File</th>
                     <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
@@ -481,7 +481,7 @@ export default function PatientsPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="lh-section-label">Selected patient</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-[-0.02em] text-ink">{selectedPatient.name}</h2>
+                <h2 className="mt-2 text-xl font-semibold tracking-title text-ink">{selectedPatient.name}</h2>
               </div>
               <StatusPill label={selectedPatient.status} tone={patientStatusTone[selectedPatient.status]} />
             </div>
@@ -597,7 +597,7 @@ export default function PatientsPage() {
                           Prescribe
                         </button>
                       ) : (
-                        <span className="text-2xs uppercase tracking-[0.08em] text-faint">Read only</span>
+                        <span className="text-caption font-medium text-faint">Read only</span>
                       )}
                     </div>
                     <div className="mt-3 space-y-2">
@@ -670,7 +670,7 @@ export default function PatientsPage() {
                 <div className="space-y-3">
                   <div className="rounded border border-line bg-surface p-3">
                     <p className="lh-section-label">Outstanding balance</p>
-                    <p className="mt-2 text-lg font-semibold tracking-[-0.01em] text-ink">{currency(selectedPatient.balance)}</p>
+                    <p className="mt-2 text-lg font-semibold tracking-heading text-ink">{currency(selectedPatient.balance)}</p>
                   </div>
                   <div className="rounded border border-line bg-white p-3">
                     <p className="lh-section-label">Coverage</p>

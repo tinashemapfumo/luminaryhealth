@@ -29,7 +29,7 @@ function Section({ title, detail, children, action }) {
     <section className="px-1 py-1">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-line/70 pb-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</h2>
+          <h2 className="text-lg font-semibold tracking-heading text-ink">{title}</h2>
           {detail && <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">{detail}</p>}
         </div>
         {action}
@@ -631,7 +631,7 @@ export default function SettingsPage() {
           )}
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-md">
-              <thead className="text-xs uppercase tracking-[0.08em] text-muted">
+              <thead className="text-caption font-medium text-muted">
                 <tr>
                   <th className="py-2 font-semibold">Provider</th>
                   <th className="py-2 font-semibold">Speciality</th>
@@ -735,7 +735,7 @@ export default function SettingsPage() {
             <Field label="Closes at"><Input type="time" value={settings.hours.closesAt} onChange={field('hours', 'closesAt')} disabled={!canConfigure} /></Field>
             <Field label="Slot length" hint="Minutes per calendar row"><Select value={settings.hours.slotMinutes} onChange={field('hours', 'slotMinutes')} options={SLOT_LENGTHS} disabled={!canConfigure} /></Field>
           </div>
-          <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-muted">Open days</p>
+          <p className="mb-2 mt-4 text-caption font-semibold text-muted">Open days</p>
           <div className="flex flex-wrap gap-1.5">
             {WEEKDAYS.map((day) => {
               const open = settings.hours.openDays.includes(day);
@@ -765,7 +765,7 @@ export default function SettingsPage() {
           <Section title="Medical aid schemes" detail="Reimbursement rate per scheme. This replaces a hardcoded 80% split that was computing real money from a guess.">
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-md">
-                <thead className="text-xs uppercase tracking-[0.08em] text-muted">
+                <thead className="text-caption font-medium text-muted">
                   <tr>
                     <th className="py-2 font-semibold">Scheme</th>
                     <th className="py-2 font-semibold">Reimburses</th>
@@ -886,7 +886,7 @@ export default function SettingsPage() {
             <div className="space-y-5">
               <div>
                 <div className="mb-3 flex items-center gap-2">
-                  <p className="text-sm font-semibold uppercase tracking-[0.1em] text-brand">NH263 claims switch</p>
+                  <p className="text-copy font-semibold text-brand-deep">NH263 claims switch</p>
                   <StatusPill label={settings.integrations.nh263Connected ? 'Connected' : 'Not connected'} tone={settings.integrations.nh263Connected ? 'success' : 'alert'} />
                 </div>
                 <div className="grid gap-3.5 sm:grid-cols-2">
@@ -901,7 +901,7 @@ export default function SettingsPage() {
 
               <div className="border-t border-line pt-4">
                 <div className="mb-3 flex items-center gap-2">
-                  <p className="text-sm font-semibold uppercase tracking-[0.1em] text-brand">Messaging gateway</p>
+                  <p className="text-copy font-semibold text-brand-deep">Messaging gateway</p>
                   <StatusPill label={settings.integrations.smsConnected ? 'Connected' : 'Not connected'} tone={settings.integrations.smsConnected ? 'success' : 'alert'} />
                 </div>
                 <div className="grid gap-3.5 sm:grid-cols-2">

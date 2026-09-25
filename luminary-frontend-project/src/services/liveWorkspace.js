@@ -263,6 +263,8 @@ export const encounterFromApi = (row, patient) => ({
 
 export const prescriptionFromApi = (row, fallbackPrescriberName) => ({
   id: row.id,
+  // Medicines issued together share a group: that group is the prescription.
+  groupId: row.issue_group_id || row.id,
   patientId: row.patient_id,
   encounterId: row.encounter_id,
   drug: row.drug,
@@ -288,6 +290,45 @@ export const prescriptionFromApi = (row, fallbackPrescriberName) => ({
     ? `${shortDate(row.issued_at)} ${timeLabel(row.issued_at)}`
     : row.created_at ? `${shortDate(row.created_at)} ${timeLabel(row.created_at)}` : '',
 });
+
+/**
+ * Fold medicine rows into prescriptions: one entry per issue, carrying its
+ * medicines as `items`, in the order the (newest-first) list presents them.
+ * Status is the shared status when every medicine agrees, otherwise the
+ * prescription is shown as partly active so no single-medicine change hides.
+ */
+export const groupPrescriptions = (rows = []) => {
+  const groups = new Map();
+  for (const rx of rows) {
+    const key = rx.groupId || rx.id;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        id: key,
+        groupId: key,
+        patientId: rx.patientId,
+        encounterId: rx.encounterId,
+        issuedAt: rx.issuedAt,
+        prescriber: rx.prescriber,
+        prescriberRegistration: rx.prescriberRegistration,
+        pharmacy: rx.pharmacy,
+        items: [],
+      });
+    }
+    const group = groups.get(key);
+    group.items.push(rx);
+    if (!group.pharmacy && rx.pharmacy) group.pharmacy = rx.pharmacy;
+  }
+  return [...groups.values()].map((group) => {
+    const statuses = [...new Set(group.items.map((item) => item.status))];
+    const uniform = statuses.length === 1;
+    return {
+      ...group,
+      status: uniform ? statuses[0] : 'Partly active',
+      tone: uniform ? group.items[0].tone : 'warm',
+      mixedStatus: !uniform,
+    };
+  });
+};
 
 export const auditFromApi = (row) => ({
   id: row.id,

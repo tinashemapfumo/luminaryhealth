@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import { can, type Role } from '../../platform/permissions.js';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../platform/errors.js';
@@ -191,7 +192,7 @@ export const clinicalService = {
                 p.frequency, p.duration_days, p.quantity, p.refills, p.indication, p.pharmacy,
                 p.substitution_allowed, p.instructions, p.status, p.created_at, p.issued_at,
                 p.cancelled_at, p.cancellation_reason, p.completed_at, p.superseded_at,
-                p.supersedes_id,
+                p.supersedes_id, p.issue_group_id,
                 COALESCE(p.prescriber_name, u.display_name) AS prescriber_name,
                 COALESCE(p.prescriber_registration, u.registration_number) AS prescriber_registration,
                 cancelled.display_name AS cancelled_by_name,
@@ -938,13 +939,14 @@ export const clinicalService = {
   },
 
   /**
-   * Issue several medications from one consultation as a single unit. The
-   * allergy review gate and the prescriber snapshot are resolved once for the
-   * whole batch; the allergy *clash* check still runs per drug, since each
-   * one is a different name against the same recorded allergy list. All rows
-   * are written on the caller's transaction, so a rejection anywhere in the
-   * batch — a bad allergy match, a lapsed registration — leaves nothing
-   * partially issued.
+   * Issue several medications from one consultation as a single prescription.
+   * Each medicine is still its own row (allergy clash check, status and
+   * cancellation are per medicine), but every row shares one issue_group_id,
+   * so the chart lists them as one prescription and prints them on one
+   * document. The allergy review gate and the prescriber snapshot are
+   * resolved once for the whole prescription. All rows are written on the
+   * caller's transaction, so a rejection anywhere — a bad allergy match, a
+   * lapsed registration — leaves nothing partially issued.
    */
   async prescribeBatch(
     client: PoolClient,
@@ -1009,30 +1011,33 @@ export const clinicalService = {
       [actor.userId],
     );
 
+    // One prescription, however many medicines: every row carries this id.
+    const issueGroupId = randomUUID();
     const created: Record<string, unknown>[] = [];
     for (const item of input.items) {
       const { rows } = await client.query(
         `INSERT INTO luminary.prescription
            (practice_id, patient_id, encounter_id, prescriber_id, drug, form, strength, dose, route,
             frequency, duration_days, quantity, refills, indication, pharmacy, substitution_allowed,
-            instructions, issued_at, prescriber_name, prescriber_registration)
+            instructions, issued_at, prescriber_name, prescriber_registration, issue_group_id)
          VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, now(), $17, $18)
+                 $14, $15, $16, now(), $17, $18, $19)
          RETURNING *`,
         [input.patientId, input.encounterId ?? null, actor.userId, item.drug, item.form ?? null,
          item.strength ?? null, item.dose ?? null, item.route ?? null, item.frequency ?? null,
          item.durationDays ?? null, item.quantity ?? null, item.refills ?? 0, item.indication ?? null,
          item.pharmacy ?? null, item.substitutionAllowed ?? null, item.instructions ?? null,
-         prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null],
+         prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null,
+         issueGroupId],
       );
       created.push(rows[0]);
     }
 
     await client.query(
-      `SELECT luminary.write_audit('Prescribed', 'patient', $1, $2, $3, 'notice')`,
+      `SELECT luminary.write_audit('Issued prescription', 'prescription', $1, $2, $3, 'notice')`,
       [
-        input.patientId, patient[0].full_name,
-        `${input.items.length} medications: ${input.items.map((i) => i.drug).join(', ')}`,
+        issueGroupId, patient[0].full_name,
+        `${input.items.length} medicine${input.items.length === 1 ? '' : 's'}: ${input.items.map((i) => i.drug).join(', ')}`,
       ],
     );
     return created;

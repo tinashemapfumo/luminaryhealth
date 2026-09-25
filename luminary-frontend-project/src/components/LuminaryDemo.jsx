@@ -2405,7 +2405,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
       closeDialog();
-      notify(`${mapped.length} prescription${mapped.length === 1 ? '' : 's'} issued for ${patient.name}`);
+      notify(`Prescription issued for ${patient.name} · ${mapped.length} medicine${mapped.length === 1 ? '' : 's'}`);
     } catch (error) {
       setFormErrors({
         ...errors,
@@ -2500,7 +2500,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
       closeDialog();
-      notify(`${mapped.length} prescription${mapped.length === 1 ? '' : 's'} issued for ${patient.name}`);
+      notify(`Prescription issued for ${patient.name} · ${mapped.length} medicine${mapped.length === 1 ? '' : 's'}`);
     } catch (error) {
       setFormErrors({
         itemErrors,

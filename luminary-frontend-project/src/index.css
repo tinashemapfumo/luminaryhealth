@@ -1503,6 +1503,17 @@ body.lh-dark * {
   border-bottom: 1pt solid #000;
 }
 
+/* Several medicines on one prescription read as one numbered list: one rule
+   between medicines, and no medicine split across a page break. */
+.lh-prescription-print-rx + .lh-prescription-print-rx {
+  margin-top: 0;
+  border-top: 0;
+}
+
+.lh-prescription-print-rx {
+  break-inside: avoid;
+}
+
 .lh-prescription-print-symbol {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 24pt;

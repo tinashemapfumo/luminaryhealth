@@ -17,15 +17,20 @@ const patientWithAllergy = {
   full_name: 'Tendai Nyoni', allergies: ['Amoxicillin'], allergies_reviewed: true,
 };
 
-function clientReturning(patientRow: Record<string, unknown>, captureInserts?: string[]) {
+function clientReturning(
+  patientRow: Record<string, unknown>,
+  captureInserts?: string[],
+  captureParams?: unknown[][],
+) {
   return {
-    query: async (text: string) => {
+    query: async (text: string, params?: unknown[]) => {
       if (text.includes('FROM luminary.patient WHERE id')) return { rows: [patientRow] };
       if (text.includes('FROM luminary.app_user WHERE id')) {
         return { rows: [{ display_name: 'Dr. Chen', registration_number: 'HPCZ-GP-4471' }] };
       }
       if (text.includes('INSERT INTO luminary.prescription')) {
         captureInserts?.push(text);
+        captureParams?.push(params ?? []);
         return { rows: [{ id: `rx-${(captureInserts?.length ?? 0)}`, status: 'active' }] };
       }
       return { rows: [] };
@@ -98,4 +103,30 @@ void test('a valid batch writes one row per item and returns all of them', async
   });
   assert.equal(created.length, 3);
   assert.equal(inserts.length, 3);
+});
+
+void test('every medicine in a batch shares one issue group, so it is one prescription', async () => {
+  const inserts: string[] = [];
+  const params: unknown[][] = [];
+  const client = clientReturning(patientReviewed, inserts, params);
+  await clinicalService.prescribeBatch(client, doctor, {
+    patientId: 'pat-1',
+    items: [
+      { drug: 'Amoxicillin', strength: '500 mg', route: 'oral', frequency: 'tds', durationDays: 5 },
+      { drug: 'Paracetamol', strength: '500 mg', route: 'oral', frequency: 'qds', durationDays: 5 },
+    ],
+  });
+  assert.ok(inserts.every((sql) => sql.includes('issue_group_id')), 'every insert sets issue_group_id');
+  const groups = params.map((p) => p.at(-1));
+  assert.equal(new Set(groups).size, 1, 'all medicines carry the same issue group');
+  assert.match(String(groups[0]), /^[0-9a-f-]{36}$/, 'the issue group is a uuid');
+});
+
+void test('two separate batches are two prescriptions', async () => {
+  const params: unknown[][] = [];
+  const client = clientReturning(patientReviewed, [], params);
+  const item = { drug: 'Paracetamol', strength: '500 mg', route: 'oral', frequency: 'qds', durationDays: 5 };
+  await clinicalService.prescribeBatch(client, doctor, { patientId: 'pat-1', items: [item] });
+  await clinicalService.prescribeBatch(client, doctor, { patientId: 'pat-1', items: [item] });
+  assert.notEqual(params[0]?.at(-1), params[1]?.at(-1));
 });

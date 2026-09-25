@@ -51,26 +51,77 @@ function PracticeHeader({ practice = fallbackPractice }) {
   );
 }
 
+/** One medicine on the prescription. */
+function MedicineBlock({ item, index, total, patient }) {
+  const medication = [
+    item.drug || item.medication || item.name,
+    item.strength,
+    item.form,
+  ].filter(Boolean).join(' ');
+  const directions = [
+    item.dose,
+    item.route,
+    item.directions || item.frequency,
+  ].filter(Boolean).join(' | ');
+  const quantity = item.quantity || item.dispenseQuantity || item.daysSupply;
+  const duration = item.duration || item.daysSupply;
+  const indication = item.indication || item.diagnosis || (total === 1 ? patient.conditions?.[0] : '');
+  const substitution = item.substitutionAllowed === false ? 'Do not substitute' : item.substitutionAllowed === true ? 'Substitution allowed' : 'Per pharmacist judgement';
+  const cancelled = /cancel/i.test(String(item.status || ''));
+
+  return (
+    <section className="lh-prescription-print-rx">
+      <p className="lh-prescription-print-symbol">{total > 1 ? `${index + 1}.` : 'Rx'}</p>
+      <div>
+        <p className="lh-prescription-print-medication">
+          {field(medication, 'Medication not recorded')}
+          {cancelled && ' — CANCELLED, DO NOT DISPENSE'}
+        </p>
+        <dl className="lh-prescription-print-details">
+          <div>
+            <dt>Directions</dt>
+            <dd>{field(directions)}</dd>
+          </div>
+          <div>
+            <dt>Quantity</dt>
+            <dd>{field(quantity)}</dd>
+          </div>
+          <div>
+            <dt>Duration</dt>
+            <dd>{field(duration)}</dd>
+          </div>
+          <div>
+            <dt>Refills</dt>
+            <dd>{field(item.refills)}</dd>
+          </div>
+          <div>
+            <dt>Indication</dt>
+            <dd>{field(indication)}</dd>
+          </div>
+          <div>
+            <dt>Substitution</dt>
+            <dd>{substitution}</dd>
+          </div>
+        </dl>
+        {item.notes && <p className="lh-prescription-print-small">Instructions: {item.notes}</p>}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Prints one prescription. A prescription issued with several medicines
+ * arrives as a group with `items`; an older single-medicine prescription is
+ * printed as a prescription of one.
+ */
 export function PrescriptionPrintDocument({ prescription, patient, practice }) {
   if (!prescription || !patient) return null;
 
-  const medication = [
-    prescription.drug || prescription.medication || prescription.name,
-    prescription.strength,
-    prescription.form,
-  ].filter(Boolean).join(' ');
+  const items = Array.isArray(prescription.items) && prescription.items.length ? prescription.items : [prescription];
   const prescriber = prescription.prescriber || prescription.provider || prescription.doctor;
   const issued = prescription.issuedAt || prescription.issued || prescription.date || prescription.lastFilled;
   const pharmacy = prescription.pharmacy;
-  const directions = [
-    prescription.dose,
-    prescription.route,
-    prescription.directions || prescription.frequency,
-  ].filter(Boolean).join(' | ');
-  const quantity = prescription.quantity || prescription.dispenseQuantity || prescription.daysSupply;
-  const duration = prescription.duration || prescription.daysSupply;
-  const indication = prescription.indication || prescription.diagnosis || patient.conditions?.[0];
-  const substitution = prescription.substitutionAllowed === false ? 'Do not substitute' : prescription.substitutionAllowed === true ? 'Substitution allowed' : 'Per pharmacist judgement';
+  const reference = prescription.groupId || prescription.id;
 
   return (
     <div className="lh-print-prescription-doc" aria-hidden="true">
@@ -87,10 +138,10 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
         </div>
         <div>
           <p className="lh-prescription-print-label">Prescription ID</p>
-          <p className="lh-prescription-print-strong">{field(prescription.id)}</p>
+          <p className="lh-prescription-print-strong">{field(reference)}</p>
           <p>Status: {field(prescription.status)}</p>
           <p>Issued: {field(issued)}</p>
-          <p>Indication: {field(indication)}</p>
+          <p>Medicines: {items.length}</p>
         </div>
         <div>
           <p className="lh-prescription-print-label">Prescriber</p>
@@ -111,40 +162,11 @@ export function PrescriptionPrintDocument({ prescription, patient, practice }) {
         </div>
       </section>
 
-      <section className="lh-prescription-print-rx">
-        <p className="lh-prescription-print-symbol">Rx</p>
-        <div>
-          <p className="lh-prescription-print-medication">{field(medication, 'Medication not recorded')}</p>
-          <dl className="lh-prescription-print-details">
-            <div>
-              <dt>Directions</dt>
-              <dd>{field(directions)}</dd>
-            </div>
-            <div>
-              <dt>Quantity</dt>
-              <dd>{field(quantity)}</dd>
-            </div>
-            <div>
-              <dt>Duration</dt>
-              <dd>{field(duration)}</dd>
-            </div>
-            <div>
-              <dt>Refills</dt>
-              <dd>{field(prescription.refills)}</dd>
-            </div>
-            <div>
-              <dt>Next refill</dt>
-              <dd>{field(prescription.nextRefill)}</dd>
-            </div>
-            <div>
-              <dt>Substitution</dt>
-              <dd>{substitution}</dd>
-            </div>
-          </dl>
-        </div>
-      </section>
+      {items.map((item, index) => (
+        <MedicineBlock key={item.id || index} item={item} index={index} total={items.length} patient={patient} />
+      ))}
 
-      {prescription.notes && (
+      {items.length === 1 && prescription.notes && (
         <section className="lh-prescription-print-note">
           <p className="lh-prescription-print-label">Notes</p>
           <p>{prescription.notes}</p>

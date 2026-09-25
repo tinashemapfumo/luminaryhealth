@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Field, Input, Select, Textarea, Button, EmptyState, Modal, StickyBar } from './ui';
 import PrescriptionPrintDocument from './shared/PrescriptionPrintDocument';
+import { groupPrescriptions } from '../services/liveWorkspace';
 import {
   ageFromDob,
   recordCompleteness,
@@ -694,28 +695,54 @@ export default function PatientFile({
                 : <span className="text-caption font-medium text-muted">Read only</span>}
             >
               {prescriptions.length === 0 ? (
-                <p className="text-base text-muted">No prescriptions on file.</p>
-              ) : prescriptions.map((rx) => (
-                <div key={rx.id} className="flex items-start justify-between gap-3 border-b border-line py-2.5 last:border-0">
-                  <div>
-                    <p className="text-base font-medium text-ink">{rx.drug} {rx.strength}</p>
-                    <p className="text-xs text-muted">{rx.frequency} · {rx.refills} refills · {rx.pharmacy}</p>
-                    {rx.prescriber && <p className="mt-0.5 text-xs text-muted">Prescribed by {rx.prescriber}{rx.issuedAt ? ` · ${rx.issuedAt}` : ''}</p>}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => printPrescription(rx)}
-                      className="rounded border border-edge p-1.5 text-muted transition hover:border-brand hover:text-brand"
-                      title="Print prescription"
-                      aria-label={`Print prescription ${rx.id}`}
-                    >
-                      <Printer size={14} />
-                    </button>
-                    <StatusPill label={rx.status} tone={rx.tone} />
-                  </div>
+                <p className="text-small text-muted">No prescriptions on file.</p>
+              ) : (
+                /* One card per prescription: the medicines issued together, printed together. */
+                <div className="space-y-3">
+                  {groupPrescriptions(prescriptions).map((group) => (
+                    <article key={group.id} className="rounded-xl border border-line/70 bg-white/80 shadow-hairline">
+                      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-copy font-semibold text-ink">
+                            Prescription · {group.items.length} medicine{group.items.length === 1 ? '' : 's'}
+                          </p>
+                          <p className="mt-0.5 text-caption text-muted">
+                            {[group.prescriber && `Prescribed by ${group.prescriber}`, group.issuedAt, group.pharmacy].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <StatusPill label={group.status} tone={group.tone} />
+                          <button
+                            type="button"
+                            onClick={() => printPrescription(group)}
+                            className="lh-btn-icon h-8 w-8"
+                            title="Print prescription"
+                            aria-label={`Print prescription issued ${group.issuedAt || ''} with ${group.items.length} medicine${group.items.length === 1 ? '' : 's'}`}
+                          >
+                            <Printer size={16} strokeWidth={1.8} />
+                          </button>
+                        </div>
+                      </header>
+                      <ol className="divide-y divide-line/60">
+                        {group.items.map((rx, index) => (
+                          <li key={rx.id} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                            <div className="flex min-w-0 gap-3">
+                              <span className="mt-0.5 w-4 shrink-0 text-caption font-semibold text-muted tnum">{index + 1}.</span>
+                              <div className="min-w-0">
+                                <p className="text-small font-medium text-ink">{[rx.drug, rx.strength, rx.form].filter(Boolean).join(' ')}</p>
+                                <p className="mt-0.5 text-caption text-muted">
+                                  {[rx.dose, rx.route, rx.frequency, rx.duration, rx.quantity ? `Qty ${rx.quantity}` : '', `${rx.refills} refill${Number(rx.refills) === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}
+                                </p>
+                              </div>
+                            </div>
+                            {group.mixedStatus && <StatusPill label={rx.status} tone={rx.tone} />}
+                          </li>
+                        ))}
+                      </ol>
+                    </article>
+                  ))}
                 </div>
-              ))}
+              )}
             </Panel>
           )}
 

@@ -324,7 +324,7 @@ export function SegmentedControl({ options, value, onChange, label, size = 'md',
             tabIndex={selected ? 0 : -1}
             data-value={item.value}
             onClick={() => onChange?.(item.value)}
-            className={`lh-segmented-item ${size === 'sm' ? 'h-7 px-2.5 text-caption' : ''}`}
+            className={`lh-segmented-item ${size === 'sm' ? 'h-7 min-w-0 px-2 text-micro' : ''}`}
           >
             {Icon && <Icon size={15} strokeWidth={1.8} aria-hidden="true" />}
             {item.label}

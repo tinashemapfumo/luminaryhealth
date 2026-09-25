@@ -1,10 +1,10 @@
 import React from 'react';
-import { ArrowUpDown, GitMerge, Plus, Search, AlertTriangle } from 'lucide-react';
+import { ArrowUpDown, FolderOpen, GitMerge, Plus, Search, AlertTriangle } from 'lucide-react';
 import PatientFile from '../PatientFile';
 import EncounterNote from '../EncounterNote';
 import { patientStatusTone } from '../../data/registry';
 import { carePlansByPatient, labResultsByPatient, prescriptionsByPatient } from '../../data/clinical';
-import { Button, EmptyState, Field, Modal, Select, Textarea } from '../ui';
+import { Button, EmptyState, Field, Modal, SegmentedControl, Select, Textarea } from '../ui';
 import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
@@ -306,7 +306,7 @@ export default function PatientsPage() {
     const columns = [
       { key: 'name', label: 'Patient' },
       { key: 'id', label: 'ID' },
-      { key: 'lastVisit', label: 'Last visit' },
+      { key: 'lastVisit', label: 'Last visit', wide: true },
       { key: 'next', label: 'Next appointment' },
       { key: 'balance', label: 'Balance' },
       { key: 'status', label: 'Status' },
@@ -320,19 +320,20 @@ export default function PatientsPage() {
             <p className="lh-page-subtitle">Search and manage patient records.</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-edge bg-white/90 px-3 py-2 text-body transition focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/15">
-              <Search size={15} />
+            <label className="flex h-control w-full items-center gap-2 rounded-md border border-line bg-white/80 px-3 text-muted shadow-hairline transition duration-fast focus-within:border-brand-vivid/60 focus-within:bg-white focus-within:shadow-focus md:w-64">
+              <Search size={16} strokeWidth={1.8} className="shrink-0" />
               <input
                 type="text"
                 value={patientSearch}
                 onChange={(event) => setPatientSearch(event.target.value)}
                 placeholder="Search patients"
-                className="w-40 bg-transparent text-md text-ink placeholder-faint outline-none"
+                aria-label="Search patients"
+                className="w-full bg-transparent text-copy text-ink placeholder:text-muted outline-none"
               />
-            </div>
+            </label>
             {access.can.addPatient && (
-              <button type="button" onClick={() => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProvider, consentComms: true })} className="lh-primary-button">
-                <Plus size={14} />
+              <button type="button" onClick={() => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProvider, consentComms: true })} className="lh-btn-primary shrink-0">
+                <Plus size={16} strokeWidth={2} />
                 New patient
               </button>
             )}
@@ -341,13 +342,14 @@ export default function PatientsPage() {
 
         {/* The registry scrolls; the preview beside it stays put, so the
             selected patient never scrolls away from the list. */}
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="lh-card min-w-0 p-4">
+        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0">
             {/* A clinician's list is the default view. Widening to the whole
                 practice is allowed and explicit. Opening a chart from the
                 wider set is what triggers break-glass, not seeing the name. */}
             {access.ownPatientsOnly && (
-              <div className="mb-3 flex flex-wrap items-center gap-1 rounded-lg border border-edge bg-white/90 p-1">
+              <div className="mb-3 flex flex-wrap items-center gap-3">
+                <div className="lh-segmented">
                 {[
                   { key: false, label: 'My patients', count: myPatientList.length },
                   { key: true, label: `All of ${practice.short}`, count: practicePatients.length },
@@ -356,32 +358,32 @@ export default function PatientsPage() {
                     key={String(option.key)}
                     type="button"
                     onClick={() => setShowWholePractice(option.key)}
-                    className={`rounded px-3 py-1.5 text-sm font-medium transition ${
-                      showWholePractice === option.key ? 'bg-brand text-white shadow-[0_8px_18px_-14px_rgba(8,114,222,0.55)]' : 'text-body hover:bg-surface'
-                    }`}
+                    aria-pressed={showWholePractice === option.key}
+                    className={`lh-segmented-item ${showWholePractice === option.key ? 'bg-white text-ink shadow-control' : ''}`}
                   >
-                    {option.label} <span className="opacity-70">({option.count})</span>
+                    {option.label} <span className="tnum text-muted">{option.count}</span>
                   </button>
                 ))}
+                </div>
                 {showWholePractice && (
-                  <span className="ml-auto flex items-center gap-1.5 pr-2 text-xs text-warning">
-                    <AlertTriangle size={12} />
+                  <span className="flex items-center gap-1.5 text-caption font-medium text-warning-deep">
+                    <AlertTriangle size={14} strokeWidth={1.8} />
                     Opening a chart outside your list is logged
                   </span>
                 )}
               </div>
             )}
 
-            <div className="flex items-center justify-between px-1 pb-3">
-              <p className="text-sm text-muted">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1 pb-2.5">
+              <p className="text-small text-muted">
                 {filteredPatients.length} of {registrySource.length} patients
                 {patientSearch && <> matching “{patientSearch}”</>}
               </p>
-              <p className="text-xs text-muted">Sorted by {columns.find((c) => c.key === sortKey.column)?.label || 'Recently added'} · {sortKey.direction === 'asc' ? 'ascending' : 'descending'}</p>
+              <p className="text-caption text-muted">Sorted by {columns.find((c) => c.key === sortKey.column)?.label || 'Recently added'} · {sortKey.direction === 'asc' ? 'ascending' : 'descending'}</p>
             </div>
 
             <div className="lh-table-shell">
-              <table className="min-w-full text-left text-md">
+              <table className="min-w-full text-left text-small">
                 <caption className="sr-only">Patient registry. Activate a row to open that patient’s record.</caption>
                 <thead className="lh-table-head">
                   <tr>
@@ -390,20 +392,20 @@ export default function PatientsPage() {
                         key={column.key}
                         scope="col"
                         aria-sort={sortKey.column === column.key ? (sortKey.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                        className="px-4 py-2.5 font-medium"
+                        className={`px-3 py-2.5 font-medium first:pl-4 ${column.wide ? 'hidden 2xl:table-cell' : ''}`}
                       >
                         <button
                           type="button"
                           onClick={() => toggleSort(column.key)}
-                          className="inline-flex items-center gap-1 text-caption font-semibold text-muted transition hover:text-brand"
+                          className="inline-flex items-center gap-1 whitespace-nowrap text-caption font-medium text-muted transition hover:text-brand-deep"
                         >
                           {column.label}
-                          <ArrowUpDown size={11} className={sortKey.column === column.key ? 'text-brand' : 'text-shell-muted'} />
+                          <ArrowUpDown size={12} strokeWidth={1.8} className={sortKey.column === column.key ? 'text-brand' : 'text-muted/60'} />
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="px-4 py-2.5 text-caption font-semibold text-muted">File</th>
-                    <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
+                    <th scope="col" className="px-3 py-2.5 text-caption font-medium text-muted">File</th>
+                    <th scope="col" className="py-2.5 pl-1 pr-3"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -419,44 +421,46 @@ export default function PatientsPage() {
                           setSelectedPatient(patient);
                         }
                       }}
-                      className={`cursor-pointer border-t border-line outline-none transition focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${selectedPatient.id === patient.id ? 'bg-wash' : 'bg-white hover:bg-surface'}`}
+                      className={`cursor-pointer border-t border-line/60 outline-none transition-colors duration-instant focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand ${selectedPatient.id === patient.id ? 'bg-brand-soft/70 shadow-[inset_3px_0_0_rgba(7,94,184,0.7)]' : 'hover:bg-brand-soft/40'}`}
                     >
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-soft text-brand text-xs font-semibold">
+                      <td className="py-2.5 pl-4 pr-3">
+                        <div className="flex min-w-[168px] items-center gap-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-soft text-caption font-semibold text-brand-deep">
                             {patient.name.split(' ').map((part) => part[0]).join('')}
                           </div>
-                          <div>
-                            <p className="font-medium text-ink">{patient.name}</p>
-                            <p className="text-xs text-muted">{patient.provider}</p>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-ink">{patient.name}</p>
+                            <p className="truncate text-caption text-muted">{patient.provider}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-body">{patient.id}</td>
-                      <td className="px-4 py-2.5 text-body">{patient.lastVisit}</td>
-                      <td className="px-4 py-2.5 text-body">{patient.next}</td>
-                      <td className="px-4 py-2.5 text-right text-ink">{currency(patient.balance)}</td>
-                      <td className="px-4 py-2.5"><StatusPill label={patient.status} tone={patientStatusTone[patient.status]} /></td>
-                      <td className="px-4 py-2.5">
+                      <td className="whitespace-nowrap px-3 py-2.5 text-body tnum">{patient.id}</td>
+                      <td className="hidden whitespace-nowrap px-3 py-2.5 text-body 2xl:table-cell">{patient.lastVisit}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-body">{patient.next}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right text-ink tnum">{currency(patient.balance)}</td>
+                      <td className="px-3 py-2.5"><StatusPill label={patient.status} tone={patientStatusTone[patient.status]} /></td>
+                      <td className="px-3 py-2.5">
                         {(() => {
                           const { percent } = recordCompleteness(patientRecords[patient.id]);
                           return (
                             <span className="flex items-center gap-2">
-                              <span className="h-1.5 w-12 overflow-hidden rounded-full bg-line">
+                              <span className="h-1.5 w-10 overflow-hidden rounded-full bg-ink/[0.06]">
                                 <span className={`block h-full rounded-full ${percent === 100 ? 'bg-success-bright' : 'bg-warning-bright'}`} style={{ width: `${percent}%` }} />
                               </span>
-                              <span className={`text-xs font-medium ${percent === 100 ? 'text-success' : 'text-warning'}`}>{percent}%</span>
+                              <span className={`text-caption font-medium tnum ${percent === 100 ? 'text-success' : 'text-warning'}`}>{percent}%</span>
                             </span>
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="py-2.5 pl-1 pr-3 text-right">
                         <button
                           type="button"
                           onClick={(event) => { event.stopPropagation(); requestPatientFile(patient); }}
-                          className="rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
+                          aria-label={`Open file for ${patient.name}`}
+                          title="Open file"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-sm text-brand-deep transition duration-fast hover:bg-brand/[0.08]"
                         >
-                          Open file
+                          <FolderOpen size={17} strokeWidth={1.8} />
                         </button>
                       </td>
                     </tr>
@@ -465,7 +469,7 @@ export default function PatientsPage() {
               </table>
 
               {filteredPatients.length === 0 && (
-                <div className="border-t border-line bg-white p-2">
+                <div className="border-t border-line/60 p-3">
                   <EmptyState
                     icon={Search}
                     title={`No patients match “${patientSearch}”`}
@@ -481,16 +485,12 @@ export default function PatientsPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="lh-section-label">Selected patient</p>
-                <h2 className="mt-2 text-xl font-semibold tracking-title text-ink">{selectedPatient.name}</h2>
+                <h2 className="mt-1 text-heading font-semibold tracking-heading text-ink">{selectedPatient.name}</h2>
               </div>
               <StatusPill label={selectedPatient.status} tone={patientStatusTone[selectedPatient.status]} />
             </div>
 
-            <div className="mt-4 flex items-center gap-2 text-sm text-body">
-              <span>{selectedPatient.id}</span>
-              <span>•</span>
-              <span>{patientData.age} years</span>
-            </div>
+            <p className="mt-1 text-small text-muted tnum">{selectedPatient.id} · {patientData.age} years</p>
 
             {canMergePatients && (
               <div className="mt-4">
@@ -502,49 +502,45 @@ export default function PatientsPage() {
                     setMergeError('');
                     setMergeOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 rounded-lg border border-edge bg-white px-3 py-2 text-xs font-semibold text-ink transition hover:border-brand hover:text-brand"
+                  className="lh-btn-secondary h-control-sm px-3 text-caption"
                 >
-                  <GitMerge size={14} />
+                  <GitMerge size={15} strokeWidth={1.8} />
                   Merge duplicate
                 </button>
               </div>
             )}
 
-            <div className="mt-5 flex flex-wrap gap-2">
-              {patientTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setPatientTab(tab)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${patientTab === tab ? 'bg-brand text-white' : 'bg-wash text-body'}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              label="Preview section"
+              size="sm"
+              options={patientTabs}
+              value={patientTab}
+              onChange={setPatientTab}
+              className="mt-5 flex w-full [&>button]:flex-1"
+            />
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-5 space-y-4">
               {patientTab === 'Overview' && (
                 <>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded border border-line bg-surface p-3">
+                    <div className="rounded-lg bg-surface/70 p-3.5">
                       <p className="lh-section-label">Contact</p>
                       <p className="mt-2 text-md font-medium text-ink">{patientData.phone}</p>
                     </div>
-                    <div className="rounded border border-line bg-surface p-3">
+                    <div className="rounded-lg bg-surface/70 p-3.5">
                       <p className="lh-section-label">Insurance</p>
                       <p className="mt-2 text-md font-medium text-ink">{patientData.insurance}</p>
                     </div>
                   </div>
 
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Clinical note</p>
                     <p className="mt-2 text-base leading-6 text-ink-soft">{patientData.notes}</p>
                   </div>
 
                   <div className="space-y-3">
                     {patientData.timeline.map((item) => (
-                      <div key={item.label} className="flex gap-3 rounded border border-line bg-white p-3">
+                      <div key={item.label} className="flex gap-3 px-0.5">
                         <div className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone === 'success' ? 'bg-success-bright' : item.tone === 'warm' ? 'bg-warning-bright' : 'bg-edge-strong'}`} />
                         <div>
                           <p className="text-base font-medium text-ink">{item.label}</p>
@@ -558,7 +554,7 @@ export default function PatientsPage() {
                     <p className="lh-section-label mb-3">Active care plans</p>
                     <div className="space-y-2">
                       {(carePlansByPatient[selectedPatient.name] || []).map((plan) => (
-                        <div key={plan.id} className="rounded border border-line bg-surface p-3">
+                        <div key={plan.id} className="rounded-lg bg-surface/70 p-3.5">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-base font-medium text-ink">{plan.name}</p>
@@ -566,7 +562,7 @@ export default function PatientsPage() {
                             </div>
                             <StatusPill label={plan.status} tone={plan.tone} />
                           </div>
-                          <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-line">
+                          <div className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-ink/[0.06]">
                             <div className={`h-full rounded-full ${plan.tone === 'success' ? 'w-[85%] bg-success-bright' : 'w-[72%] bg-warning-bright'}`} />
                           </div>
                           <p className="mt-2 text-2xs text-muted">{plan.progress} complete</p>
@@ -579,21 +575,21 @@ export default function PatientsPage() {
 
               {patientTab === 'Clinical' && (
                 <div className="space-y-3">
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Conditions</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {patientData.conditions.map((item) => (
-                        <span key={item} className="rounded-full bg-white px-2.5 py-1 text-sm text-body border border-line">{item}</span>
+                        <span key={item} className="rounded-full bg-white px-2.5 py-1 text-small text-body shadow-hairline">{item}</span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="lh-section-label">Prescriptions</p>
                       {access.can.prescribe ? (
-                        <button className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1 text-2xs font-medium text-white transition hover:bg-brand-deep">
-                          <Plus size={11} />
+                        <button type="button" className="inline-flex h-7 items-center gap-1 rounded-sm bg-brand px-2.5 text-caption font-semibold text-white transition duration-fast hover:bg-brand-deep">
+                          <Plus size={13} strokeWidth={2} />
                           Prescribe
                         </button>
                       ) : (
@@ -602,7 +598,7 @@ export default function PatientsPage() {
                     </div>
                     <div className="mt-3 space-y-2">
                       {(prescriptionsByPatient[selectedPatient.name] || []).map((rx) => (
-                        <div key={rx.id} className="rounded border border-line bg-white p-2">
+                        <div key={rx.id} className="rounded-md bg-white p-2.5 shadow-hairline">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-medium text-ink">{rx.drug} {rx.strength}</p>
@@ -616,11 +612,11 @@ export default function PatientsPage() {
                     </div>
                   </div>
 
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Lab results</p>
                     <div className="mt-3 space-y-2">
                       {(labResultsByPatient[selectedPatient.name] || []).map((lab) => (
-                        <div key={lab.test} className="rounded border border-line bg-white p-2">
+                        <div key={lab.test} className="rounded-md bg-white p-2.5 shadow-hairline">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <p className="text-sm font-medium text-ink">{lab.test}</p>
@@ -634,14 +630,14 @@ export default function PatientsPage() {
                     </div>
                   </div>
 
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Medications</p>
                     <ul className="mt-2 space-y-2 text-base text-ink-soft">
                       {patientData.medications.map((item) => <li key={item}>• {item}</li>)}
                     </ul>
                   </div>
 
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Allergies</p>
                     <p className="mt-2 text-base text-ink-soft">{patientData.allergies.join(', ')}</p>
                   </div>
@@ -650,7 +646,7 @@ export default function PatientsPage() {
 
               {patientTab === 'Appointments' && (
                 <div className="space-y-3">
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Upcoming</p>
                     <p className="mt-2 text-md font-medium text-ink">{patientData.nextVisit}</p>
                   </div>
@@ -658,7 +654,7 @@ export default function PatientsPage() {
                     { label: 'Annual review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
                     { label: 'Medication review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
                   ].map((appointment) => (
-                    <div key={appointment.label} className="rounded border border-line bg-white p-3">
+                    <div key={appointment.label} className="rounded-lg border border-line/70 p-3.5">
                       <p className="text-base font-medium text-ink">{appointment.label}</p>
                       <p className="mt-1 text-sm text-body">{appointment.date} · {appointment.provider}</p>
                     </div>
@@ -668,15 +664,15 @@ export default function PatientsPage() {
 
               {patientTab === 'Billing' && (
                 <div className="space-y-3">
-                  <div className="rounded border border-line bg-surface p-3">
+                  <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Outstanding balance</p>
                     <p className="mt-2 text-lg font-semibold tracking-heading text-ink">{currency(selectedPatient.balance)}</p>
                   </div>
-                  <div className="rounded border border-line bg-white p-3">
+                  <div className="rounded-lg border border-line/70 p-3.5">
                     <p className="lh-section-label">Coverage</p>
                     <p className="mt-2 text-base text-ink-soft">{patientData.insurance} · Active</p>
                   </div>
-                  <div className="rounded border border-line bg-white p-3">
+                  <div className="rounded-lg border border-line/70 p-3.5">
                     <p className="lh-section-label">Last invoice</p>
                     <p className="mt-2 text-base text-ink-soft">INV-2024-09 · USD 60.00 · Paid</p>
                   </div>
@@ -702,7 +698,7 @@ export default function PatientsPage() {
           )}
         >
           <div className="space-y-4">
-            <div className="rounded border border-line bg-surface p-3">
+            <div className="rounded-lg bg-surface/70 p-3.5">
               <p className="lh-section-label">Survivor</p>
               <p className="mt-2 text-sm font-semibold text-ink">{selectedPatient.name}</p>
               <p className="mt-0.5 text-xs text-muted">{selectedPatient.id}</p>

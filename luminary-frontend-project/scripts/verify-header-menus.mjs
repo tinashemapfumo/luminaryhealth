@@ -160,7 +160,12 @@ const clickAt = async (element) => {
 // The design-system classes that blur do so from index.css, not from a utility
 // in the markup, so matching `backdrop-blur` alone would miss every card on the
 // page — which is most of what actually covered the menu.
-const BLURRED_COMPONENT_CLASSES = ['lh-page-hero', 'lh-card', 'lh-card-pad', 'lh-metric', 'lh-status-strip'];
+const BLURRED_COMPONENT_CLASSES = [
+  'lh-page-hero', 'lh-card', 'lh-card-pad', 'lh-card-elevated', 'lh-metric', 'lh-status-strip',
+  // Clinical Glass layers — every one of them sets a backdrop-filter.
+  'lh-glass-subtle', 'lh-glass', 'lh-glass-elevated', 'lh-popover', 'lh-modal', 'lh-backdrop',
+  'lh-context-bar', 'lh-ai-surface',
+];
 
 const isStackingContext = (element) => {
   const classes = element?.getAttribute?.('class') || '';

@@ -39,6 +39,22 @@ export const navItems = [
   { id: 'settings', label: 'Settings', icon: SlidersHorizontal },
 ];
 
+/**
+ * How the sidebar groups the modules. Presentation only: which modules a user
+ * sees is still decided by `roleAccess[role].views`, and a group with no
+ * visible module is not drawn at all. A group without a label renders as a
+ * plain run of items. Settings is left out because the sidebar gives it a
+ * fixed place at the bottom.
+ */
+export const navGroups = [
+  { id: 'core', label: null, items: ['dashboard', 'patients', 'appointments'] },
+  { id: 'care', label: 'Care', items: ['clinical', 'orders'] },
+  { id: 'finance', label: 'Finance', items: ['billing', 'billing-handoff', 'claims', 'tariffs'] },
+  { id: 'engagement', label: 'Engagement', items: ['communications'] },
+  { id: 'intelligence', label: 'Intelligence', items: ['ai'] },
+  { id: 'oversight', label: null, items: ['reports', 'audit'] },
+];
+
 // Kept in sync with ALL_TABS in PatientFile.jsx and the AI tab list, so the
 // router can turn a URL slug back into the tab label.
 export const PATIENT_FILE_TABS = ['Summary', 'Demographics', 'Clinical', 'Episodes', 'Notes', 'Cover & consent', 'Visits', 'Billing', 'Documents'];

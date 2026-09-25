@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
   AlertTriangle,
   Bell,
   Briefcase,
@@ -67,7 +66,7 @@ import {
 } from '../data/patientRecords';
 
 import { AI_TABS } from '../data/intelligence';
-import { PATIENT_FILE_TABS, navItems, roleAccess } from '../config/access';
+import { PATIENT_FILE_TABS, navGroups, navItems, roleAccess } from '../config/access';
 import { initialSchedule } from '../data/scheduling';
 import { StatusPill } from './shared/StatusPill';
 import { ReceiptDocument } from './shared/ReceiptDocument';
@@ -3130,7 +3129,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     const query = paletteQuery.trim().toLowerCase();
     const modules = navItems
       .filter((item) => access.views.includes(item.id))
-      .map((item) => ({ kind: 'Module', label: item.label, hint: 'Go to module', run: () => setActiveView(item.id) }));
+      .map((item) => ({ kind: 'Module', label: item.label, hint: 'Go to module', icon: item.icon, run: () => setActiveView(item.id) }));
 
     // Search reaches the whole practice; opening still goes through the
     // relationship check, so the palette cannot bypass break-glass.
@@ -3158,6 +3157,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     // while changing nothing about behaviour.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paletteQuery, practicePatients, access]);
+
+  // Keyboard selection within the results. Starts on the first row, so Enter
+  // does exactly what it always did unless the user moves.
+  const [paletteIndex, setPaletteIndex] = useState(0);
+  useEffect(() => {
+    setPaletteIndex(0);
+  }, [paletteQuery, paletteOpen]);
 
   const runPaletteItem = (item) => {
     setPaletteOpen(false);
@@ -3653,30 +3659,38 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
   };
 
+  // The small-screen strip follows the sidebar's grouped order, flattened.
+  const mobileNavItems = navGroups
+    .flatMap((group) => group.items)
+    .filter((id) => access.views.includes(id))
+    .map((id) => navItems.find((item) => item.id === id))
+    .filter(Boolean);
+  const shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘ K' : 'Ctrl K';
+
   return (
     <>
       <div className="lh-app flex h-screen min-w-0 bg-canvas text-ink">
-      <aside className={`${sidebarCollapsed ? 'w-[78px]' : 'w-[216px]'} relative hidden min-h-0 shrink-0 flex-col overflow-hidden border-r border-line bg-white/90 px-3 py-4 text-shell-on transition-all duration-200 lg:flex`}>
-        <OceanWaveDecoration className="absolute -bottom-28 left-0 h-80 w-[158%] -translate-x-14 opacity-95" />
-        <div className="relative flex items-center justify-between px-2 pb-4 pt-1">
-          {sidebarCollapsed ? <LuminaryMark size={30} /> : <LuminaryLogo size={32} />}
+      <aside className={`${sidebarCollapsed ? 'w-[76px]' : 'w-[232px]'} lh-glass-subtle relative hidden min-h-0 shrink-0 flex-col overflow-hidden border-r border-line/60 px-3 pb-3 pt-4 text-shell-on transition-[width] duration-normal lg:flex`}>
+        <OceanWaveDecoration className="absolute -bottom-36 left-0 h-72 w-[158%] -translate-x-14 opacity-40" />
+        <div className={`relative flex items-center pb-3 pt-0.5 ${sidebarCollapsed ? 'flex-col gap-3' : 'justify-between px-1.5'}`}>
+          {sidebarCollapsed ? <LuminaryMark size={30} /> : <LuminaryLogo size={30} />}
 
           <button
             type="button"
             onClick={() => setSidebarCollapsed((value) => !value)}
-            className="rounded-lg border border-line bg-white/80 p-1.5 text-muted transition hover:border-brand-edge hover:bg-brand-soft hover:text-brand"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted transition duration-fast hover:bg-ink/5 hover:text-ink"
             aria-label="Toggle sidebar"
           >
-            <ChevronRight size={14} className={`transition ${sidebarCollapsed ? '' : 'rotate-180'}`} />
+            <ChevronRight size={15} strokeWidth={1.8} className={`transition duration-normal ${sidebarCollapsed ? '' : 'rotate-180'}`} />
           </button>
         </div>
 
-        <div className="relative mt-3 shrink-0 rounded-lg border border-line bg-surface/70 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)]">
+        <div className="relative mt-1 shrink-0">
           {!sidebarCollapsed ? (
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-2xs font-semibold uppercase tracking-[0.01em] text-brand-deep">Workspace</p>
-                <p className="mt-1 text-xs font-semibold text-ink">{practice.short || practice.name}</p>
+            <div className="flex items-center justify-between gap-2 rounded-md px-2.5 py-2 transition duration-fast hover:bg-ink/[0.04]">
+              <div className="min-w-0">
+                <p className="text-micro text-muted">Workspace</p>
+                <p className="truncate text-small font-semibold text-ink">{practice.short || practice.name}</p>
               </div>
               <button
                 type="button"
@@ -3690,15 +3704,15 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                   }
                   toggleHeaderMenu('workspace');
                 }}
-                className="relative z-40 rounded border border-line bg-white/80 p-1 text-muted transition hover:border-brand-edge hover:text-brand"
+                className="relative z-40 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-muted transition duration-fast hover:bg-ink/5 hover:text-ink"
               >
-                <ChevronDown size={14} className={`transition ${headerMenu === 'workspace' ? 'rotate-180' : ''}`} />
+                <ChevronDown size={15} strokeWidth={1.8} className={`transition duration-normal ${headerMenu === 'workspace' ? 'rotate-180' : ''}`} />
               </button>
             </div>
           ) : (
-            <div className="flex justify-center">
-              <div className="rounded-lg border border-line bg-white/80 p-2 text-brand">
-                <Briefcase size={16} />
+            <div className="flex justify-center" title={practice.short || practice.name}>
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-ink/[0.04] text-brand-deep">
+                <Briefcase size={17} strokeWidth={1.7} />
               </div>
             </div>
           )}
@@ -3706,60 +3720,79 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           {headerMenu === 'workspace' && !sidebarCollapsed && !isLive() && (
             <>
               <div className="fixed inset-0 z-30" onClick={closeHeaderMenu} aria-hidden="true" />
-              <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-lg border border-line/80 bg-white/95 shadow-[0_18px_42px_-18px_rgba(33,97,156,0.28)] backdrop-blur-xl">
-                <div className="border-b border-line/70 px-3 py-2">
-                  <p className="text-xs font-semibold text-ink">Switch practice</p>
-                  <p className="mt-0.5 text-2xs text-muted">Demo tenant and role context</p>
+              <div className="lh-popover absolute left-0 right-0 top-full z-40 mt-1.5">
+                <div className="px-2.5 pb-2 pt-1.5">
+                  <p className="text-small font-semibold text-ink">Switch practice</p>
+                  <p className="mt-0.5 text-caption text-muted">Demo tenant and role context</p>
                 </div>
-                <div className="p-1">
-                  {demoPracticeOptions.map((option) => {
-                    const active = option.id === currentUser.practiceId;
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        disabled={active}
-                        onClick={() => {
-                          closeHeaderMenu();
-                          onSwitchPractice?.(option.id);
-                        }}
-                        className={`flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition ${
-                          active ? 'cursor-default bg-brand-soft text-brand-deep' : 'text-ink-soft hover:bg-surface'
-                        }`}
-                      >
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-line bg-white text-brand">
-                          {active ? <Check size={13} /> : <Briefcase size={13} />}
+                {demoPracticeOptions.map((option) => {
+                  const active = option.id === currentUser.practiceId;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      disabled={active}
+                      onClick={() => {
+                        closeHeaderMenu();
+                        onSwitchPractice?.(option.id);
+                      }}
+                      className={`lh-menu-item py-1.5 ${active ? 'cursor-default bg-brand/[0.08] text-brand-deep hover:bg-brand/[0.08]' : ''}`}
+                    >
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-ink/[0.04] text-brand">
+                        {active ? <Check size={14} strokeWidth={1.8} /> : <Briefcase size={14} strokeWidth={1.7} />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-small font-semibold">{option.short || option.name}</span>
+                        <span className="block truncate text-caption text-muted">
+                          {option.switchUser?.fullName || 'No demo user'} | {option.location}
                         </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-xs font-semibold">{option.short || option.name}</span>
-                          <span className="block truncate text-2xs text-muted">
-                            {option.switchUser?.fullName || 'No demo user'} | {option.location}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </>
           )}
         </div>
 
-        <nav className="relative mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto px-1 pr-1.5">
-          {navItems.filter((item) => access.views.includes(item.id)).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveView(item.id)}
-              className={`flex h-[34px] w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium transition ${activeView === item.id ? 'bg-brand-soft text-brand-deep shadow-[0_8px_22px_-18px_rgba(8,114,222,0.55)]' : 'text-muted hover:bg-surface hover:text-ink'}`}
-            >
-              <item.icon size={16} strokeWidth={1.7} />
-              {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
-            </button>
-          ))}
+        <nav aria-label="Modules" className="relative mt-3 min-h-0 flex-1 overflow-y-auto pr-0.5">
+          {navGroups.map((group) => {
+            const items = group.items
+              .filter((id) => access.views.includes(id))
+              .map((id) => navItems.find((item) => item.id === id))
+              .filter(Boolean);
+            if (items.length === 0) return null;
+            return (
+              <div key={group.id} className="mb-3 last:mb-0">
+                {group.label && (sidebarCollapsed ? (
+                  <div className="mx-auto mb-2 h-px w-6 bg-line" aria-hidden="true" />
+                ) : (
+                  <p className="lh-eyebrow mb-1 px-2.5">{group.label}</p>
+                ))}
+                <div className="space-y-0.5">
+                  {items.map((item) => {
+                    const selected = activeView === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveView(item.id)}
+                        aria-current={selected ? 'page' : undefined}
+                        title={sidebarCollapsed ? item.label : undefined}
+                        className={`flex h-nav w-full items-center gap-3 rounded-md text-left text-small font-medium transition duration-fast ${sidebarCollapsed ? 'justify-center' : 'px-2.5'} ${selected ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
+                      >
+                        <item.icon size={18} strokeWidth={1.7} className="shrink-0" />
+                        {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="relative mt-auto shrink-0 space-y-2 px-1 pb-2 pt-3">
+        <div className="relative mt-auto shrink-0 space-y-1 border-t border-line/60 pt-2">
           <button
             type="button"
             onClick={() => {
@@ -3769,9 +3802,11 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 notify('Settings are restricted to administrators.');
               }
             }}
-            className={`flex h-[34px] w-full items-center gap-2.5 rounded-lg px-3 text-left text-sm font-medium transition ${activeView === 'settings' ? 'bg-brand-soft text-brand-deep shadow-[0_8px_22px_-18px_rgba(8,114,222,0.55)]' : 'text-muted hover:bg-surface hover:text-ink'}`}
+            aria-current={activeView === 'settings' ? 'page' : undefined}
+            title={sidebarCollapsed ? 'Settings' : undefined}
+            className={`flex h-nav w-full items-center gap-3 rounded-md text-left text-small font-medium transition duration-fast ${sidebarCollapsed ? 'justify-center' : 'px-2.5'} ${activeView === 'settings' ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
           >
-            <Settings size={16} strokeWidth={1.7} />
+            <Settings size={18} strokeWidth={1.7} className="shrink-0" />
             {!sidebarCollapsed && <span>Settings</span>}
           </button>
           <div className="relative">
@@ -3780,16 +3815,16 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               onClick={() => toggleHeaderMenu('user')}
               aria-expanded={headerMenu === 'user'}
               aria-haspopup="menu"
-              className={`relative z-40 flex w-full items-center rounded-lg border border-transparent bg-white/25 transition hover:border-brand-edge/80 hover:bg-white/65 ${sidebarCollapsed ? 'justify-center p-2.5' : 'gap-2.5 px-2.5 py-3.5'}`}
+              className={`relative z-40 flex w-full items-center rounded-md transition duration-fast hover:bg-ink/[0.04] ${sidebarCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2 py-2'}`}
             >
               <HumanAvatar initials={currentUser.initials} label={currentUser.fullName} className="h-8 w-8" />
               {!sidebarCollapsed && (
                 <>
                   <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate text-2xs font-semibold leading-4 text-ink">{currentUser.fullName}</span>
-                    <span className="block truncate text-2xs leading-3 text-muted">{roleInfo.label}</span>
+                    <span className="block truncate text-small font-semibold leading-5 text-ink">{currentUser.fullName}</span>
+                    <span className="block truncate text-caption leading-4 text-muted">{roleInfo.label}</span>
                   </span>
-                  <ChevronRight size={13} className={`shrink-0 text-muted transition ${headerMenu === 'user' ? 'rotate-90' : ''}`} />
+                  <ChevronRight size={14} strokeWidth={1.8} className={`shrink-0 text-muted transition duration-normal ${headerMenu === 'user' ? '-rotate-90' : ''}`} />
                 </>
               )}
             </button>
@@ -3797,52 +3832,51 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             {headerMenu === 'user' && (
               <>
                 <div className="fixed inset-0 z-30" onClick={closeHeaderMenu} aria-hidden="true" />
-                <div className="absolute bottom-full left-0 right-0 z-40 mb-2 overflow-hidden rounded-lg border border-line/80 bg-white/95 shadow-[0_18px_42px_-18px_rgba(33,97,156,0.28)] backdrop-blur-xl">
-                  <div className="border-b border-line/70 p-3">
-                    <p className="break-words text-xs font-semibold text-ink">{currentUser.fullName}</p>
-                    <p className="mt-0.5 break-all text-2xs text-muted">{currentUser.email}</p>
+                <div className={`lh-popover absolute bottom-full left-0 z-40 mb-2 ${sidebarCollapsed ? 'w-64' : 'right-0'}`}>
+                  <div className="px-2.5 pb-2.5 pt-1.5">
+                    <p className="break-words text-small font-semibold text-ink">{currentUser.fullName}</p>
+                    <p className="mt-0.5 break-all text-caption text-muted">{currentUser.email}</p>
                     {(currentUser.registration || currentUser.hpcz) && (
-                      <p className="mt-1 text-2xs text-muted">
+                      <p className="mt-0.5 text-caption text-muted">
                         Registration {currentUser.registration || currentUser.hpcz}
                       </p>
                     )}
-                    <div className="mt-2 flex items-center gap-1.5 rounded bg-wash px-2 py-1.5">
-                      <Briefcase size={12} className="text-brand" />
-                      <span className="min-w-0 truncate text-2xs font-medium text-ink">{practice.name}</span>
+                    <div className="mt-2 flex items-center gap-1.5 rounded-sm bg-brand/[0.06] px-2 py-1.5">
+                      <Briefcase size={13} strokeWidth={1.7} className="shrink-0 text-brand" />
+                      <span className="min-w-0 truncate text-caption font-medium text-ink">{practice.name}</span>
                     </div>
                   </div>
-                  <div className="p-1">
+                  <div className="mx-1 mb-1 h-px bg-line/70" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => { closeHeaderMenu(); setShowPermissions(true); setActiveView('dashboard'); }}
+                    className="lh-menu-item"
+                  >
+                    My permissions
+                  </button>
+                  {!live && (
                     <button
                       type="button"
-                      onClick={() => { closeHeaderMenu(); setShowPermissions(true); setActiveView('dashboard'); }}
-                      className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
+                      onClick={() => { closeHeaderMenu(); setResetOpen(true); }}
+                      className="lh-menu-item"
                     >
-                      My permissions
+                      Reset demo data
                     </button>
-                    {!live && (
-                      <button
-                        type="button"
-                        onClick={() => { closeHeaderMenu(); setResetOpen(true); }}
-                          className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
-                      >
-                        Reset demo data
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => { closeHeaderMenu(); onLock(); }}
-                      className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
-                    >
-                      Lock session
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { closeHeaderMenu(); onSignOut(); }}
-                      className="w-full rounded px-2.5 py-1.5 text-left text-xs font-medium text-danger transition hover:bg-danger-soft"
-                    >
-                      Sign out
-                    </button>
-                  </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { closeHeaderMenu(); onLock(); }}
+                    className="lh-menu-item"
+                  >
+                    Lock session
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { closeHeaderMenu(); onSignOut(); }}
+                    className="lh-menu-item font-medium text-danger hover:bg-danger-soft hover:text-danger"
+                  >
+                    Sign out
+                  </button>
                 </div>
               </>
             )}
@@ -3851,29 +3885,32 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       </aside>
 
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <OceanWaveDecoration className="absolute bottom-0 left-0 h-64 w-full opacity-50" />
-        <header className="relative z-20 flex shrink-0 items-center justify-between gap-3 border-b border-line/60 bg-white/58 px-4 py-2.5 backdrop-blur sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-line/70 bg-white/55 text-brand-deep">
-              <Activity size={16} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-2xs font-medium text-muted">{practice.short || practice.name}</p>
-              <h2 className="truncate text-lg font-semibold tracking-[-0.02em] text-ink">
-                {(navItems.find((item) => item.id === activeView) || navItems[0]).label}
-              </h2>
-            </div>
+        <header className="lh-glass-subtle relative z-20 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-line/50 px-4 sm:px-6">
+          <div className="min-w-0">
+            <p className="truncate text-caption text-muted">{practice.short || practice.name}</p>
+            <h2 className="truncate text-section font-semibold leading-tight tracking-heading text-ink">
+              {(navItems.find((item) => item.id === activeView) || navItems[0]).label}
+            </h2>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }}
-              className="hidden h-8 items-center gap-2 rounded-lg border border-line/70 bg-white/55 px-3 text-xs text-muted transition hover:border-brand-edge hover:bg-white/85 md:flex"
+              className="hidden h-9 w-[280px] items-center gap-2 rounded-md bg-ink/[0.045] px-3 text-small text-muted transition duration-fast hover:bg-ink/[0.07] hover:text-body md:flex"
             >
-              <Search size={14} />
-              Search everything
-              <kbd className="ml-1 rounded-sm border border-edge bg-white px-1.5 py-0.5 text-2xs font-medium text-muted">Ctrl K</kbd>
+              <Search size={16} strokeWidth={1.8} className="shrink-0" />
+              <span className="flex-1 text-left">Search everything</span>
+              <kbd className="rounded-xs bg-white/80 px-1.5 py-0.5 font-sans text-micro font-medium text-muted shadow-hairline">{shortcutLabel}</kbd>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setPaletteQuery(''); setPaletteOpen(true); }}
+              aria-label="Search everything"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition duration-fast hover:bg-ink/5 hover:text-ink md:hidden"
+            >
+              <Search size={17} strokeWidth={1.8} />
             </button>
 
             <button
@@ -3881,9 +3918,9 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               onClick={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
               aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
               title={darkMode ? 'Light mode' : 'Dark mode'}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-line/70 bg-white/55 text-body transition hover:border-brand-edge hover:bg-white/85"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition duration-fast hover:bg-ink/5 hover:text-ink"
             >
-              {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+              {darkMode ? <Sun size={17} strokeWidth={1.8} /> : <Moon size={17} strokeWidth={1.8} />}
             </button>
 
             <div className="relative">
@@ -3893,11 +3930,11 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 aria-label={`Alerts: ${alerts.length} needing attention`}
                 aria-expanded={headerMenu === 'alerts'}
                 aria-haspopup="menu"
-                className="relative z-40 flex h-8 w-8 items-center justify-center rounded-lg border border-line/70 bg-white/55 text-body transition hover:border-brand-edge hover:bg-white/85"
+                className={`relative z-40 inline-flex h-9 w-9 items-center justify-center rounded-md transition duration-fast hover:bg-ink/5 hover:text-ink ${headerMenu === 'alerts' ? 'bg-ink/5 text-ink' : 'text-body'}`}
               >
-                <Bell size={16} />
+                <Bell size={17} strokeWidth={1.8} />
                 {alerts.length > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-danger px-1 text-2xs font-semibold text-white">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-2xs font-semibold leading-none text-white ring-2 ring-white">
                     {alerts.length}
                   </span>
                 )}
@@ -3906,25 +3943,25 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               {headerMenu === 'alerts' && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={closeHeaderMenu} aria-hidden="true" />
-                  <div className="absolute right-0 z-40 mt-2 w-[min(340px,calc(100vw-2rem))] rounded-lg border border-line bg-white/95 shadow-[0_20px_48px_-16px_rgba(33,97,156,0.26)] backdrop-blur-xl">
-                    <div className="border-b border-line px-4 py-3">
-                      <p className="text-base font-semibold text-ink">Needs attention</p>
-                      <p className="mt-0.5 text-xs text-muted">Derived from live billing, claims, and registry state</p>
+                  <div className="lh-popover absolute right-0 z-40 mt-2 w-[min(360px,calc(100vw-2rem))]">
+                    <div className="px-2.5 pb-2 pt-1.5">
+                      <p className="text-copy font-semibold text-ink">Needs attention</p>
+                      <p className="mt-0.5 text-caption text-muted">Derived from live billing, claims, and registry state</p>
                     </div>
-                    <div className="max-h-[320px] overflow-y-auto p-2">
+                    <div className="max-h-[320px] overflow-y-auto">
                       {alerts.length === 0 ? (
-                        <p className="px-2 py-6 text-center text-sm text-muted">Nothing needs attention right now.</p>
+                        <p className="px-2 py-6 text-center text-small text-muted">Nothing needs attention right now.</p>
                       ) : alerts.map((alert) => (
                         <button
                           key={alert.title}
                           type="button"
                           onClick={() => { alert.go(); closeHeaderMenu(); }}
-                          className="flex w-full gap-2.5 rounded p-2.5 text-left transition hover:bg-surface"
+                          className="flex w-full gap-2.5 rounded-md p-2.5 text-left transition duration-instant hover:bg-ink/5"
                         >
                           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${alert.tone === 'alert' ? 'bg-danger-bright' : alert.tone === 'warm' ? 'bg-warning-bright' : 'bg-brand-bright'}`} />
-                          <span>
-                            <span className="block text-base font-medium text-ink">{alert.title}</span>
-                            <span className="mt-0.5 block text-xs leading-4 text-muted">{alert.detail}</span>
+                          <span className="min-w-0">
+                            <span className="block text-small font-medium text-ink">{alert.title}</span>
+                            <span className="mt-0.5 block text-caption leading-4 text-muted">{alert.detail}</span>
                           </span>
                         </button>
                       ))}
@@ -3941,7 +3978,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                 aria-label="Account menu"
                 aria-expanded={headerMenu === 'mobile-user'}
                 aria-haspopup="menu"
-                className="relative z-40 rounded-lg border border-line/70 bg-white/55 p-0.5 transition hover:border-brand-edge hover:bg-white/85"
+                className="relative z-40 inline-flex h-9 w-9 items-center justify-center rounded-full transition duration-fast hover:bg-ink/5"
               >
                 <HumanAvatar initials={currentUser.initials} label={currentUser.fullName} className="h-7 w-7" />
               </button>
@@ -3949,47 +3986,46 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               {headerMenu === 'mobile-user' && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={closeHeaderMenu} aria-hidden="true" />
-                  <div className="absolute right-0 z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line/80 bg-white/95 shadow-[0_18px_42px_-18px_rgba(33,97,156,0.28)] backdrop-blur-xl">
-                    <div className="border-b border-line/70 p-3">
-                      <p className="break-words text-xs font-semibold text-ink">{currentUser.fullName}</p>
-                      <p className="mt-0.5 break-all text-2xs text-muted">{currentUser.email}</p>
-                      <div className="mt-2 flex items-center gap-1.5 rounded bg-wash px-2 py-1.5">
-                        <Briefcase size={12} className="text-brand" />
-                        <span className="min-w-0 truncate text-2xs font-medium text-ink">{practice.name}</span>
+                  <div className="lh-popover absolute right-0 z-40 mt-2 w-[min(18rem,calc(100vw-2rem))]">
+                    <div className="px-2.5 pb-2.5 pt-1.5">
+                      <p className="break-words text-small font-semibold text-ink">{currentUser.fullName}</p>
+                      <p className="mt-0.5 break-all text-caption text-muted">{currentUser.email}</p>
+                      <div className="mt-2 flex items-center gap-1.5 rounded-sm bg-brand/[0.06] px-2 py-1.5">
+                        <Briefcase size={13} strokeWidth={1.7} className="shrink-0 text-brand" />
+                        <span className="min-w-0 truncate text-caption font-medium text-ink">{practice.name}</span>
                       </div>
                     </div>
-                    <div className="p-1">
-                      {access.views.includes('settings') && (
-                        <button
-                          type="button"
-                          onClick={() => { closeHeaderMenu(); setActiveView('settings'); }}
-                          className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
-                        >
-                          Settings
-                        </button>
-                      )}
+                    <div className="mx-1 mb-1 h-px bg-line/70" aria-hidden="true" />
+                    {access.views.includes('settings') && (
                       <button
                         type="button"
-                        onClick={() => { closeHeaderMenu(); setShowPermissions(true); setActiveView('dashboard'); }}
-                        className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
+                        onClick={() => { closeHeaderMenu(); setActiveView('settings'); }}
+                        className="lh-menu-item"
                       >
-                        My permissions
+                        Settings
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => { closeHeaderMenu(); onLock(); }}
-                        className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink-soft transition hover:bg-surface"
-                      >
-                        Lock session
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { closeHeaderMenu(); onSignOut(); }}
-                        className="w-full rounded px-2.5 py-1.5 text-left text-xs font-medium text-danger transition hover:bg-danger-soft"
-                      >
-                        Sign out
-                      </button>
-                    </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { closeHeaderMenu(); setShowPermissions(true); setActiveView('dashboard'); }}
+                      className="lh-menu-item"
+                    >
+                      My permissions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { closeHeaderMenu(); onLock(); }}
+                      className="lh-menu-item"
+                    >
+                      Lock session
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { closeHeaderMenu(); onSignOut(); }}
+                      className="lh-menu-item font-medium text-danger hover:bg-danger-soft hover:text-danger"
+                    >
+                      Sign out
+                    </button>
                   </div>
                 </>
               )}
@@ -3997,25 +4033,30 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           </div>
         </header>
 
-        <nav className="relative z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-line/60 bg-white/70 px-3 py-2 backdrop-blur lg:hidden">
-          {navItems.filter((item) => access.views.includes(item.id)).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveView(item.id)}
-              className={`flex min-h-[34px] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition sm:gap-2 sm:px-3 sm:text-sm ${activeView === item.id ? 'bg-brand text-white shadow-[0_8px_20px_-16px_rgba(8,114,222,0.55)]' : 'text-body hover:bg-surface hover:text-ink'}`}
-            >
-              <item.icon size={15} strokeWidth={1.7} />
-              <span>{item.label}</span>
-            </button>
-          ))}
+        <nav aria-label="Modules" className="lh-glass-subtle relative z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-line/50 px-3 py-2 lg:hidden">
+          {mobileNavItems.map((item) => {
+            const selected = activeView === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveView(item.id)}
+                aria-current={selected ? 'page' : undefined}
+                className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-caption font-medium transition duration-fast sm:gap-2 sm:px-3 sm:text-small ${selected ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
+              >
+                <item.icon size={16} strokeWidth={1.7} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
           {access.views.includes('settings') && (
             <button
               type="button"
               onClick={() => setActiveView('settings')}
-              className={`flex min-h-[34px] shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition sm:gap-2 sm:px-3 sm:text-sm ${activeView === 'settings' ? 'bg-brand text-white shadow-[0_8px_20px_-16px_rgba(8,114,222,0.55)]' : 'text-body hover:bg-surface hover:text-ink'}`}
+              aria-current={activeView === 'settings' ? 'page' : undefined}
+              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-caption font-medium transition duration-fast sm:gap-2 sm:px-3 sm:text-small ${activeView === 'settings' ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
             >
-              <Settings size={15} strokeWidth={1.7} />
+              <Settings size={16} strokeWidth={1.7} />
               <span>Settings</span>
             </button>
           )}
@@ -5301,51 +5342,89 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       </Modal>
 
       {paletteOpen && (
-        <div className="fixed inset-0 z-[55] flex items-start justify-center bg-ink/45 p-4 pt-[12vh] backdrop-blur-[2px]">
+        <div className="lh-backdrop fixed inset-0 z-[55] flex items-start justify-center p-4 pt-[12vh]">
           <div className="absolute inset-0" onClick={() => setPaletteOpen(false)} aria-hidden="true" />
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Search everything"
-            className="relative w-full max-w-xl overflow-hidden rounded-lg border border-edge bg-white shadow-[0_24px_60px_-12px_rgba(11,21,36,0.4)]"
+            className="lh-modal relative w-full max-w-[680px] overflow-hidden rounded-3xl"
           >
-            <div className="flex items-center gap-2.5 border-b border-line px-4">
-              <Search size={16} className="text-muted" />
+            <div className="flex items-center gap-3 border-b border-line/60 px-5">
+              <Search size={20} strokeWidth={1.8} className="shrink-0 text-muted" />
               <input
                 autoFocus
                 value={paletteQuery}
                 onChange={(event) => setPaletteQuery(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && paletteResults[0]) runPaletteItem(paletteResults[0]);
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (paletteResults.length === 0) return;
+                    const step = event.key === 'ArrowDown' ? 1 : -1;
+                    setPaletteIndex((index) => (index + step + paletteResults.length) % paletteResults.length);
+                  }
+                  if (event.key === 'Enter' && paletteResults[paletteIndex]) runPaletteItem(paletteResults[paletteIndex]);
                 }}
+                role="combobox"
+                aria-expanded="true"
+                aria-controls="lh-palette-results"
+                aria-activedescendant={paletteResults[paletteIndex] ? `lh-palette-${paletteIndex}` : undefined}
                 placeholder="Search patients, modules, and actions…"
-                className="w-full bg-transparent py-3.5 text-md text-ink outline-none placeholder:text-faint"
+                className="h-16 w-full bg-transparent text-section text-ink outline-none placeholder:text-muted"
               />
-              <kbd className="rounded-sm border border-edge bg-surface px-1.5 py-0.5 text-2xs font-medium text-muted">Esc</kbd>
+              <kbd className="shrink-0 rounded-xs bg-ink/[0.05] px-1.5 py-0.5 font-sans text-micro font-medium text-muted">Esc</kbd>
             </div>
 
-            <div className="max-h-[340px] overflow-y-auto p-2">
+            <div id="lh-palette-results" role="listbox" aria-label="Results" className="max-h-[400px] overflow-y-auto p-2">
               {paletteResults.length === 0 ? (
-                <p className="px-3 py-8 text-center text-base text-muted">No matches for “{paletteQuery}”.</p>
-              ) : paletteResults.map((item, index) => (
-                <button
-                  key={`${item.kind}-${item.label}`}
-                  type="button"
-                  onClick={() => runPaletteItem(item)}
-                  className="flex w-full items-center justify-between gap-3 rounded px-3 py-2.5 text-left transition hover:bg-surface"
-                >
-                  <span className="flex items-center gap-2.5">
-                    <span className={`rounded-sm px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-[0.08em] ${item.kind === 'Action' ? 'bg-brand-soft text-brand-deep' : item.kind === 'Patient' ? 'bg-teal-soft text-teal-deep' : 'bg-line text-body'}`}>
-                      {item.kind}
-                    </span>
-                    <span className="text-base font-medium text-ink">{item.label}</span>
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs text-muted">{item.hint}</span>
-                    {index === 0 && <kbd className="rounded-sm border border-edge bg-surface px-1.5 py-0.5 text-2xs text-muted">↵</kbd>}
-                  </span>
-                </button>
-              ))}
+                <p className="px-3 py-10 text-center text-small text-muted">No matches for “{paletteQuery}”.</p>
+              ) : paletteResults.map((item, index) => {
+                const heading = index === 0 || paletteResults[index - 1].kind !== item.kind;
+                const selected = index === paletteIndex;
+                return (
+                  <React.Fragment key={`${item.kind}-${item.label}`}>
+                    {heading && (
+                      <p className="lh-eyebrow px-3 pb-1.5 pt-3 first:pt-1.5">
+                        {item.kind === 'Action' ? 'Actions' : item.kind === 'Patient' ? 'Patients' : 'Modules'}
+                      </p>
+                    )}
+                    <button
+                      id={`lh-palette-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => runPaletteItem(item)}
+                      onMouseMove={() => { if (!selected) setPaletteIndex(index); }}
+                      className={`flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg px-3 py-1.5 text-left transition-colors duration-instant ${selected ? 'bg-brand/[0.08]' : ''}`}
+                    >
+                      <span className="flex min-w-0 items-center gap-3">
+                        {item.kind === 'Patient' ? (
+                          <HumanAvatar
+                            initials={item.label.split(' ').map((part) => part[0]).join('')}
+                            label={item.label}
+                            className="h-7 w-7"
+                          />
+                        ) : (
+                          <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm ${item.kind === 'Action' ? 'bg-brand/[0.08] text-brand-deep' : 'bg-ink/[0.05] text-body'}`}>
+                            {item.icon ? <item.icon size={15} strokeWidth={1.8} /> : <Plus size={15} strokeWidth={1.8} />}
+                          </span>
+                        )}
+                        <span className={`truncate text-copy font-medium ${selected ? 'text-brand-deep' : 'text-ink'}`}>{item.label}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="hidden text-caption text-muted sm:inline">{item.hint}</span>
+                        {selected && <kbd className="rounded-xs bg-white/80 px-1.5 py-0.5 font-sans text-micro text-muted shadow-hairline">↵</kbd>}
+                      </span>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-4 border-t border-line/60 bg-surface/40 px-5 py-2.5 text-caption text-muted">
+              <span><kbd className="font-sans">↑</kbd> <kbd className="font-sans">↓</kbd> to move</span>
+              <span><kbd className="font-sans">↵</kbd> to open</span>
+              <span><kbd className="font-sans">Esc</kbd> to close</span>
             </div>
           </div>
         </div>

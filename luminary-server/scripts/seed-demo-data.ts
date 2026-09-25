@@ -71,6 +71,7 @@ const patients = [
   ['0018', 'Sipho Ndlovu', 'Sipho', '1980-02-08', 'Male', 'Sinusitis', [], [], 'UnityCare Gold', 'UC-884812'],
   ['0019', 'Makanaka Dube', 'Maka', '2010-11-13', 'Female', 'Asthma action plan', ['Asthma'], ['Beclomethasone inhaler'], 'Premier Health Plan', 'PH-101450'],
   ['0020', 'Farirai Chirwa', 'Farirai', '1992-07-17', 'Male', 'Gastritis', ['Gastritis'], ['Omeprazole 20mg'], 'UnityCare Gold', 'UC-884930'],
+  ['0021', 'Rufaro Zimunya', 'Rufaro', '1988-10-12', 'Female', 'New patient consultation', [], [], 'Premier Health Plan', 'PH-101521'],
 ] as const;
 
 const prescriptions = [
@@ -208,9 +209,10 @@ try {
     const estimatedFunder = schemeId ? Math.round(price * (planName === 'UnityCare Gold' ? 85 : 80)) / 100 : 0;
     const patientPortion = Math.round((price - estimatedFunder) * 100) / 100;
     const invoiceStatus = i % 5 === 0 ? 'pending' : i % 4 === 0 ? 'part_paid' : 'paid';
+    const readyForClaimPreparation = number === '0021';
     const paid = invoiceStatus === 'paid' ? patientPortion : invoiceStatus === 'part_paid' ? Math.round(patientPortion * 50) / 100 : 0;
-    const claimStatus = !schemeId ? 'DRAFT' : i % 6 === 0 ? 'REJECTED' : i % 4 === 0 ? 'PARTIALLY_APPROVED' : i % 3 === 0 ? 'SUBMITTED' : 'APPROVED';
-    const approved = claimStatus === 'REJECTED' || claimStatus === 'SUBMITTED' ? 0 : claimStatus === 'PARTIALLY_APPROVED' ? Math.round(estimatedFunder * 60) / 100 : estimatedFunder;
+    const claimStatus = !schemeId || readyForClaimPreparation ? 'DRAFT' : i % 6 === 0 ? 'REJECTED' : i % 4 === 0 ? 'PARTIALLY_APPROVED' : i % 3 === 0 ? 'SUBMITTED' : 'APPROVED';
+    const approved = claimStatus === 'DRAFT' || claimStatus === 'REJECTED' || claimStatus === 'SUBMITTED' ? 0 : claimStatus === 'PARTIALLY_APPROVED' ? Math.round(estimatedFunder * 60) / 100 : estimatedFunder;
     const rejected = Math.max(0, Math.round((estimatedFunder - approved) * 100) / 100);
     const encounterId = id('f003', i + 1);
     const appointmentId = id('f004', i + 1);
@@ -250,7 +252,7 @@ try {
 
     if (paid > 0) await upsert('payment', { id: id('f009', i + 1), practice_id: PRACTICE_ID, invoice_id: invoiceId, amount: paid, currency: 'USD', fx_rate: 1, method: i % 3 === 0 ? 'card' : i % 3 === 1 ? 'cash' : 'transfer', received_by: id('a001', 7), received_at: new Date(visitDate.getTime() + 45 * 60000).toISOString(), reverses_id: null, deleted_at: null });
 
-    if (schemeId) {
+    if (schemeId && !readyForClaimPreparation) {
       await upsert('claim', { id: claimId, practice_id: PRACTICE_ID, invoice_id: invoiceId, patient_id: patientId, claim_number: `CLM-DEMO-${number}`, scheme_id: schemeId, member_number: memberNo, membership_number: memberNo, member_suffix: i % 3 === 0 ? '02' : '00', member_name: fullName, relationship_to_member: i % 3 === 0 ? 'dependant' : 'self', encounter_id: encounterId, payer_id: payerId, service_from_date: visitDate.toISOString().slice(0, 10), service_to_date: visitDate.toISOString().slice(0, 10), claim_type: 'medical_aid', currency: 'USD', total_claimed_amount: estimatedFunder, total_approved_amount: approved, total_rejected_amount: rejected, member_liability: patientPortion + rejected, insurer_liability: approved, submission_channel: i % 2 === 0 ? 'NH263' : 'EMAIL_PDF', external_reference: `EXT-DEMO-${number}`, switch_reference: `SW-DEMO-${number}`, external_status: claimStatus, funder_status: claimStatus, created_by: id('a001', 7), submitted_by: id('a001', 7), status: claimStatus, biometric_at: new Date(visitDate.getTime() + 10 * 60000).toISOString(), biometric_ref: `BIO-${number}`, submitted_at: claimStatus === 'DRAFT' ? null : new Date(visitDate.getTime() + 60 * 60000).toISOString(), switch_ref: `SW-DEMO-${number}`, responses: [{ at: visitDate.toISOString(), status: claimStatus, message: 'Demo switch response' }], rejection_code: claimStatus === 'REJECTED' ? 'COVER_EXPIRED' : null, last_checked_at: new Date(visitDate.getTime() + 3 * 3600_000).toISOString(), completed_at: ['APPROVED', 'PARTIALLY_APPROVED', 'REJECTED'].includes(claimStatus) ? new Date(visitDate.getTime() + 4 * 3600_000).toISOString() : null, notes: 'Seeded realistic demo claim.', submission_snapshot: { invoice: `INV-DEMO-${number}`, patient: fullName, service: description }, validation_result: { valid: claimStatus !== 'REJECTED', errors: claimStatus === 'REJECTED' ? ['Cover expired on service date'] : [], warnings: [] }, idempotency_key: `demo-claim-${number}`, deleted_at: null });
       await upsert('claim_line', { id: id('f011', i + 1), practice_id: PRACTICE_ID, claim_id: claimId, invoice_line_id: invoiceLineId, service_id: id('e001', serviceIndex + 1), line_number: 1, tariff_code: code, tariff_description: description, quantity: 1, unit_price: price, claimed_amount: estimatedFunder, approved_amount: approved, rejected_amount: rejected, member_liability: patientPortion + rejected, insurer_liability: approved, service_date: visitDate.toISOString().slice(0, 10), practitioner_id: providerId, referring_provider_id: null, service_location: 'Harare Family Health Demo', status: claimStatus === 'PARTIALLY_APPROVED' ? 'PARTIALLY_APPROVED' : claimStatus === 'REJECTED' ? 'REJECTED' : claimStatus === 'SUBMITTED' ? 'SUBMITTED' : 'APPROVED', adjudication_reason_code: claimStatus === 'REJECTED' ? 'COVER_EXPIRED' : null, adjudication_reason_description: claimStatus === 'REJECTED' ? 'Cover expired on service date' : null, external_line_reference: `EXT-DEMO-${number}-1`, metadata: { demo: true }, deleted_at: null });
       await upsert('claim_diagnosis', { id: id('f012', i + 1), practice_id: PRACTICE_ID, claim_id: claimId, claim_line_id: id('f011', i + 1), code: i % 2 === 0 ? 'J45.9' : 'Z00.0', description: conditions[0] || reason, kind: 'primary', sequence: 1, source: 'encounter', deleted_at: null });

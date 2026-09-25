@@ -131,6 +131,11 @@ function lineAmount(line) {
   return { claimed, approved, rejected };
 }
 
+function invoiceInsurerAmount(invoice) {
+  return Number(invoice?.insurerResponsibility || invoice?.estimatedInsurerResponsibility || 0)
+    || (invoice?.services || []).reduce((sum, line) => sum + Number(line.insurance || line.estimatedFunder || 0), 0);
+}
+
 function moduleForClaim(claim) {
   if (EMAIL_STATUSES.has(claim.status) || (claim.submissionChannel || claim.channel) === 'Email') return MODULES.find((item) => item.id === 'email') || MODULES[0];
   if (ACTION_STATUSES.has(claim.status)) return MODULES.find((item) => item.id === 'resolve') || MODULES[0];
@@ -237,29 +242,16 @@ export default function ClaimsPage() {
     setChannelFilter('all');
   };
 
-  const claimInvoices = useMemo(() => practiceInvoices.filter((invoice) => {
-    const covered = Number(invoice.insurerResponsibility || invoice.estimatedInsurerResponsibility || 0)
-      || (invoice.services || []).reduce((sum, line) => sum + Number(line.insurance || line.estimatedFunder || 0), 0);
-    return covered > 0;
-  }), [practiceInvoices]);
+  const coveredInvoices = useMemo(() => practiceInvoices.filter((invoice) => invoiceInsurerAmount(invoice) > 0), [practiceInvoices]);
 
-  const selectedClaimInvoice = claimInvoices.find((invoice) => (invoice.apiId || invoice.id) === newClaimInvoiceId);
-  const existingInvoiceClaim = selectedClaimInvoice
-    ? practiceClaims.find((claim) => claim.invoice === selectedClaimInvoice.id)
-    : null;
+  const claimableInvoices = useMemo(() => coveredInvoices.filter((invoice) =>
+    !practiceClaims.some((claim) => claim.invoice === invoice.id)), [coveredInvoices, practiceClaims]);
+
+  const selectedClaimInvoice = claimableInvoices.find((invoice) => (invoice.apiId || invoice.id) === newClaimInvoiceId);
 
   const createClaim = async () => {
     const invoice = selectedClaimInvoice;
     if (!invoice) return;
-    if (existingInvoiceClaim) {
-      setSelectedClaimId(existingInvoiceClaim.id);
-      setActiveModule(moduleForClaim(existingInvoiceClaim).id);
-      setDetailTab('Summary');
-      setNewClaimOpen(false);
-      setNewClaimInvoiceId('');
-      notify(`Opened ${existingInvoiceClaim.id} for ${invoice.id}`);
-      return;
-    }
     setCreatingClaim(true);
     try {
       const createdId = await createClaimFromInvoice(invoice);
@@ -315,21 +307,19 @@ export default function ClaimsPage() {
         <section className="border-y border-line bg-white/55 px-4 py-4 sm:px-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
             <label className="min-w-0 flex-1">
-              <span className="mb-1.5 block text-xs font-semibold text-ink">Covered invoice</span>
+              <span className="mb-1.5 block text-xs font-semibold text-ink">Invoice ready for a claim</span>
               <select value={newClaimInvoiceId} onChange={(event) => setNewClaimInvoiceId(event.target.value)} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft">
-                <option value="">Choose an invoice</option>
-                {claimInvoices.map((invoice) => {
-                  const existing = practiceClaims.find((claim) => claim.invoice === invoice.id);
-                  return <option key={invoice.apiId || invoice.id} value={invoice.apiId || invoice.id}>{invoice.id} | {invoice.patient} | {invoice.currency} {Number(invoice.amount).toFixed(2)}{existing ? ` | ${existing.id}` : ''}</option>;
-                })}
+                <option value="">Choose an unclaimed invoice</option>
+                {claimableInvoices.map((invoice) => <option key={invoice.apiId || invoice.id} value={invoice.apiId || invoice.id}>{invoice.id} | {invoice.patient} | insurer portion {invoice.currency} {invoiceInsurerAmount(invoice).toFixed(2)}</option>)}
               </select>
             </label>
             <button type="button" disabled={!newClaimInvoiceId || creatingClaim} onClick={createClaim} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50">
-              {creatingClaim ? 'Creating...' : existingInvoiceClaim ? 'Open claim' : 'Start preparation'}
+              {creatingClaim ? 'Creating...' : 'Start preparation'}
             </button>
             <button type="button" onClick={() => setNewClaimOpen(false)} className="lh-secondary-button justify-center">Cancel</button>
           </div>
-          {!claimInvoices.length ? <p className="mt-3 text-sm text-body">No covered invoice is available. Issue an invoice with an insurer portion before preparing a claim.</p> : null}
+          <p className="mt-3 text-xs text-body">A new patient appears here after an invoice with an insurer portion is issued. Invoices that already have claims stay in the claims queue and cannot be duplicated.</p>
+          {!claimableInvoices.length ? <p className="mt-2 flex items-center gap-2 text-sm font-medium text-warning"><AlertTriangle size={15} />Every covered invoice currently has a claim. Issue another covered invoice to begin a new preparation.</p> : null}
         </section>
       ) : null}
 

@@ -31,7 +31,6 @@ import {
   LANGUAGES,
   CONTACT_METHODS,
   RELATIONSHIPS,
-  COVER_PLANS,
   SEX_OPTIONS,
   SMOKING_STATUS,
   ALCOHOL_STATUS,
@@ -105,6 +104,7 @@ export default function PatientFile({
   canPrescribe,
   can = {},
   practice,
+  coverPlanOptions = ['Self-pay'],
   notes = [],
   onOpenNote,
   onStartNote,
@@ -489,7 +489,7 @@ export default function PatientFile({
 
           {editScope === 'all' && can.editCover && <Panel title="Cover and consent" icon={ShieldCheck}>
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Cover plan" required><Select value={draft.coverPlan || ''} onChange={set('coverPlan')} options={['', ...COVER_PLANS]} /></Field>
+              <Field label="Medical aid scheme" required><Select value={draft.coverPlan || ''} onChange={set('coverPlan')} options={['', ...coverPlanOptions]} /></Field>
               <Field label="Member number"><Input value={draft.memberNo || ''} onChange={set('memberNo')} /></Field>
               <Field label="Principal member"><Input value={draft.principalMember || ''} onChange={set('principalMember')} /></Field>
               <Field label="Dependant code"><Input value={draft.dependantCode || ''} onChange={set('dependantCode')} /></Field>
@@ -937,8 +937,7 @@ export default function PatientFile({
           {tab === 'Cover & consent' && (
             <div className="grid gap-4 lg:grid-cols-2">
               <Panel title="Medical aid cover" icon={ShieldCheck}>
-                <Row label="Scheme" value="NH263" />
-                <Row label="Plan" value={displayText(record.coverPlan)} missing={!record.coverPlan} />
+                <Row label="Scheme" value={displayText(record.coverPlan)} missing={!record.coverPlan} />
                 <Row label="Member number" value={displayText(record.memberNo)} missing={!record.memberNo} />
                 <Row label="Principal member" value={record.principalMember} missing={!record.principalMember} />
                 <Row label="Dependant code" value={record.dependantCode} missing={!record.dependantCode} />

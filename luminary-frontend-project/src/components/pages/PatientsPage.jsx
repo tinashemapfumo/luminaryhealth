@@ -9,7 +9,7 @@ import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function PatientsPage() {
-  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNote, openNoteForVisit, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, applyDictationEncounter, roleInfo, patientTab, setPatientTab, currency, openDialog, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders } = useWorkspace();
+  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNote, openNoteForVisit, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, applyDictationEncounter, roleInfo, patientTab, setPatientTab, currency, openDialog, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders, coverPlanOptions, defaultCoverPlan } = useWorkspace();
   const defaultProvider = configuredProviders[0] || 'Unassigned';
   const [mergeOpen, setMergeOpen] = React.useState(false);
   const [mergeSourceId, setMergeSourceId] = React.useState('');
@@ -82,6 +82,7 @@ export default function PatientsPage() {
           canPrescribe={access.can.prescribe}
           can={access.can}
           practice={practice}
+          coverPlanOptions={coverPlanOptions}
           notes={access.can.viewClinicalNotes ? notesForPatient(selectedPatient.id) : []}
           onOpenNote={(id) => setOpenNoteId(id)}
           onStartNote={() => openNoteForVisit(selectedPatient, practiceSchedule.find((v) => v.patient === selectedPatient.name))}
@@ -332,7 +333,7 @@ export default function PatientsPage() {
               />
             </label>
             {access.can.addPatient && (
-              <button type="button" onClick={() => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProvider, consentComms: true })} className="lh-btn-primary shrink-0">
+              <button type="button" onClick={() => openDialog('patient', { coverPlan: defaultCoverPlan, preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProvider, consentComms: true })} className="lh-btn-primary shrink-0">
                 <Plus size={16} strokeWidth={2} />
                 New patient
               </button>

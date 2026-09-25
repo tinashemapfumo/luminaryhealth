@@ -60,7 +60,6 @@ import {
   recordCompleteness,
   ageFromDob,
   SEX_OPTIONS,
-  COVER_PLANS,
   RELATIONSHIPS,
   CONTACT_METHODS,
 } from '../data/patientRecords';
@@ -993,6 +992,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     if (!form.emergencyName?.trim()) errors.emergencyName = 'An emergency contact is required';
     if (!form.emergencyPhone?.trim()) errors.emergencyPhone = 'An emergency number is required';
     else if (form.emergencyPhone.trim() === form.phone?.trim()) errors.emergencyPhone = 'Must differ from the patient’s own number';
+    const selectedScheme = configuredSchemes.find((scheme) => scheme.name === form.coverPlan);
+    if (form.coverPlan !== 'Self-pay' && !selectedScheme) errors.coverPlan = 'Choose a configured medical aid scheme';
     if (form.coverPlan !== 'Self-pay' && !form.memberNo?.trim()) errors.memberNo = 'Member number is required for medical aid cover';
     if (!form.consentTreatment) errors.consentTreatment = 'Consent to treat must be captured before registration';
     setFormErrors(errors);
@@ -1005,7 +1006,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     // fallback for a failed request, which stops here with the reason.
     if (live) {
       try {
-        const created = await api.patients.create(createBodyFromForm(form, { reference: id }));
+        const created = await api.patients.create(createBodyFromForm({ ...form, schemeId: selectedScheme?.id || null }, { reference: id }));
         await patientDirectory.reload();
         setSelectedPatientId(created.reference || created.id);
         setActiveView('patients');
@@ -1028,7 +1029,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             .join(', ');
           const proceed = window.confirm(`Possible duplicate patient found: ${names}. Create a separate patient anyway?`);
           if (proceed) {
-            const created = await api.patients.create(createBodyFromForm(form, {
+            const created = await api.patients.create(createBodyFromForm({ ...form, schemeId: selectedScheme?.id || null }, {
               reference: id,
               duplicateAcknowledged: true,
             }));
@@ -1080,7 +1081,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         emergencyName: form.emergencyName.trim(),
         emergencyRelationship: form.emergencyRelationship || 'Other',
         emergencyPhone: form.emergencyPhone.trim(),
-        coverPlan: form.coverPlan || 'NH263 Plan A',
+        coverPlan: form.coverPlan || defaultCoverPlan,
         memberNo: row.memberNo,
         principalMember: form.principalMember?.trim() || row.name,
         dependantCode: form.dependantCode?.trim() || '00',
@@ -2220,6 +2221,9 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       city: practice.location || practiceSettings.profile.city,
     },
   };
+  const configuredSchemes = (settings.schemes || []).filter((scheme) => scheme.active !== false);
+  const coverPlanOptions = [...configuredSchemes.map((scheme) => scheme.name), 'Self-pay'];
+  const defaultCoverPlan = configuredSchemes[0]?.name || 'Self-pay';
 
   /**
    * The practice's billing currency, and the formatters bound to it.
@@ -3206,7 +3210,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }));
 
     const actions = [
-      access.can.addPatient && { kind: 'Action', label: 'Register new patient', hint: 'Opens the intake form', run: () => openDialog('patient', { coverPlan: 'NH263 Plan A', preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProviderName, consentComms: true }) },
+      access.can.addPatient && { kind: 'Action', label: 'Register new patient', hint: 'Opens the intake form', run: () => openDialog('patient', { coverPlan: defaultCoverPlan, preferredContact: 'SMS', emergencyRelationship: 'Spouse', provider: defaultProviderName, consentComms: true }) },
       access.can.scheduleVisit && { kind: 'Action', label: 'Schedule a visit', hint: 'Opens the booking form', run: () => openDialog('appointment', { provider: defaultProviderName, room: defaultRoomName, mode: 'In-person' }) },
       access.can.orderServices && { kind: 'Action', label: 'Order a service', hint: 'ECG, bloods, imaging', run: () => openDialog('order', { quantity: '1', priority: 'Routine' }) },
       access.can.createInvoice && { kind: 'Action', label: 'Raise an invoice', hint: 'Opens the billing form', run: () => openDialog('invoice') },
@@ -3658,7 +3662,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     // actions
     setActiveView, openDialog, exportCsv, notify, currency, currentDate, currentRole,
     aiTab, setAiTab,
-    settings, updateSettings, practiceUsers, updateUser, configuredProviders, configuredRooms,
+    settings, updateSettings, practiceUsers, updateUser, configuredProviders, configuredRooms, coverPlanOptions, defaultCoverPlan,
     // catalogue and tariffs
     catalogue, configuredServices, tariffProvider, priceOn, triggerLabel, BILLING_TRIGGERS,
     repriceCatalogueService, payers: payerData,
@@ -4273,8 +4277,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           <fieldset>
             <legend className="mb-2.5 text-xs font-semibold uppercase tracking-[0.1em] text-brand">Cover and care team</legend>
             <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Cover plan" required>
-                <Select value={form.coverPlan || 'NH263 Plan A'} onChange={setField('coverPlan')} options={COVER_PLANS} />
+              <Field label="Medical aid scheme" required error={formErrors.coverPlan}>
+                <Select value={form.coverPlan || defaultCoverPlan} onChange={setField('coverPlan')} options={coverPlanOptions} />
               </Field>
               <Field label="Member number" required={form.coverPlan !== 'Self-pay'} error={formErrors.memberNo} hint={form.coverPlan === 'Self-pay' ? 'Not needed for self pay' : undefined}>
                 <Input value={form.memberNo || ''} onChange={setField('memberNo')} placeholder="NH263-000000-00" disabled={form.coverPlan === 'Self-pay'} />

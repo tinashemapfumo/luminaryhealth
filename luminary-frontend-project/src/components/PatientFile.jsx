@@ -44,11 +44,13 @@ const toList = (value) => String(value || '').split(',').map((item) => item.trim
 const fromList = (list) => (Array.isArray(list) ? list.join(', ') : '');
 const displayText = (value) => String(value ?? '').replace(/Self-pay/g, 'Self pay').replace(/No-show/g, 'No show');
 
+// "Not recorded" is a completeness gap, not a clinical danger, so it reads
+// amber; red stays reserved for allergies, abnormal results and break-glass.
 function Row({ label, value, missing }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-0">
-      <span className="shrink-0 text-sm text-muted">{label}</span>
-      <span className={`text-right text-base ${missing ? 'italic text-danger' : 'font-medium text-ink'}`}>
+    <div className="flex items-baseline justify-between gap-4 border-b border-line/60 py-2.5 last:border-0">
+      <span className="shrink-0 text-small text-muted">{label}</span>
+      <span className={`text-right text-copy ${missing ? 'italic text-warning-deep' : 'font-medium text-ink'}`}>
         {missing ? 'Not recorded' : value}
       </span>
     </div>
@@ -60,7 +62,7 @@ function Panel({ title, icon: Icon, action, children }) {
     <section className="lh-card-pad">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-copy font-semibold text-ink">
-          {Icon && <Icon size={14} className="text-brand" />}
+          {Icon && <Icon size={16} strokeWidth={1.8} className="text-brand" />}
           {title}
         </h3>
         {action}
@@ -77,14 +79,14 @@ function EpisodeLinks({ title, items, empty }) {
       {items.length ? (
         <div className="mt-2 space-y-1.5">
           {items.map((item) => (
-            <div key={item.id} className="rounded-md border border-line bg-white px-3 py-2 text-sm">
+            <div key={item.id} className="rounded-md bg-surface/70 px-3 py-2 text-small">
               <p className="font-medium text-ink">{item.label}</p>
-              {item.detail && <p className="mt-0.5 text-xs text-body">{item.detail}</p>}
+              {item.detail && <p className="mt-0.5 text-caption text-muted">{item.detail}</p>}
             </div>
           ))}
         </div>
       ) : (
-        <p className="mt-2 text-sm text-muted">{empty}</p>
+        <p className="mt-2 text-small text-muted">{empty}</p>
       )}
     </div>
   );
@@ -508,7 +510,7 @@ export default function PatientFile({
             </div>
           </Panel>}
 
-          <div className="sticky bottom-0 flex items-center justify-end gap-2 rounded-lg border border-line bg-white/95 p-3 backdrop-blur">
+          <div className="lh-glass-elevated sticky bottom-0 flex items-center justify-end gap-2 rounded-xl p-3">
             <Button variant="secondary" type="button" onClick={() => setEditing(false)}>Discard changes</Button>
             <Button type="submit">{editScope === 'clinical' ? 'Save clinical information' : 'Save record'}</Button>
           </div>
@@ -744,7 +746,7 @@ export default function PatientFile({
                     const linkedClaims = patientClaims.filter((claim) => episode.linkedClaimIds?.includes(claim.id));
 
                     return (
-                      <article key={episode.id} className="rounded-lg border border-line bg-surface p-4">
+                      <article key={episode.id} className="rounded-lg bg-surface/70 p-4">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -764,7 +766,7 @@ export default function PatientFile({
                               <button
                                 type="button"
                                 onClick={() => onUpdateEpisode?.(episode.id, { status: 'Closed' })}
-                                className="rounded-lg border border-line bg-white px-3 py-2 text-sm font-medium text-body transition hover:border-brand-edge hover:text-brand"
+                                className="lh-btn-secondary h-control-sm px-3 text-caption"
                               >
                                 Close
                               </button>
@@ -773,7 +775,7 @@ export default function PatientFile({
                         </div>
 
                         {episode.outcome && (
-                          <div className="mt-3 rounded-md border border-line bg-white p-3">
+                          <div className="mt-3 rounded-md bg-white p-3 shadow-hairline">
                             <p className="text-caption font-semibold text-muted">Outcome</p>
                             <p className="mt-1 text-sm text-ink-soft">{episode.outcome}</p>
                           </div>
@@ -979,7 +981,7 @@ export default function PatientFile({
 
                   <div>
                     <p className="mb-2 text-caption font-semibold text-muted">Invoices</p>
-                    <div className="overflow-x-auto rounded-lg border border-line bg-white">
+                    <div className="lh-table-shell">
                       <table className="min-w-full text-left text-md">
                         <thead className="bg-surface text-caption font-medium text-muted">
                           <tr>
@@ -1013,7 +1015,7 @@ export default function PatientFile({
                       {patientPayments.length ? (
                         <div className="space-y-2">
                           {patientPayments.map((payment) => (
-                            <div key={`${payment.invoice.id}-${payment.id}`} className="rounded-lg border border-line bg-white p-3">
+                            <div key={`${payment.invoice.id}-${payment.id}`} className="rounded-lg bg-surface/60 p-3.5">
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="font-medium text-ink">{payment.invoice.id}</p>
@@ -1024,7 +1026,7 @@ export default function PatientFile({
                             </div>
                           ))}
                         </div>
-                      ) : <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">No payments recorded for this patient.</p>}
+                      ) : <p className="rounded-lg bg-surface/60 px-4 py-6 text-center text-small text-muted">No payments recorded for this patient.</p>}
                     </div>
 
                     <div>
@@ -1032,7 +1034,7 @@ export default function PatientFile({
                       {patientClaims.length ? (
                         <div className="space-y-2">
                           {patientClaims.map((claim) => (
-                            <div key={claim.id} className="rounded-lg border border-line bg-white p-3">
+                            <div key={claim.id} className="rounded-lg bg-surface/60 p-3.5">
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <p className="font-medium text-ink">{claim.id}</p>
@@ -1043,7 +1045,7 @@ export default function PatientFile({
                             </div>
                           ))}
                         </div>
-                      ) : <p className="rounded-lg border border-dashed border-line p-4 text-sm text-muted">No claims recorded for this patient.</p>}
+                      ) : <p className="rounded-lg bg-surface/60 px-4 py-6 text-center text-small text-muted">No claims recorded for this patient.</p>}
                     </div>
                   </div>
                 </div>
@@ -1062,7 +1064,7 @@ export default function PatientFile({
               )}
             >
               {can.writeNote && (
-                <div className="mb-4 grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-[180px_1fr_auto]">
+                <div className="mb-4 grid gap-3 rounded-lg bg-surface/70 p-3.5 sm:grid-cols-[180px_1fr_auto]">
                   <input
                     ref={fileInput}
                     type="file"
@@ -1112,7 +1114,7 @@ export default function PatientFile({
                       <button
                         type="button"
                         onClick={() => onDownloadDocument?.(doc)}
-                        className="inline-flex shrink-0 items-center gap-1.5 rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-caption font-semibold text-brand-deep transition duration-fast hover:bg-brand/[0.08]"
                       >
                         <Download size={12} /> Download
                       </button>
@@ -1155,7 +1157,7 @@ export default function PatientFile({
                 ['appointments','Appointments',true], ['billing','Billing',can.readClaims],
                 ['documents','Original documents',can.viewClinicalNotes],
               ].filter(([, , allowed]) => allowed).map(([key,label]) => (
-                <label key={key} className="flex items-center gap-2 rounded border border-line px-3 py-2 text-sm text-ink">
+                <label key={key} className="flex items-center gap-2 rounded-md bg-surface/70 px-3 py-2 text-small text-ink">
                   <input type="checkbox" checked={Boolean(exportSections[key])}
                     onChange={(event) => setExportSections((current) => ({ ...current, [key]: event.target.checked }))} />
                   {label}

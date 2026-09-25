@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ArrowDownRight, ArrowUpRight, Bot, Check, Copy, Loader2, RotateCcw, Send } from 'lucide-react';
+import { AlertCircle, ArrowDownRight, ArrowUpRight, Bot, Check, Copy, Loader2, RotateCcw, Send, Sparkles } from 'lucide-react';
 import { AI_TABS, aiAgentRoster, smartInsights } from '../../data/intelligence';
 import { StatusPill } from '../shared/StatusPill';
-import { OceanWaveDecoration } from '../ui';
+import { OceanWaveDecoration, SegmentedControl } from '../ui';
 import { useWorkspace } from '../../lib/workspace';
 import { api } from '../../services/api';
 
@@ -166,41 +166,30 @@ export default function AIPage() {
 
   return (
     <div className="space-y-6">
-      <div className="relative overflow-hidden rounded-lg border border-brand-edge bg-white/90 p-4 shadow-[0_18px_44px_-34px_rgba(8,114,222,0.34)]">
-        <OceanWaveDecoration className="absolute bottom-0 right-0 h-44 w-[420px] opacity-60" />
+      <div className="lh-ai-surface p-6">
+        <OceanWaveDecoration className="absolute -bottom-6 right-0 h-40 w-[440px] opacity-40" />
         <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="max-w-xl">
-          <p className="lh-page-kicker">Intelligence</p>
+          <p className="flex items-center gap-1.5 text-caption font-semibold text-brand-deep"><Sparkles size={14} strokeWidth={1.8} /> Intelligence</p>
           <h1 className="lh-page-title">AI Insights</h1>
           <p className="lh-page-subtitle">Intelligent insights to help you run a better practice.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {AI_TABS.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              onClick={() => setAiTab(tab)}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${aiTab === tab ? 'bg-brand text-white shadow-[0_12px_28px_-20px_rgba(8,114,222,0.55)]' : 'border border-line bg-white/80 text-body hover:border-brand-edge hover:bg-white'}`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl label="Luminary AI section" options={AI_TABS} value={aiTab} onChange={setAiTab} className="self-start md:self-auto" />
         </div>
       </div>
 
       {aiTab === 'Agents' && (
         <>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="lh-card grid divide-y divide-line/60 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
               { label: 'Agents running', value: `${Object.values(agentStates).filter(Boolean).length} / ${aiAgentRoster.length}`, detail: 'All within normal operating range' },
               { label: 'Actions this week', value: '312', detail: 'Bookings, claims, recalls, collections' },
               { label: 'Escalated to humans', value: '9', detail: 'Items needing staff judgement' },
             ].map((item) => (
-              <div key={item.label} className="lh-metric">
-                <p className="text-caption font-medium text-muted">{item.label}</p>
-                <p className="mt-3 text-xl font-semibold tracking-title text-ink">{item.value}</p>
-                <p className="mt-2 text-sm text-body">{item.detail}</p>
+              <div key={item.label} className="min-w-0 px-5 py-5">
+                <p className="text-small font-medium text-muted">{item.label}</p>
+                <p className="lh-metric-value mt-2">{item.value}</p>
+                <p className="mt-1.5 text-caption text-muted">{item.detail}</p>
               </div>
             ))}
           </div>
@@ -211,34 +200,34 @@ export default function AIPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="lh-metric-icon">
-                      <Bot size={16} />
+                      <Bot size={17} strokeWidth={1.8} />
                     </div>
                     <div>
-                      <p className="text-md font-semibold text-ink">{agent.name}</p>
+                      <p className="text-copy font-semibold text-ink">{agent.name}</p>
                       <p className="mt-0.5 text-caption font-medium text-muted">{agent.role}</p>
                     </div>
                   </div>
                   <StatusPill label={agentStates[agent.id] ? 'Active' : 'Paused'} tone={agentStates[agent.id] ? 'success' : 'neutral'} />
                 </div>
 
-                <p className="mt-3 text-base leading-6 text-body">{agent.detail}</p>
+                <p className="mt-3 text-small leading-5 text-body">{agent.detail}</p>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {agent.metrics.map((metric) => (
-                    <div key={metric.label} className="lh-card-soft p-2.5">
-                      <p className="text-caption font-medium text-muted">{metric.label}</p>
-                      <p className="mt-1 text-md font-semibold tracking-heading text-ink">{metric.value}</p>
+                    <div key={metric.label} className="rounded-lg bg-surface/70 p-3">
+                      <p className="text-caption text-muted">{metric.label}</p>
+                      <p className="mt-0.5 text-copy font-semibold tracking-heading text-ink tnum">{metric.value}</p>
                     </div>
                   ))}
                 </div>
 
-                <p className="mt-3 text-xs text-muted">{agent.lastAction}</p>
+                <p className="mt-3 flex-1 text-caption text-muted">{agent.lastAction}</p>
 
                 {access.can.manageAgents && (
                   <button
                     type="button"
                     onClick={() => setAgentStates((prev) => ({ ...prev, [agent.id]: !prev[agent.id] }))}
-                    className={`mt-4 rounded-lg px-3.5 py-2 text-xs font-semibold transition ${agentStates[agent.id] ? 'border border-danger-line bg-white text-danger hover:border-danger-line' : 'bg-brand text-white hover:bg-brand-deep'}`}
+                    className={`mt-4 self-start ${agentStates[agent.id] ? 'lh-btn-secondary h-control-sm' : 'lh-btn-primary h-control-sm'}`}
                   >
                     {agentStates[agent.id] ? 'Pause agent' : 'Resume agent'}
                   </button>
@@ -254,13 +243,13 @@ export default function AIPage() {
           {smartInsights.map((insight) => (
             <div key={insight.title} className="lh-card-pad">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-md font-semibold tracking-heading text-ink">{insight.title}</p>
+                <p className="text-copy font-semibold tracking-heading text-ink">{insight.title}</p>
                 <StatusPill label={insight.severity} tone={insight.tone} />
               </div>
-              <p className="mt-3 text-base leading-6 text-body">{insight.detail}</p>
+              <p className="mt-2 text-small leading-5 text-body">{insight.detail}</p>
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-caption font-medium text-muted">{insight.source}</span>
-                <button className="text-sm font-medium text-brand">Open workflow →</button>
+                <button type="button" className="lh-btn-tertiary h-8 px-2.5 text-caption">Open workflow →</button>
               </div>
             </div>
           ))}
@@ -268,9 +257,10 @@ export default function AIPage() {
       )}
 
       {aiTab === 'Ask Luminary' && (
-        <div className="lh-card-pad">
-          <div className="flex items-center gap-2">
-            <p className="text-caption font-medium text-muted">Ask Luminary, searches every module</p>
+        <div className="lh-ai-surface p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="flex items-center gap-2 text-small font-semibold text-brand-deep"><Sparkles size={16} strokeWidth={1.8} /> Ask Luminary</p>
+            <p className="text-caption text-muted">Searches every module · answers are AI-generated, check the sources</p>
           </div>
 
           <div className="mt-4 max-h-[620px] space-y-3 overflow-y-auto pr-1">
@@ -293,9 +283,9 @@ export default function AIPage() {
             ))}
             {chatPending && (
               <div className="flex justify-start" aria-live="polite">
-                <div className="lh-chat-ai flex items-center gap-2 rounded-lg p-3.5 text-body">
-                  <Loader2 size={15} className="animate-spin" />
-                  <span className="text-sm">Analysing practice data...</span>
+                <div className="lh-chat-ai lh-ai-thinking flex items-center gap-2 rounded-lg p-3.5 text-body">
+                  <Sparkles size={15} strokeWidth={1.8} className="text-brand" />
+                  <span className="text-small">Analysing practice data...</span>
                 </div>
               </div>
             )}
@@ -327,15 +317,15 @@ export default function AIPage() {
               }}
               placeholder="Ask about appointments, claims, revenue, or operations..."
               disabled={chatPending}
-              className="flex-1 rounded-lg border border-edge bg-surface px-4 py-2.5 text-md text-ink placeholder-faint outline-none transition focus:border-brand focus:bg-white focus:ring-2 focus:ring-brand/15"
+              className="lh-input flex-1"
             />
             <button
               type="button"
               onClick={() => void askLuminary()}
               disabled={chatPending || !chatInput.trim()}
-              className="lh-primary-button py-2.5"
+              className="lh-btn-primary h-control-lg"
             >
-              {chatPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              {chatPending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} strokeWidth={1.8} />}
               Ask
             </button>
           </div>
@@ -346,8 +336,9 @@ export default function AIPage() {
                 key={suggestion}
                 type="button"
                 onClick={() => setChatInput(suggestion)}
-                className="rounded-lg border border-edge bg-white/90 px-3 py-1.5 text-sm text-body transition hover:border-brand-bright hover:bg-white"
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand/[0.06] px-3 text-caption font-medium text-brand-deep transition duration-fast hover:bg-brand/[0.12]"
               >
+                <Sparkles size={13} strokeWidth={1.8} aria-hidden="true" />
                 {suggestion}
               </button>
             ))}

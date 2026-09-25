@@ -354,7 +354,6 @@
     max-height: calc(100vh - var(--lh-chrome) - var(--lh-sticky-top));
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
   }
 
   /* ------------------------------------------------------------ status */

@@ -6,7 +6,7 @@ calls, permissions, routing, break-glass rules or workflows are touched.
 
 - **Branch:** `design/ocean-flow-2`, cut from `main` at `22be4b4`.
 - **Restore point:** tag `restore-point-2026-09-25`.
-- **Status:** Phases 1–4 are done, including pinned page toolbars and panels. Phase 5 has not started.
+- **Status:** All five phases are done. Nothing is pushed or deployed.
 
 ---
 
@@ -167,7 +167,7 @@ sentence case. Sentence case is applied with `first-letter:uppercase`, so
 | 2. Primitives | Shared classes and `ui.jsx` components, StatusPill, EmptyState consolidation | `index.css`, `ui.jsx`, `shared/StatusPill.jsx`, `shared/EmptyState.jsx` | **Done** (`6ed1603`) |
 | 3. Shell | Sidebar grouping (Care / Finance / Engagement / Intelligence, still role-filtered), nav item styling, header search trigger, alerts, account and workspace menus → `lh-popover`, command palette, fewer waves | `LuminaryDemo.jsx` (chrome markup only), `config/access.js` (adds a presentation-only `navGroups` list; permissions untouched) | **Done** (`536d9ba`) |
 | 4. Context | Patient context bar → `lh-context-bar`, patient file banner, allergy and break-glass strips, plus pinned page toolbars (`StickyBar`) and panels (`lh-sticky-panel`) on Patients, Billing, Claims and the patient file | `LuminaryDemo.jsx`, `PatientFile.jsx`, `LuminaryLogo.jsx`, `ui.jsx`, `index.css`, `PatientsPage.jsx`, `BillingPage.jsx`, `ClaimsPage.jsx` | **Done** |
-| 5. Pages | In order: Overview, Patients, Patient file, Appointments (and `ScheduleCalendar`), Clinical (and `EncounterNote`), Orders, Billing, Billing queue, Claims, Tariffs, Communications, Reports, Luminary AI, Audit, Settings | `components/pages/*`, `PatientFile.jsx`, `EncounterNote.jsx`, `ScheduleCalendar.jsx` | Not started |
+| 5. Pages | Sentence-case sweep, then Overview, Patients, patient file, Appointments and calendar, Clinical, Billing, Claims, Reports, Luminary AI, Communications, Tariffs, Audit, Settings, Billing queue, encounter note, dark-mode fixes | `components/pages/*`, `PatientFile.jsx`, `EncounterNote.jsx`, `ScheduleCalendar.jsx`, `ui.jsx`, `index.css` | **Done** (5.1–5.9) |
 
 Each phase is its own commit, or several for Phase 5 (one per page), so any
 single step can be undone with `git revert`.
@@ -193,6 +193,31 @@ Inside a page:
   1440×900 and 1100×900: after scrolling, the header stays at 0, the context
   bar at 56–113, the bars pin at 112, and the window scroll stays 0.
 
+### Phase 5 decisions worth knowing
+
+- **Uppercase labels become sentence case**, except status and safety badges
+  (the allergy badge, the "you" badge, the note status). Channel identifiers
+  display as SMS / WhatsApp / Email through a small display mapping, because
+  the old uppercase styling had been hiding the raw value `sms`.
+- **Metric tiles no longer paint whole tiles in status colours.** Tone is a
+  small dot beside the label. Where several figures belong together
+  (Overview, Clinical, Communications, AI, Audit, Settings), they sit on one
+  surface separated by hairlines.
+- **"Not recorded" in the patient file is amber, not red.** It is a
+  completeness gap; red stays reserved for allergies, abnormal results and
+  break-glass.
+- **The encounter note's allergy strip** now matches the patient file (red
+  with role=alert, amber when not reviewed), because prescribing happens there.
+- **Pausing an AI agent is a secondary button**, not a red one: it can be
+  undone.
+- **AI output is labelled** ("AI-generated · review before acting", "check the
+  sources") and sits on the ocean AI surface, so it never reads as verified data.
+- **Patients registry at 1440px:** "Last visit" shows from 1536px and "Open
+  file" is an icon button (same accessible name), so the table fits beside the
+  pinned preview without horizontal scrolling. At 1280px it still scrolls
+  sideways inside its own frame.
+- **Visit progress** is a vertical stepper in the 320px panel.
+
 ## 5. Regression risks and how each is checked
 
 | Risk | Where | Mitigation |
@@ -214,7 +239,7 @@ npm run verify:render     npm run verify:menus      npm run build
 eslint on every changed file
 ```
 
-The baseline on `main` before any change already had **2 contrast failures**
+After Phase 5, `verify:contrast` passes completely (148 pairings); both failures below are fixed. The baseline on `main` before any change already had **2 contrast failures**
 (`text-muted` on `bg-line` in `ClaimsPage.jsx:392` and `ReportsPage.jsx:488`)
 and **6 `verify:menus` failures**. Both phases reproduce exactly those results
 and add no new failures. The contrast pair will be fixed when those pages are

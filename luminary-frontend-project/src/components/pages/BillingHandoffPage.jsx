@@ -64,14 +64,14 @@ export default function BillingHandoffPage() {
       </div>
 
       <div className="lh-table-shell">
-        <table className="min-w-full text-left text-md">
+        <table className="min-w-full text-left text-small">
           <thead className="lh-table-head">
             <tr>
-              <th className="px-4 py-3 font-medium">Patient</th>
-              <th className="px-4 py-3 font-medium">Services</th>
-              <th className="px-4 py-3 font-medium">Encounter</th>
-              <th className="px-4 py-3 font-medium text-right">Draft total</th>
-              <th className="px-4 py-3 font-medium">Status</th>
+              <th className="px-4 py-3 font-medium text-caption">Patient</th>
+              <th className="px-4 py-3 font-medium text-caption">Services</th>
+              <th className="px-4 py-3 font-medium text-caption">Encounter</th>
+              <th className="px-4 py-3 font-medium text-right text-caption">Draft total</th>
+              <th className="px-4 py-3 font-medium text-caption">Status</th>
             </tr>
           </thead>
           <tbody>

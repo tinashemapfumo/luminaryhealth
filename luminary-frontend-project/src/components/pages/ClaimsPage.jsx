@@ -543,13 +543,15 @@ function ClaimModuleDetail({
         <SummaryTile label="Patient pays" value={`USD ${memberLiability.toFixed(2)}`} detail={memberLiability > 0 ? 'Collectable balance' : 'No member portion'} tone={memberLiability > 0 ? 'warm' : 'success'} />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-line pb-2">
+      <div className="lh-tabs" role="tablist" aria-label="Claim detail">
         {module.detailTabs.map((tab) => (
           <button
             key={tab}
             type="button"
             onClick={() => setDetailTab(tab)}
-            className={`shrink-0 rounded-md px-3 py-2 text-xs font-semibold transition ${detailTab === tab ? 'bg-ink text-white' : 'text-body hover:bg-line hover:text-ink'}`}
+            role="tab"
+            aria-selected={detailTab === tab}
+            className="lh-tab"
           >
             {tab}
           </button>
@@ -692,7 +694,7 @@ function CodingPanel({ claim }) {
           ['Blockers', blockerCount(claim)],
         ]}
       />
-      <div className="rounded-lg border border-line bg-white p-4">
+      <div className="rounded-lg bg-surface/60 p-4">
         <p className="text-sm font-semibold text-ink">Preparation checklist</p>
         <div className="mt-3 space-y-2 text-sm">
           <ChecklistItem done={Boolean(claim.icd10 && claim.icd10 !== 'Not coded')} label="Diagnosis code captured" />
@@ -717,7 +719,7 @@ function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch 
           ['Payload ref', claim.externalReference || 'Not submitted'],
         ]}
       />
-      <div className="rounded-lg border border-line bg-white p-4">
+      <div className="rounded-lg bg-surface/60 p-4">
         <p className="text-sm font-semibold text-ink">Next action</p>
         <div className="mt-3 flex flex-wrap gap-2">
           {claim.status === 'Draft' && access.can.captureBiometric ? (
@@ -762,7 +764,7 @@ function EmailPackPanel({
           ]}
         />
 
-        <div className="rounded-lg border border-line bg-white p-4">
+        <div className="rounded-lg bg-surface/60 p-4">
           <p className="text-sm font-semibold text-ink">Document checklist</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {requiredDocuments.map((document) => (
@@ -772,7 +774,7 @@ function EmailPackPanel({
         </div>
       </div>
 
-      <div className="rounded-lg border border-line bg-white p-4">
+      <div className="rounded-lg bg-surface/60 p-4">
         <p className="text-sm font-semibold text-ink">Client-assisted workflow</p>
         <div className="mt-3 space-y-2 text-sm">
           <ChecklistItem done={Boolean(pack.claimForm) || claim.status !== 'Draft'} label="Form prepared by staff" />
@@ -852,7 +854,7 @@ function TimelinePanel({ claim, events }) {
 
 function AttachmentsPanel({ attachments, access, notify }) {
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <div className="rounded-lg bg-surface/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-ink">Claim documents</p>
@@ -901,19 +903,24 @@ function AdjudicationPanel({ claim, insurerLiability, memberLiability, rejection
 }
 
 function SummaryTile({ label, value, detail, tone }) {
-  const tones = {
-    neutral: 'border-line bg-white',
-    warm: 'border-warning/20 bg-warning-wash',
-    accent: 'border-teal/20 bg-teal-soft',
-    success: 'border-success/20 bg-success-soft',
-    alert: 'border-danger/20 bg-danger-soft',
+  // Tone is a small dot beside the label rather than a painted tile: colour
+  // marks meaning here, it does not decorate.
+  const dots = {
+    neutral: 'bg-edge-strong',
+    accent: 'bg-teal',
+    success: 'bg-success-bright',
+    warm: 'bg-warning-bright',
+    alert: 'bg-danger-bright',
   };
 
   return (
-    <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-caption font-semibold text-muted">{label}</p>
-      <p className="mt-2 truncate text-xl font-semibold tracking-title text-ink">{value}</p>
-      <p className="mt-1 truncate text-xs text-body">{detail}</p>
+    <div className="lh-metric min-w-0">
+      <p className="flex items-center gap-2 text-small font-medium text-muted">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dots[tone] || dots.neutral}`} aria-hidden="true" />
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-2 truncate text-heading font-semibold tracking-title text-ink tnum">{value}</p>
+      <p className="mt-1 truncate text-caption text-muted">{detail}</p>
     </div>
   );
 }
@@ -928,7 +935,7 @@ function ActionButton({ icon: Icon, children, onClick }) {
 
 function InfoList({ title, rows }) {
   return (
-    <div className="rounded-lg border border-line bg-white p-4">
+    <div className="rounded-lg bg-surface/60 p-4">
       <p className="text-sm font-semibold text-ink">{title}</p>
       <dl className="mt-3 divide-y divide-line">
         {rows.map(([label, value]) => (

@@ -509,18 +509,23 @@ function PageHeader({ openDialog, canCreate }) {
 }
 
 function Metric({ label, value, detail, tone = 'neutral' }) {
-  const tones = {
-    neutral: 'border-line bg-white',
-    accent: 'border-teal/20 bg-teal-soft',
-    success: 'border-success/20 bg-success-soft',
-    warm: 'border-warning/20 bg-warning-wash',
-    alert: 'border-danger/20 bg-danger-soft',
+  // Tone is a small dot beside the label rather than a painted tile: colour
+  // marks meaning here, it does not decorate.
+  const dots = {
+    neutral: 'bg-edge-strong',
+    accent: 'bg-teal',
+    success: 'bg-success-bright',
+    warm: 'bg-warning-bright',
+    alert: 'bg-danger-bright',
   };
   return (
-    <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-caption font-semibold text-muted">{label}</p>
-      <p className="mt-2 text-xl font-semibold tracking-title text-ink tabular-nums">{value}</p>
-      <p className="mt-1 text-xs text-body">{detail}</p>
+    <div className="lh-metric min-w-0">
+      <p className="flex items-center gap-2 text-small font-medium text-muted">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dots[tone] || dots.neutral}`} aria-hidden="true" />
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-2 truncate text-heading font-semibold tracking-title text-ink tnum">{value}</p>
+      <p className="mt-1 truncate text-caption text-muted">{detail}</p>
     </div>
   );
 }
@@ -541,19 +546,20 @@ function SectionSearch({ value, onChange, placeholder }) {
 
 function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo, setCustomTo, shown, total }) {
   return (
-    <section className="rounded-lg border border-line bg-white/90 p-3">
+    <section className="lh-surface-soft px-4 py-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <p className="text-caption font-semibold text-muted">Billing range</p>
-          <p className="mt-1 text-sm text-body">{shown} of {total} invoice record{total === 1 ? '' : 's'} in the current invoice-based view.</p>
+          <p className="mt-0.5 text-small text-body">{shown} of {total} invoice record{total === 1 ? '' : 's'} in the current invoice-based view.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="lh-segmented flex-wrap">
           {BILLING_RANGES.map((option) => (
             <button
               key={option.key}
               type="button"
               onClick={() => setRange(option.key)}
-              className={`rounded-md border px-3 py-2 text-xs font-semibold transition ${range === option.key ? 'border-ink bg-ink text-white' : 'border-line bg-white text-body hover:border-brand-edge hover:text-brand'}`}
+              aria-pressed={range === option.key}
+              className={`lh-segmented-item ${range === option.key ? 'bg-white text-ink shadow-control' : ''}`}
             >
               {option.label}
             </button>
@@ -568,7 +574,7 @@ function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo,
               type="date"
               value={customFrom}
               onChange={(event) => setCustomFrom(event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft"
+              className="lh-input mt-1 h-control"
             />
           </label>
           <label className="text-caption font-semibold text-muted">
@@ -577,7 +583,7 @@ function BillingRangeBar({ range, setRange, customFrom, setCustomFrom, customTo,
               type="date"
               value={customTo}
               onChange={(event) => setCustomTo(event.target.value)}
-              className="mt-1 h-10 w-full rounded-lg border border-line bg-white px-3 text-sm font-medium normal-case tracking-normal text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft"
+              className="lh-input mt-1 h-control"
             />
           </label>
         </div>
@@ -1101,13 +1107,13 @@ function LedgerTable({ rows, formatMoney }) {
       <table className="min-w-[760px] w-full text-left text-sm">
         <thead className="bg-surface text-caption font-medium text-muted">
           <tr>
-            <th className="px-3 py-2 font-semibold">Date</th>
-            <th className="px-3 py-2 font-semibold">Type</th>
-            <th className="px-3 py-2 font-semibold">Reference</th>
-            <th className="px-3 py-2 font-semibold">Detail</th>
-            <th className="px-3 py-2 text-right font-semibold">Debit</th>
-            <th className="px-3 py-2 text-right font-semibold">Credit</th>
-            <th className="px-3 py-2 text-right font-semibold">Balance</th>
+            <th className="px-3 py-2 font-medium text-caption">Date</th>
+            <th className="px-3 py-2 font-medium text-caption">Type</th>
+            <th className="px-3 py-2 font-medium text-caption">Reference</th>
+            <th className="px-3 py-2 font-medium text-caption">Detail</th>
+            <th className="px-3 py-2 text-right font-medium text-caption">Debit</th>
+            <th className="px-3 py-2 text-right font-medium text-caption">Credit</th>
+            <th className="px-3 py-2 text-right font-medium text-caption">Balance</th>
           </tr>
         </thead>
         <tbody>
@@ -1508,13 +1514,13 @@ function ClaimsExposureView({ invoices, claims, currency, openAccount, query, se
         <table className="min-w-[820px] w-full text-left text-sm">
           <thead className="bg-surface text-caption font-medium text-muted">
             <tr>
-              <th className="px-3 py-2 font-semibold">Invoice</th>
-              <th className="px-3 py-2 font-semibold">Patient</th>
-              <th className="px-3 py-2 font-semibold">Claim</th>
-              <th className="px-3 py-2 font-semibold">Status</th>
-              <th className="px-3 py-2 text-right font-semibold">Estimated</th>
-              <th className="px-3 py-2 text-right font-semibold">Approved</th>
-              <th className="px-3 py-2 text-right font-semibold">Outstanding</th>
+              <th className="px-3 py-2 font-medium text-caption">Invoice</th>
+              <th className="px-3 py-2 font-medium text-caption">Patient</th>
+              <th className="px-3 py-2 font-medium text-caption">Claim</th>
+              <th className="px-3 py-2 font-medium text-caption">Status</th>
+              <th className="px-3 py-2 text-right font-medium text-caption">Estimated</th>
+              <th className="px-3 py-2 text-right font-medium text-caption">Approved</th>
+              <th className="px-3 py-2 text-right font-medium text-caption">Outstanding</th>
             </tr>
           </thead>
           <tbody>

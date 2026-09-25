@@ -533,15 +533,15 @@ export default function SettingsPage() {
           )}
 
           <div className="overflow-x-auto rounded-lg border border-line bg-white shadow-[0_8px_24px_-22px_rgba(11,21,36,0.5)]">
-            <table className="min-w-full text-left text-md">
+            <table className="min-w-full text-left text-small">
               <thead className="bg-surface text-xs font-medium text-muted">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
-                  <th className="px-4 py-3 font-medium">Registration</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  <th className="px-4 py-3 font-medium text-caption">Name</th>
+                  <th className="px-4 py-3 font-medium text-caption">Email</th>
+                  <th className="px-4 py-3 font-medium text-caption">Role</th>
+                  <th className="px-4 py-3 font-medium text-caption">Registration</th>
+                  <th className="px-4 py-3 font-medium text-caption">Status</th>
+                  <th className="px-4 py-3 text-right font-medium text-caption">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -630,14 +630,14 @@ export default function SettingsPage() {
             </div>
           )}
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-md">
+            <table className="min-w-full text-left text-small">
               <thead className="text-caption font-medium text-muted">
                 <tr>
-                  <th className="py-2 font-semibold">Provider</th>
-                  <th className="py-2 font-semibold">Speciality</th>
-                  <th className="py-2 font-semibold">Registration</th>
-                  <th className="py-2 font-semibold">Expires</th>
-                  <th className="py-2 font-semibold">Bookable</th>
+                  <th className="py-2 font-medium text-caption">Provider</th>
+                  <th className="py-2 font-medium text-caption">Speciality</th>
+                  <th className="py-2 font-medium text-caption">Registration</th>
+                  <th className="py-2 font-medium text-caption">Expires</th>
+                  <th className="py-2 font-medium text-caption">Bookable</th>
                 </tr>
               </thead>
               <tbody>
@@ -764,13 +764,13 @@ export default function SettingsPage() {
         <>
           <Section title="Medical aid schemes" detail="Reimbursement rate per scheme. This replaces a hardcoded 80% split that was computing real money from a guess.">
             <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-md">
+              <table className="min-w-full text-left text-small">
                 <thead className="text-caption font-medium text-muted">
                   <tr>
-                    <th className="py-2 font-semibold">Scheme</th>
-                    <th className="py-2 font-semibold">Reimburses</th>
-                    <th className="py-2 font-semibold">Pre-authorisation</th>
-                    <th className="py-2 font-semibold">Active</th>
+                    <th className="py-2 font-medium text-caption">Scheme</th>
+                    <th className="py-2 font-medium text-caption">Reimburses</th>
+                    <th className="py-2 font-medium text-caption">Pre-authorisation</th>
+                    <th className="py-2 font-medium text-caption">Active</th>
                   </tr>
                 </thead>
                 <tbody>

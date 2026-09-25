@@ -49,7 +49,7 @@ export default function AuditPage() {
         {practiceGrants.length === 0 ? (
           <p className="text-xs text-muted">No grants in force.</p>
         ) : (
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-line/60">
             {practiceGrants.map((grant) => {
               const holder = usersInPractice(currentUser.practiceId).find((user) => user.id === grant.userId);
               const subject = practicePatients.find((patient) => patient.id === grant.patientId);
@@ -80,14 +80,14 @@ export default function AuditPage() {
           <EmptyState icon={ShieldCheck} title="No events yet" detail="Access and changes will appear here as they happen." />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-line/70 bg-white/75 backdrop-blur">
-            <table className="min-w-full text-left text-md">
+            <table className="min-w-full text-left text-small">
               <thead className="bg-white/45 text-2xs text-muted">
                 <tr>
-                  <th className="px-4 py-2.5 font-semibold">When</th>
-                  <th className="px-4 py-2.5 font-semibold">Who</th>
-                  <th className="px-4 py-2.5 font-semibold">Action</th>
-                  <th className="px-4 py-2.5 font-semibold">Subject</th>
-                  <th className="px-4 py-2.5 font-semibold">Detail</th>
+                  <th className="px-4 py-2.5 font-medium text-caption">When</th>
+                  <th className="px-4 py-2.5 font-medium text-caption">Who</th>
+                  <th className="px-4 py-2.5 font-medium text-caption">Action</th>
+                  <th className="px-4 py-2.5 font-medium text-caption">Subject</th>
+                  <th className="px-4 py-2.5 font-medium text-caption">Detail</th>
                 </tr>
               </thead>
               <tbody>

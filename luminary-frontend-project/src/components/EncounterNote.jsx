@@ -697,7 +697,7 @@ export default function EncounterNote({
       >
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <div className="space-y-3">
-            <div className="rounded-lg border border-line bg-white p-3">
+            <div className="rounded-lg bg-surface/60 p-3.5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -804,7 +804,7 @@ export default function EncounterNote({
                     />
                   </Field>
                 ))}
-                <div className="rounded-lg border border-line bg-white p-3">
+                <div className="rounded-lg bg-surface/60 p-3.5">
                   <p className="text-caption font-semibold text-muted">Diagnosis suggestions</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {(dictationDraft.diagnosesMentioned || []).length === 0 ? (
@@ -816,7 +816,7 @@ export default function EncounterNote({
                     ))}
                   </div>
                 </div>
-                <div className="rounded-lg border border-line bg-white p-3">
+                <div className="rounded-lg bg-surface/60 p-3.5">
                   <p className="text-caption font-semibold text-muted">Medication suggestions</p>
                   <div className="mt-2 space-y-2">
                     {(dictationDraft.medicationsMentioned || []).length === 0 ? (

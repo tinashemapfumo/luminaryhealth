@@ -88,29 +88,31 @@ export default function ClinicalPage() {
             </h1>
             <p className="lh-page-subtitle">Your clinic list, notes to complete, results to review, and refills to action.</p>
           </div>
-          <button type="button" onClick={() => setActiveView('appointments')} className="text-sm font-medium text-brand hover:underline">
+          <button type="button" onClick={() => setActiveView('appointments')} className="lh-btn-secondary">
+            <CalendarDays size={16} strokeWidth={1.8} />
             Open schedule
           </button>
         </div>
 
         {/* The clinician's inbox: what is waiting on them specifically. */}
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* The clinician's inbox as one overview, not three separate tiles. */}
+        <div className="lh-card grid divide-y divide-line/60 md:grid-cols-3 md:divide-x md:divide-y-0">
           {[
             { label: 'Notes to complete', value: unsigned.length, detail: unsigned.length ? 'Drafts awaiting signature' : 'Nothing outstanding', tone: unsigned.length ? 'warm' : 'success' },
             { label: 'Results to review', value: abnormalLabs.length, detail: abnormalLabs.length ? 'Outside normal range' : 'All within range', tone: abnormalLabs.length ? 'alert' : 'success' },
             { label: 'Refills to action', value: refillsDue.length, detail: refillsDue.length ? 'No repeats remaining' : 'None due', tone: refillsDue.length ? 'warm' : 'success' },
           ].map((tile) => (
-            <div key={tile.label} className="lh-metric">
-              <p className="lh-section-label">{tile.label}</p>
-              <p className={`mt-2 text-2xl font-semibold tracking-title ${tile.tone === 'alert' ? 'text-danger' : tile.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
+            <div key={tile.label} className="min-w-0 px-5 py-5">
+              <p className="text-small font-medium text-muted">{tile.label}</p>
+              <p className={`lh-metric-value mt-2 ${tile.tone === 'alert' ? 'text-danger' : tile.tone === 'warm' ? 'text-warning' : 'text-ink'}`}>
                 {tile.value}
               </p>
-              <p className="mt-1 text-sm text-body">{tile.detail}</p>
+              <p className="mt-1.5 text-caption text-muted">{tile.detail}</p>
             </div>
           ))}
         </div>
 
-        <div className="grid min-w-0 items-start gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+        <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
           {/* Today's list — the doctor's actual working queue */}
           <section className="lh-card-pad">
             <div className="mb-3 flex items-center justify-between">
@@ -123,7 +125,7 @@ export default function ClinicalPage() {
             {myPatients.length === 0 ? (
               <EmptyState icon={CalendarDays} title="No patients scheduled" detail="Nothing is booked to you today." />
             ) : (
-              <div className="divide-y divide-line">
+              <div className="divide-y divide-line/60">
                 {myPatients.map((visit) => {
                   const patient = practicePatients.find((p) => p.name === visit.patient);
                   const note = practiceEncounters.find((n) => n.patientId === patient?.id);
@@ -131,10 +133,10 @@ export default function ClinicalPage() {
                   const record = patient ? patientRecords[patient.id] : null;
                   return (
                     <div key={`${visit.time}-${visit.patient}`} className="flex flex-wrap items-center gap-3 py-2.5">
-                      <span className="w-12 shrink-0 text-base font-medium text-body">{visit.time}</span>
+                      <span className="w-12 shrink-0 text-small font-medium text-body tnum">{visit.time}</span>
                       <div className="min-w-[160px] flex-1">
                         <div className="flex items-center gap-2">
-                          <p className="text-md font-medium text-ink">{visit.patient}</p>
+                          <p className="text-copy font-medium text-ink">{visit.patient}</p>
                           {record?.allergies?.length > 0 && (
                             <span title={`Allergies: ${record.allergies.join('; ')}`} className="rounded-sm bg-danger-soft px-1.5 py-0.5 text-2xs font-semibold uppercase text-danger">
                               Allergy
@@ -154,7 +156,7 @@ export default function ClinicalPage() {
                         <button
                           type="button"
                           onClick={() => openNoteForVisit(patient, visit)}
-                          className="rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
+                          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 text-caption font-semibold text-brand-deep transition duration-fast hover:bg-brand/[0.08]"
                         >
                           {note ? 'Open note' : 'Start note'}
                         </button>
@@ -173,7 +175,7 @@ export default function ClinicalPage() {
               {unsigned.length === 0 ? (
                 <p className="text-base text-muted">Nothing waiting on you.</p>
               ) : (
-                <div className="divide-y divide-line">
+                <div className="divide-y divide-line/60">
                   {unsigned.map((note) => (
                     <button
                       key={note.id}
@@ -198,7 +200,7 @@ export default function ClinicalPage() {
               {abnormalLabs.length === 0 ? (
                 <p className="text-base text-muted">No abnormal results outstanding.</p>
               ) : (
-                <div className="divide-y divide-line">
+                <div className="divide-y divide-line/60">
                   {abnormalLabs.map((lab) => (
                     <div key={`${lab.patient}-${lab.test}`} className="flex items-center justify-between gap-3 py-2.5">
                       <div>
@@ -223,7 +225,7 @@ export default function ClinicalPage() {
               {refillsDue.length === 0 ? (
                 <p className="text-base text-muted">No repeats due.</p>
               ) : (
-                <div className="divide-y divide-line">
+                <div className="divide-y divide-line/60">
                   {refillsDue.map((rx) => (
                     <div key={rx.id} className="flex items-center justify-between gap-3 py-2.5">
                       <div>
@@ -244,7 +246,7 @@ export default function ClinicalPage() {
                           <button
                             type="button"
                             onClick={() => notify(`Repeat authorised for ${rx.patient}, ${rx.drug}`)}
-                            className="rounded border border-edge px-2.5 py-1 text-xs font-medium text-brand transition hover:border-brand hover:bg-wash"
+                            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-sm px-2.5 text-caption font-semibold text-brand-deep transition duration-fast hover:bg-brand/[0.08]"
                           >
                             Authorise
                           </button>

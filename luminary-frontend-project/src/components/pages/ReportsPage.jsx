@@ -17,6 +17,7 @@ import { patientStatusTone } from '../../data/registry';
 import { visitStatusTone } from '../../data/clinical';
 import { StatusPill } from '../shared/StatusPill';
 import { EmptyState } from '../shared/EmptyState';
+import { StickyBar } from '../ui';
 import { useWorkspace } from '../../lib/workspace';
 
 const REPORTS = [
@@ -410,7 +411,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="lh-has-sticky-bar space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="lh-page-kicker">Reports</p>
@@ -470,7 +471,8 @@ export default function ReportsPage() {
 
 function ReportNav({ activeReport, reports, onSelect }) {
   return (
-    <nav className="flex gap-2 overflow-x-auto rounded-lg border border-line bg-white/90 p-1">
+    <StickyBar label="Reports">
+    <nav className="flex gap-1 overflow-x-auto">
       {REPORTS.map((report) => {
         const active = activeReport === report.id;
         const Icon = report.icon;
@@ -481,32 +483,38 @@ function ReportNav({ activeReport, reports, onSelect }) {
             type="button"
             title={report.detail}
             onClick={() => onSelect(report.id)}
-            className={`flex min-h-[40px] shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition ${active ? 'bg-ink text-white shadow-sm' : 'text-body hover:bg-line hover:text-ink'}`}
+            aria-current={active ? 'page' : undefined}
+            className={`inline-flex h-control-sm shrink-0 items-center gap-2 rounded-sm px-3 text-small font-medium transition duration-fast ${active ? 'bg-brand/[0.08] text-brand-deep shadow-nav-active' : 'text-body hover:bg-ink/[0.04] hover:text-ink'}`}
           >
-            <Icon size={15} />
+            <Icon size={16} strokeWidth={1.8} />
             <span>{report.label}</span>
-            <span className={`rounded-full px-2 py-0.5 text-2xs ${active ? 'bg-white/15 text-white' : 'bg-line text-muted'}`}>{count}</span>
+            <span className={`rounded-full px-1.5 py-0.5 text-xs leading-none tnum ${active ? 'bg-brand/10 text-brand-deep' : 'bg-ink/[0.05] text-muted'}`}>{count}</span>
           </button>
         );
       })}
     </nav>
+    </StickyBar>
   );
 }
 
 function MetricCard({ label, value, detail, tone }) {
   const tones = {
-    neutral: 'border-line bg-white',
-    warm: 'border-warning/20 bg-warning-wash',
-    accent: 'border-brand/20 bg-brand-soft',
-    success: 'border-success/20 bg-success-soft',
-    alert: 'border-danger/20 bg-danger-soft',
+    neutral: 'bg-edge-strong',
+    warm: 'bg-warning-bright',
+    accent: 'bg-brand-bright',
+    success: 'bg-success-bright',
+    alert: 'bg-danger-bright',
   };
 
+  // Tone is a small dot beside the label rather than a painted tile.
   return (
-    <div className={`rounded-lg border p-4 ${tones[tone] || tones.neutral}`}>
-      <p className="text-caption font-semibold text-muted">{label}</p>
-      <p className="mt-2 truncate text-xl font-semibold tracking-title text-ink">{value}</p>
-      <p className="mt-1 truncate text-xs text-body">{detail}</p>
+    <div className="lh-metric min-w-0">
+      <p className="flex items-center gap-2 text-small font-medium text-muted">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${tones[tone] || tones.neutral}`} aria-hidden="true" />
+        <span className="truncate">{label}</span>
+      </p>
+      <p className="mt-2 truncate text-heading font-semibold tracking-title text-ink tnum">{value}</p>
+      <p className="mt-1 truncate text-caption text-muted">{detail}</p>
     </div>
   );
 }
@@ -522,7 +530,7 @@ function ReportTable({ reportId, columns, rows, statusKey }) {
         <thead className="lh-table-head">
           <tr>
             {columns.map((column) => (
-              <th key={column} className="whitespace-nowrap px-4 py-3 font-medium">
+              <th key={column} className="whitespace-nowrap px-4 py-3 font-medium text-caption">
                 {titleize(column)}
               </th>
             ))}

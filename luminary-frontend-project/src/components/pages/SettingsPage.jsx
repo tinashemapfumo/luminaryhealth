@@ -435,30 +435,30 @@ export default function SettingsPage() {
       )}
 
       {live && (
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="lh-metric">
-            <p className="lh-section-label">Admin data</p>
-            <p className="mt-2 text-lg font-semibold text-ink">{loadingAdmin ? 'Loading' : 'Live'}</p>
-            <p className="mt-1 text-sm leading-5 text-body">
+        <div className="lh-card grid divide-y divide-line/60 md:grid-cols-3 md:divide-x md:divide-y-0">
+          <div className="min-w-0 px-5 py-4">
+            <p className="text-small font-medium text-muted">Admin data</p>
+            <p className="mt-1.5 text-section font-semibold tracking-heading text-ink">{loadingAdmin ? 'Loading' : 'Live'}</p>
+            <p className="mt-1 text-caption leading-5 text-muted">
               Settings, users, roles, and policy changes save through the API.
             </p>
           </div>
 
           {syncStatus && (
-            <div className="lh-metric">
-              <p className="lh-section-label">Sync health</p>
-              <p className="mt-2 text-lg font-semibold text-ink">{syncStatus.state}</p>
-              <p className="mt-1 text-sm leading-5 text-body">
+            <div className="min-w-0 px-5 py-4">
+              <p className="text-small font-medium text-muted">Sync health</p>
+              <p className="mt-1.5 text-section font-semibold tracking-heading text-ink first-letter:uppercase">{syncStatus.state}</p>
+              <p className="mt-1 text-caption leading-5 text-muted tnum">
                 {syncStatus.pendingChanges} pending · {syncStatus.openConflicts} conflict{syncStatus.openConflicts === 1 ? '' : 's'}
               </p>
             </div>
           )}
 
           {auditSummary && (
-            <div className="lh-metric">
-              <p className="lh-section-label">Audit window</p>
-              <p className="mt-2 text-lg font-semibold text-ink">{auditSummary.totals?.events ?? 0} events</p>
-              <p className="mt-1 text-sm leading-5 text-body">
+            <div className="min-w-0 px-5 py-4">
+              <p className="text-small font-medium text-muted">Audit window</p>
+              <p className="mt-1.5 text-section font-semibold tracking-heading text-ink tnum">{auditSummary.totals?.events ?? 0} events</p>
+              <p className="mt-1 text-caption leading-5 text-muted tnum">
                 {auditSummary.totals?.alerts ?? 0} alerts · {auditSummary.liveAccessGrants ?? 0} live grants
               </p>
             </div>
@@ -467,7 +467,7 @@ export default function SettingsPage() {
       )}
 
       <div className="grid min-w-0 gap-5 xl:grid-cols-[248px_minmax(0,1fr)]">
-        <aside className="h-max min-w-0 rounded-lg border border-line/60 bg-white/45 p-1.5 backdrop-blur xl:sticky xl:top-0">
+        <aside className="lh-card h-max min-w-0 p-1.5 xl:sticky xl:top-0">
           <nav className="flex gap-1 overflow-x-auto xl:block xl:space-y-1">
             {TABS.map((item) => (
               <button

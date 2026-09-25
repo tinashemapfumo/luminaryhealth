@@ -55,12 +55,15 @@ export default function BillingHandoffPage() {
           <h1 className="lh-page-title">Billing handoff queue</h1>
           <p className="lh-page-subtitle">What clinical work is ready to bill, and what still needs a decision.</p>
         </div>
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          options={['', ...WORK_ITEM_STATUSES]}
-          render={(v) => v || 'All statuses'}
-        />
+        <div className="w-full sm:w-60">
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            options={['', ...WORK_ITEM_STATUSES]}
+            render={(v) => v || 'All statuses'}
+            aria-label="Filter by status"
+          />
+        </div>
       </div>
 
       <div className="lh-table-shell">

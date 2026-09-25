@@ -233,15 +233,14 @@ export default function TariffImportPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="lh-segmented">
         {Object.values(IMPORT_KINDS).map((option) => (
           <button
             key={option.id}
             type="button"
             onClick={() => setKind(option.id)}
-            className={`rounded-lg px-3.5 py-2 text-sm font-medium transition ${
-              kind === option.id ? 'bg-brand text-white' : 'border border-line bg-white text-body hover:border-brand-edge'
-            }`}
+            aria-pressed={kind === option.id}
+            className={`lh-segmented-item ${kind === option.id ? 'bg-white text-ink shadow-control' : ''}`}
           >
             {option.label}
           </button>
@@ -461,7 +460,7 @@ export default function TariffImportPage() {
       <div className="lh-card-pad">
         <p className="mb-4 lh-section-label">Import history</p>
         {importBatches.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-edge bg-surface p-4 text-sm text-muted">
+          <p className="rounded-lg bg-surface/60 px-4 py-6 text-center text-small text-muted">
             Nothing has been imported yet.
           </p>
         ) : (

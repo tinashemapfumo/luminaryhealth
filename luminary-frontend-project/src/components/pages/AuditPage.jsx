@@ -23,7 +23,7 @@ export default function AuditPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="lh-card grid divide-y divide-line/60 md:grid-cols-3 md:divide-x md:divide-y-0">
         {[
           { label: 'Events this session', value: scoped.length, tone: 'neutral' },
           { label: 'Break-glass accesses', value: breakGlass.length, tone: breakGlass.length ? 'alert' : 'success' },
@@ -31,10 +31,10 @@ export default function AuditPage() {
         ].map((tile) => (
           <div
             key={tile.label}
-            className="rounded-lg border border-line/70 bg-white/80 px-3.5 py-3 shadow-[0_7px_22px_-20px_rgba(33,97,156,0.18)] backdrop-blur"
+            className="min-w-0 px-5 py-4"
           >
-            <p className="lh-section-label">{tile.label}</p>
-            <p className={`mt-1.5 text-xl font-semibold tracking-title ${tile.tone === 'alert' ? 'text-danger' : 'text-ink'}`}>
+            <p className="text-small font-medium text-muted">{tile.label}</p>
+            <p className={`lh-metric-value mt-2 ${tile.tone === 'alert' ? 'text-danger' : 'text-ink'}`}>
               {tile.value}
             </p>
           </div>

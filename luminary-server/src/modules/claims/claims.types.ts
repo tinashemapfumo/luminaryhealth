@@ -38,7 +38,13 @@ export interface CanonicalClaim {
   id: string;
   claim_number: string;
   patient_id: string;
+  patient_name?: string | null;
+  date_of_birth?: string | null;
+  sex?: string | null;
+  national_id?: string | null;
   encounter_id: string | null;
+  encounter_status?: string | null;
+  encounter_signed_at?: string | null;
   invoice_id: string | null;
   payer_id: string | null;
   scheme_id: string | null;

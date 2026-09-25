@@ -67,6 +67,54 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
     },
   });
 
+  app.get('/claims/:id/preparation-context', {
+    preHandler: requirePermission('readClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.preparationContext(client, actor, id));
+    },
+  });
+
+  app.put('/claims/:id/preparation', {
+    preHandler: requirePermission('editClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+      const body = z.object({
+        encounterId: z.string().uuid().nullable().optional(),
+        membershipNumber: z.string().trim().max(120),
+        memberSuffix: z.string().trim().max(40).nullable().optional(),
+        relationshipToMember: z.string().trim().max(80).nullable().optional(),
+        serviceFromDate: date.nullable().optional(),
+        serviceToDate: date.nullable().optional(),
+        notes: z.string().max(1000).nullable().optional(),
+        diagnoses: z.array(z.object({
+          code: z.string().trim().min(1).max(30),
+          description: z.string().trim().max(240).optional(),
+          kind: z.enum(['primary', 'secondary']),
+        })).max(30),
+        lines: z.array(z.object({
+          id: z.string().uuid(),
+          tariffCode: z.string().trim().max(80),
+          tariffDescription: z.string().trim().max(240).optional(),
+          practitionerId: z.string().uuid().nullable().optional(),
+          serviceDate: date.nullable().optional(),
+        })).min(1),
+        attachments: z.array(z.object({
+          documentId: z.string().uuid(),
+          attachmentType: z.enum([
+            'prescription', 'laboratory_request', 'radiology_request', 'referral',
+            'hospital_breakdown', 'discharge_document', 'clinical_support', 'other',
+          ]),
+          reason: z.string().trim().min(5).max(500),
+        })).max(50),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.savePreparation(client, actor, id, body));
+    },
+  });
+
   app.patch('/claims/:id', {
     preHandler: requirePermission('editClaims'),
     handler: async (request) => {

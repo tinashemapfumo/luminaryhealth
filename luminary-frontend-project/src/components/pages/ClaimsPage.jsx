@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUpRight,
   CheckCircle2,
@@ -13,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Save,
   Send,
   ShieldCheck,
   SlidersHorizontal,
@@ -24,9 +26,10 @@ import { StatusPill } from '../shared/StatusPill';
 import { EmptyState } from '../shared/EmptyState';
 import { StickyBar } from '../ui';
 import { useWorkspace } from '../../lib/workspace';
+import { api } from '../../services/api';
 
 const ACTION_STATUSES = new Set(['Validation failed', 'Rejected', 'Requires action', 'Query', 'Failed']);
-const PREPARE_STATUSES = new Set(['Draft', 'Validation failed']);
+const PREPARE_STATUSES = new Set(['Draft', 'Validation failed', 'Ready', 'Ready for submission', 'Biometric verified']);
 const READY_STATUSES = new Set(['Ready', 'Ready for submission', 'Biometric verified']);
 const EMAIL_STATUSES = new Set(['Form prepared', 'Awaiting client authentication', 'Client authenticated', 'Email submitted']);
 const IN_FLIGHT_STATUSES = new Set(['Submitted', 'Acknowledged', 'Processing', 'Submitting', 'Email submitted']);
@@ -37,7 +40,7 @@ const MODULES = [
   {
     id: 'prepare',
     label: 'Prepare',
-    detail: 'Clean drafts before they hit the switch.',
+    detail: 'Complete patient, encounter, diagnosis, line, and document information.',
     matches: (claim) => PREPARE_STATUSES.has(claim.status) || blockerCount(claim) > 0,
     detailTabs: ['Summary', 'Coding', 'Validation', 'Documents'],
   },
@@ -142,12 +145,16 @@ export default function ClaimsPage() {
     access,
     exportCsv,
     notify,
+    reloadWorkspace,
+    practiceInvoices,
     practiceClaims,
     selectedClaim,
     setSelectedClaimId,
+    createClaimFromInvoice,
     captureBiometric,
     submitClaimToSwitch,
     prepareEmailClaimForm,
+    saveEmailClaimPreparation,
     sendClaimForClientAuthentication,
     authenticateEmailClaim,
     submitEmailClaim,
@@ -161,7 +168,10 @@ export default function ClaimsPage() {
   const [payerFilter, setPayerFilter] = useState('all');
   const [channelFilter, setChannelFilter] = useState('all');
   const [detailTab, setDetailTab] = useState('Summary');
-  const [queueOpen, setQueueOpen] = useState(true);
+  const [queueOpen, setQueueOpen] = useState(() => typeof window === 'undefined' || window.matchMedia('(min-width: 1280px)').matches);
+  const [newClaimOpen, setNewClaimOpen] = useState(false);
+  const [newClaimInvoiceId, setNewClaimInvoiceId] = useState('');
+  const [creatingClaim, setCreatingClaim] = useState(false);
 
   const module = MODULES.find((item) => item.id === activeModule) || MODULES[0];
   const normalizedQuery = query.trim().toLowerCase();
@@ -214,19 +224,56 @@ export default function ClaimsPage() {
 
   const totals = useMemo(() => {
     const prepare = claimsWithAge.filter(MODULES[0].matches).length;
-    const submit = claimsWithAge.filter(MODULES[1].matches).length;
-    const email = claimsWithAge.filter(MODULES[2].matches).length;
-    const resolve = claimsWithAge.filter(MODULES[4].matches).length;
-    const approved = claimsWithAge
-      .filter(MODULES[5].matches)
-      .reduce((sum, claim) => sum + moneyNumber(claim, 'approvedAmount', moneyNumber(claim, 'claimed')), 0);
-    return { prepare, submit, email, resolve, approved };
+    const ready = claimsWithAge.filter((claim) => READY_STATUSES.has(claim.status)).length;
+    const missingDiagnosis = claimsWithAge.filter((claim) => claim.icd10 === 'Not coded').length;
+    const missingEncounter = claimsWithAge.filter((claim) => !claim.encounterId).length;
+    const value = claimsWithAge.reduce((sum, claim) => sum + moneyNumber(claim, 'claimed'), 0);
+    return { prepare, ready, missingDiagnosis, missingEncounter, value };
   }, [claimsWithAge]);
 
   const resetFilters = () => {
     setQuery('');
     setPayerFilter('all');
     setChannelFilter('all');
+  };
+
+  const claimInvoices = useMemo(() => practiceInvoices.filter((invoice) => {
+    const covered = Number(invoice.insurerResponsibility || invoice.estimatedInsurerResponsibility || 0)
+      || (invoice.services || []).reduce((sum, line) => sum + Number(line.insurance || line.estimatedFunder || 0), 0);
+    return covered > 0;
+  }), [practiceInvoices]);
+
+  const selectedClaimInvoice = claimInvoices.find((invoice) => (invoice.apiId || invoice.id) === newClaimInvoiceId);
+  const existingInvoiceClaim = selectedClaimInvoice
+    ? practiceClaims.find((claim) => claim.invoice === selectedClaimInvoice.id)
+    : null;
+
+  const createClaim = async () => {
+    const invoice = selectedClaimInvoice;
+    if (!invoice) return;
+    if (existingInvoiceClaim) {
+      setSelectedClaimId(existingInvoiceClaim.id);
+      setActiveModule(moduleForClaim(existingInvoiceClaim).id);
+      setDetailTab('Summary');
+      setNewClaimOpen(false);
+      setNewClaimInvoiceId('');
+      notify(`Opened ${existingInvoiceClaim.id} for ${invoice.id}`);
+      return;
+    }
+    setCreatingClaim(true);
+    try {
+      const createdId = await createClaimFromInvoice(invoice);
+      setSelectedClaimId(createdId);
+      setActiveModule('prepare');
+      setDetailTab('Summary');
+      setNewClaimOpen(false);
+      setNewClaimInvoiceId('');
+      notify(`Claim prepared from ${invoice.id}`);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setCreatingClaim(false);
+    }
   };
 
   const selectModule = (id) => {
@@ -236,40 +283,62 @@ export default function ClaimsPage() {
     setQueueOpen(true);
   };
 
-  if (practiceClaims.length === 0) {
+  if (practiceClaims.length === 0 && !newClaimOpen) {
     return (
       <EmptyState
         title="No claims in this practice"
         detail="Claims will appear here after an invoice is prepared for a covered patient."
-        action={access.can.createClaims ? <button type="button" onClick={() => notify('Create claim flow coming from invoices')} className="lh-primary-button"><Plus size={16} />Prepare first claim</button> : null}
+        action={access.can.createClaims ? <button type="button" onClick={() => setNewClaimOpen(true)} className="lh-primary-button"><Plus size={16} />Prepare first claim</button> : null}
       />
     );
   }
 
   return (
-    <div className="lh-has-sticky-bar space-y-6">
+    <div className="lh-has-sticky-bar min-w-0 max-w-full space-y-6 overflow-x-hidden">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-caption font-semibold text-teal">Claims operations across switch and email channels</p>
+            <p className="text-caption font-semibold text-teal">Claim preparation workspace</p>
             <StatusPill label={`${practiceClaims.length} claims`} tone="neutral" />
           </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-title text-ink sm:text-3xl">Medical aid claims</h1>
           <p className="mt-1 max-w-2xl text-sm text-body">
-            Claims is split by job: prepare clean claims, submit verified claims, track payer responses, resolve exceptions, and post remittances.
+            Build a complete claim from the patient file, encounter, invoice, diagnoses, and supporting documents.
           </p>
         </div>
-        <button type="button" onClick={() => notify('New claim draft opens from an invoice')} className="lh-primary-button self-start">
+        {access.can.createClaims ? <button type="button" onClick={() => setNewClaimOpen((value) => !value)} className="lh-primary-button self-start">
           <Plus size={16} />New claim
-        </button>
+        </button> : null}
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <SummaryTile label="Prepare" value={totals.prepare} detail="Drafts or coding blockers" tone="neutral" />
-        <SummaryTile label="Submit" value={totals.submit} detail="Verified and ready" tone="accent" />
-        <SummaryTile label="Email" value={totals.email} detail="Client-assisted claims" tone="warm" />
-        <SummaryTile label="Resolve" value={totals.resolve} detail="Queries and rejections" tone="alert" />
-        <SummaryTile label="Remit value" value={`USD ${totals.approved.toFixed(2)}`} detail="Approved or remitted" tone="success" />
+      {newClaimOpen ? (
+        <section className="border-y border-line bg-white/55 px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <label className="min-w-0 flex-1">
+              <span className="mb-1.5 block text-xs font-semibold text-ink">Covered invoice</span>
+              <select value={newClaimInvoiceId} onChange={(event) => setNewClaimInvoiceId(event.target.value)} className="h-10 w-full rounded-lg border border-line bg-white px-3 text-sm text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft">
+                <option value="">Choose an invoice</option>
+                {claimInvoices.map((invoice) => {
+                  const existing = practiceClaims.find((claim) => claim.invoice === invoice.id);
+                  return <option key={invoice.apiId || invoice.id} value={invoice.apiId || invoice.id}>{invoice.id} | {invoice.patient} | {invoice.currency} {Number(invoice.amount).toFixed(2)}{existing ? ` | ${existing.id}` : ''}</option>;
+                })}
+              </select>
+            </label>
+            <button type="button" disabled={!newClaimInvoiceId || creatingClaim} onClick={createClaim} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50">
+              {creatingClaim ? 'Creating...' : existingInvoiceClaim ? 'Open claim' : 'Start preparation'}
+            </button>
+            <button type="button" onClick={() => setNewClaimOpen(false)} className="lh-secondary-button justify-center">Cancel</button>
+          </div>
+          {!claimInvoices.length ? <p className="mt-3 text-sm text-body">No covered invoice is available. Issue an invoice with an insurer portion before preparing a claim.</p> : null}
+        </section>
+      ) : null}
+
+      <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1 md:grid-flow-row md:grid-cols-5 md:overflow-visible md:pb-0">
+        <SummaryTile label="In preparation" value={totals.prepare} detail="Drafts and reviewed claims" tone="neutral" />
+        <SummaryTile label="Ready" value={totals.ready} detail="Required information complete" tone="success" />
+        <SummaryTile label="Missing diagnosis" value={totals.missingDiagnosis} detail="Needs primary ICD-10" tone={totals.missingDiagnosis ? 'alert' : 'success'} />
+        <SummaryTile label="Missing encounter" value={totals.missingEncounter} detail="Needs a signed source" tone={totals.missingEncounter ? 'warm' : 'success'} />
+        <SummaryTile label="Claim value" value={`USD ${totals.value.toFixed(2)}`} detail="Across current claims" tone="accent" />
       </div>
 
       <ModuleNav activeModule={activeModule} counts={moduleCounts} onSelect={selectModule} />
@@ -283,7 +352,7 @@ export default function ClaimsPage() {
           <StatusPill label={`${filteredClaims.length} visible`} tone={filteredClaims.length ? 'accent' : 'neutral'} />
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(320px,0.9fr)_190px_170px_auto_auto]">
+        <div className={`grid gap-3 ${activeModule === 'prepare' ? 'xl:grid-cols-[minmax(320px,0.9fr)_190px_auto_auto]' : 'xl:grid-cols-[minmax(320px,0.9fr)_190px_170px_auto_auto]'}`}>
           <label className="relative block">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
@@ -304,10 +373,10 @@ export default function ClaimsPage() {
             {payers.map((payer) => <option key={payer} value={payer}>{payer}</option>)}
           </select>
 
-          <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} className="rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft">
+          {activeModule !== 'prepare' ? <select value={channelFilter} onChange={(event) => setChannelFilter(event.target.value)} className="rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-teal focus:ring-2 focus:ring-teal-soft">
             <option value="all">All channels</option>
             {channels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}
-          </select>
+          </select> : null}
 
           <button type="button" onClick={resetFilters} className="lh-secondary-button justify-center">
             <SlidersHorizontal size={15} />Reset
@@ -348,7 +417,15 @@ export default function ClaimsPage() {
           }}
         />
 
-        {visibleSelectedClaim ? (
+        {visibleSelectedClaim && detailModule.id === 'prepare' ? (
+          <ClaimPreparationWorkspace
+            claim={visibleSelectedClaim}
+            access={access}
+            notify={notify}
+            reloadWorkspace={reloadWorkspace}
+            setQueueOpen={setQueueOpen}
+          />
+        ) : visibleSelectedClaim ? (
           <ClaimModuleDetail
             claim={visibleSelectedClaim}
             module={detailModule}
@@ -361,6 +438,7 @@ export default function ClaimsPage() {
             captureBiometric={captureBiometric}
             submitClaimToSwitch={submitClaimToSwitch}
             prepareEmailClaimForm={prepareEmailClaimForm}
+            saveEmailClaimPreparation={saveEmailClaimPreparation}
             sendClaimForClientAuthentication={sendClaimForClientAuthentication}
             authenticateEmailClaim={authenticateEmailClaim}
             submitEmailClaim={submitEmailClaim}
@@ -477,6 +555,350 @@ function ClaimQueueItem({ claim, selected, onSelect }) {
   );
 }
 
+const editablePreparationStatuses = new Set(['Draft', 'Ready', 'Validation failed', 'Ready for submission', 'Requires action', 'Failed']);
+
+const emptyDiagnosis = () => ({ code: '', description: '', kind: 'secondary' });
+
+function draftFromPreparation(context) {
+  const claim = context.claim;
+  const attachedByDocument = new Map((claim.attachments || []).map((item) => [item.document_id, item]));
+  return {
+    encounterId: claim.encounter_id || '',
+    membershipNumber: claim.membership_number || context.patient?.member_number || '',
+    memberSuffix: claim.member_suffix || context.patient?.member_suffix || context.patient?.dependant_code || '',
+    relationshipToMember: claim.relationship_to_member || context.patient?.relationship_to_member || '',
+    serviceFromDate: claim.service_from_date || '',
+    serviceToDate: claim.service_to_date || claim.service_from_date || '',
+    notes: claim.notes || '',
+    diagnoses: (claim.diagnoses || []).map((item) => ({
+      code: item.code || '', description: item.description || '', kind: item.kind || 'secondary',
+    })),
+    lines: (claim.lines || []).map((line) => ({
+      id: line.id,
+      tariffCode: line.tariff_code || '',
+      tariffDescription: line.tariff_description || '',
+      practitionerId: line.practitioner_id || '',
+      serviceDate: line.service_date || claim.service_from_date || '',
+      claimedAmount: Number(line.claimed_amount || 0),
+    })),
+    attachments: (context.documents || []).filter((document) => document.attached).map((document) => {
+      const attached = attachedByDocument.get(document.id) || {};
+      return {
+        documentId: document.id,
+        attachmentType: attached.attachment_type || 'clinical_support',
+        reason: attached.reason || 'Selected during claim preparation',
+      };
+    }),
+  };
+}
+
+function preparationChecks(context, draft) {
+  if (!context || !draft) return [];
+  const patient = context.patient || {};
+  const selectedEncounter = context.encounters.find((item) => item.id === draft.encounterId);
+  return [
+    { label: 'Patient name', complete: Boolean(patient.full_name), detail: patient.full_name || 'Missing from patient file', required: true },
+    { label: 'Date of birth', complete: Boolean(patient.date_of_birth), detail: patient.date_of_birth || 'Missing from patient file', required: true },
+    { label: 'Sex', complete: Boolean(patient.sex), detail: patient.sex || 'Missing from patient file', required: true },
+    { label: 'Medical aid', complete: Boolean(patient.scheme_name && patient.payer_name), detail: patient.scheme_name || 'No active scheme', required: true },
+    { label: 'Member number', complete: Boolean(draft.membershipNumber.trim()), detail: draft.membershipNumber || 'Required', required: true },
+    { label: 'Service date', complete: Boolean(draft.serviceFromDate), detail: draft.serviceFromDate || 'Required', required: true },
+    { label: 'Source encounter', complete: Boolean(selectedEncounter), detail: selectedEncounter ? `${selectedEncounter.note_type} | ${selectedEncounter.status}` : 'Choose the encounter for this claim', required: true },
+    { label: 'Signed encounter', complete: Boolean(selectedEncounter && ['signed', 'amended'].includes(String(selectedEncounter.status).toLowerCase())), detail: selectedEncounter?.signed_at ? `Signed ${String(selectedEncounter.signed_at).slice(0, 10)}` : 'Encounter must be signed', required: true },
+    { label: 'Primary diagnosis', complete: draft.diagnoses.some((item) => item.kind === 'primary' && item.code.trim()), detail: 'At least one primary ICD-10 code', required: true },
+    { label: 'Claim lines', complete: draft.lines.length > 0, detail: `${draft.lines.length} line${draft.lines.length === 1 ? '' : 's'}`, required: true },
+    { label: 'Tariff codes', complete: draft.lines.length > 0 && draft.lines.every((item) => item.tariffCode.trim()), detail: 'Every line needs a tariff code', required: true },
+    { label: 'Treating providers', complete: draft.lines.length > 0 && draft.lines.every((item) => item.practitionerId), detail: 'Recommended on every line', required: false },
+    { label: 'Supporting documents', complete: draft.attachments.length > 0, detail: draft.attachments.length ? `${draft.attachments.length} selected` : 'Add only documents relevant to the claim', required: false },
+  ];
+}
+
+function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, setQueueOpen }) {
+  const [context, setContext] = useState(null);
+  const [draft, setDraft] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [validation, setValidation] = useState(null);
+  const apiId = claim.apiId;
+
+  const load = async () => {
+    if (!apiId) return;
+    setLoading(true);
+    setLoadError('');
+    try {
+      const next = await api.claims.preparationContext(apiId);
+      setContext(next);
+      setDraft(draftFromPreparation(next));
+      setValidation(next.claim.validation_result || null);
+    } catch (error) {
+      setLoadError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    if (!apiId) return undefined;
+    setLoading(true);
+    api.claims.preparationContext(apiId).then((next) => {
+      if (!active) return;
+      setContext(next);
+      setDraft(draftFromPreparation(next));
+      setValidation(next.claim.validation_result || null);
+      setLoadError('');
+    }).catch((error) => {
+      if (active) setLoadError(error.message);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [apiId]);
+
+  const checks = useMemo(() => preparationChecks(context, draft), [context, draft]);
+  const requiredRemaining = checks.filter((item) => item.required && !item.complete).length;
+  const editable = access.can.editClaims && editablePreparationStatuses.has(claim.status);
+
+  const setField = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
+  const updateDiagnosis = (index, key, value) => setDraft((current) => ({
+    ...current,
+    diagnoses: current.diagnoses.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
+  }));
+  const updateLine = (index, key, value) => setDraft((current) => ({
+    ...current,
+    lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
+  }));
+
+  const chooseEncounter = (event) => {
+    const encounterId = event.target.value;
+    const encounter = context.encounters.find((item) => item.id === encounterId);
+    setDraft((current) => ({
+      ...current,
+      encounterId,
+      serviceFromDate: current.serviceFromDate || String(encounter?.created_at || '').slice(0, 10),
+      serviceToDate: current.serviceToDate || String(encounter?.created_at || '').slice(0, 10),
+    }));
+  };
+
+  const importEncounterDiagnoses = () => {
+    const encounter = context.encounters.find((item) => item.id === draft.encounterId);
+    const diagnoses = Array.isArray(encounter?.diagnoses) ? encounter.diagnoses : [];
+    if (!diagnoses.length) {
+      notify('The selected encounter has no diagnoses to import');
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      diagnoses: diagnoses.map((item, index) => ({
+        code: item.code || '', description: item.label || item.description || '', kind: index === 0 ? 'primary' : 'secondary',
+      })),
+    }));
+  };
+
+  const toggleDocument = (document) => setDraft((current) => {
+    const selected = current.attachments.some((item) => item.documentId === document.id);
+    return {
+      ...current,
+      attachments: selected
+        ? current.attachments.filter((item) => item.documentId !== document.id)
+        : [...current.attachments, { documentId: document.id, attachmentType: 'clinical_support', reason: 'Selected during claim preparation' }],
+    };
+  });
+
+  const save = async (checkReadiness) => {
+    setSaving(true);
+    try {
+      await api.claims.savePreparation(apiId, {
+        encounterId: draft.encounterId || null,
+        membershipNumber: draft.membershipNumber,
+        memberSuffix: draft.memberSuffix || null,
+        relationshipToMember: draft.relationshipToMember || null,
+        serviceFromDate: draft.serviceFromDate,
+        serviceToDate: draft.serviceToDate || draft.serviceFromDate,
+        notes: draft.notes || null,
+        diagnoses: draft.diagnoses.filter((item) => item.code.trim()).map((item) => ({
+          code: item.code, description: item.description, kind: item.kind,
+        })),
+        lines: draft.lines.map((line) => ({
+          id: line.id,
+          tariffCode: line.tariffCode,
+          tariffDescription: line.tariffDescription,
+          practitionerId: line.practitionerId || null,
+          serviceDate: line.serviceDate || draft.serviceFromDate,
+        })),
+        attachments: draft.attachments,
+      });
+      let result = null;
+      if (checkReadiness) result = await api.claims.validate(apiId);
+      setValidation(result);
+      await reloadWorkspace?.();
+      await load();
+      notify(checkReadiness
+        ? result.valid ? `${claim.id} preparation is complete` : `${claim.id} still needs ${result.errors.length} correction${result.errors.length === 1 ? '' : 's'}`
+        : `${claim.id} preparation saved`);
+    } catch (error) {
+      notify(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <section className="lh-card-pad min-h-[320px] animate-pulse text-sm text-body">Loading claim preparation...</section>;
+  if (loadError || !context || !draft) return (
+    <section className="lh-card-pad">
+      <p className="text-sm font-semibold text-danger">Claim preparation could not be loaded</p>
+      <p className="mt-1 text-sm text-body">{loadError || 'No preparation context was returned.'}</p>
+      <button type="button" onClick={load} className="lh-secondary-button mt-4">Try again</button>
+    </section>
+  );
+
+  const patient = context.patient || {};
+  const selectedEncounter = context.encounters.find((item) => item.id === draft.encounterId);
+  const coverProblem = patient.cover_status && !String(patient.cover_status).toLowerCase().startsWith('active');
+
+  return (
+    <section className="lh-card min-w-0 overflow-hidden">
+      <div className="flex flex-col gap-4 border-b border-line px-4 py-4 sm:px-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <button type="button" onClick={() => setQueueOpen(true)} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-teal xl:hidden"><ChevronLeft size={14} />Queue</button>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill label="Preparation" tone="accent" />
+            <StatusPill label={claim.status} tone={claimStatusTone[claim.status]} />
+            <StatusPill label={requiredRemaining ? `${requiredRemaining} required` : 'Required information complete'} tone={requiredRemaining ? 'alert' : 'success'} />
+          </div>
+          <h2 className="mt-3 truncate text-xl font-semibold text-ink">{patient.full_name || claim.patient}</h2>
+          <p className="mt-1 text-sm text-body">{claim.id} | {claim.invoice || 'No invoice'} | {claimAmount(claim)}</p>
+        </div>
+        {editable ? (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={saving} onClick={() => save(false)} className="lh-secondary-button"><Save size={15} />Save draft</button>
+            <button type="button" disabled={saving || requiredRemaining > 0} onClick={() => save(true)} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><CheckCircle2 size={15} />Save and check readiness</button>
+          </div>
+        ) : <p className="text-xs font-medium text-body">Read-only at this claim status</p>}
+      </div>
+
+      <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="min-w-0 divide-y divide-line">
+          <PreparationSection title="Patient and cover" detail="Current patient-file information used to identify the member.">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ReadOnlyField label="Patient" value={patient.full_name} />
+              <ReadOnlyField label="Date of birth" value={patient.date_of_birth} />
+              <ReadOnlyField label="Sex" value={patient.sex} />
+              <ReadOnlyField label="National ID" value={patient.national_id || 'Not recorded'} />
+              <ReadOnlyField label="Scheme" value={patient.scheme_name || 'Not recorded'} alert={!patient.scheme_name} />
+              <ReadOnlyField label="Payer" value={patient.payer_name || 'Not recorded'} alert={!patient.payer_name} />
+            </div>
+            {coverProblem ? <p className="mt-3 flex items-center gap-2 text-sm text-danger"><AlertTriangle size={15} />Cover status is {patient.cover_status}. Confirm eligibility before completing the claim.</p> : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <PreparationField label="Member number" required><input disabled={!editable} value={draft.membershipNumber} onChange={setField('membershipNumber')} className="lh-input" /></PreparationField>
+              <PreparationField label="Member suffix"><input disabled={!editable} value={draft.memberSuffix} onChange={setField('memberSuffix')} className="lh-input" /></PreparationField>
+              <PreparationField label="Relationship to member"><input disabled={!editable} value={draft.relationshipToMember} onChange={setField('relationshipToMember')} className="lh-input" /></PreparationField>
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Encounter and service dates" detail="Choose the clinical source; only its diagnosis codes are copied into the claim.">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_170px_170px]">
+              <PreparationField label="Source encounter" required>
+                <select disabled={!editable} value={draft.encounterId} onChange={chooseEncounter} className="lh-input">
+                  <option value="">Choose encounter</option>
+                  {context.encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{String(encounter.created_at).slice(0, 10)} | {encounter.note_type} | {encounter.provider_name} | {encounter.status}</option>)}
+                </select>
+              </PreparationField>
+              <PreparationField label="From" required><input disabled={!editable} type="date" value={draft.serviceFromDate} onChange={setField('serviceFromDate')} className="lh-input" /></PreparationField>
+              <PreparationField label="To"><input disabled={!editable} type="date" value={draft.serviceToDate} onChange={setField('serviceToDate')} className="lh-input" /></PreparationField>
+            </div>
+            {selectedEncounter && !['signed', 'amended'].includes(String(selectedEncounter.status).toLowerCase()) ? <p className="mt-3 flex items-center gap-2 text-sm text-danger"><AlertTriangle size={15} />This encounter is not signed.</p> : null}
+          </PreparationSection>
+
+          <PreparationSection title="Diagnoses" detail="The primary diagnosis explains the services being claimed.">
+            <div className="mb-3 flex flex-wrap gap-2">
+              <button type="button" disabled={!editable || !draft.encounterId} onClick={importEncounterDiagnoses} className="lh-secondary-button">Use encounter diagnoses</button>
+              <button type="button" disabled={!editable} onClick={() => setDraft((current) => ({ ...current, diagnoses: [...current.diagnoses, emptyDiagnosis()] }))} className="lh-secondary-button"><Plus size={15} />Add diagnosis</button>
+            </div>
+            <div className="space-y-2">
+              {draft.diagnoses.map((diagnosis, index) => (
+                <div key={`${index}-${diagnosis.code}`} className="grid gap-2 sm:grid-cols-[120px_150px_minmax(0,1fr)_36px]">
+                  <input disabled={!editable} value={diagnosis.code} onChange={(event) => updateDiagnosis(index, 'code', event.target.value.toUpperCase())} placeholder="ICD-10" className="lh-input" />
+                  <select disabled={!editable} value={diagnosis.kind} onChange={(event) => updateDiagnosis(index, 'kind', event.target.value)} className="lh-input"><option value="primary">Primary</option><option value="secondary">Secondary</option></select>
+                  <input disabled={!editable} value={diagnosis.description} onChange={(event) => updateDiagnosis(index, 'description', event.target.value)} placeholder="Diagnosis description" className="lh-input" />
+                  <button type="button" disabled={!editable} onClick={() => setDraft((current) => ({ ...current, diagnoses: current.diagnoses.filter((_, itemIndex) => itemIndex !== index) }))} className="lh-icon-button" aria-label="Remove diagnosis"><X size={15} /></button>
+                </div>
+              ))}
+              {!draft.diagnoses.length ? <p className="rounded-lg border border-dashed border-line p-4 text-sm text-body">No diagnoses attached to this claim.</p> : null}
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Claim lines" detail="Confirm the tariff and treating provider for every invoiced service.">
+            <div className="space-y-3">
+              {draft.lines.map((line, index) => (
+                <div key={line.id} className="grid gap-3 border-b border-line pb-3 last:border-0 last:pb-0 lg:grid-cols-[minmax(0,1fr)_150px_220px_140px]">
+                  <div><p className="text-sm font-semibold text-ink">{line.tariffDescription || `Service line ${index + 1}`}</p><p className="mt-1 text-xs text-body">Claimed {claim.currency || 'USD'} {line.claimedAmount.toFixed(2)}</p></div>
+                  <PreparationField label="Tariff code" required><input disabled={!editable} value={line.tariffCode} onChange={(event) => updateLine(index, 'tariffCode', event.target.value)} className="lh-input" /></PreparationField>
+                  <PreparationField label="Treating provider"><select disabled={!editable} value={line.practitionerId} onChange={(event) => updateLine(index, 'practitionerId', event.target.value)} className="lh-input"><option value="">Not recorded</option>{context.providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.display_name}{provider.registration_number ? ` | ${provider.registration_number}` : ''}</option>)}</select></PreparationField>
+                  <PreparationField label="Service date"><input disabled={!editable} type="date" value={line.serviceDate} onChange={(event) => updateLine(index, 'serviceDate', event.target.value)} className="lh-input" /></PreparationField>
+                </div>
+              ))}
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Supporting documents" detail="Select only documents necessary to support this claim.">
+            <div className="space-y-2">
+              {context.documents.map((document) => {
+                const attachment = draft.attachments.find((item) => item.documentId === document.id);
+                return (
+                  <div key={document.id} className="grid gap-2 border-b border-line py-2 first:pt-0 last:border-0 sm:grid-cols-[minmax(0,1fr)_190px]">
+                    <label className="flex min-w-0 items-start gap-3">
+                      <input disabled={!editable} type="checkbox" checked={Boolean(attachment)} onChange={() => toggleDocument(document)} className="mt-1 h-4 w-4 accent-teal" />
+                      <span className="min-w-0"><span className="block truncate text-sm font-medium text-ink">{document.filename}</span><span className="text-xs text-body">{document.kind} | {String(document.created_at).slice(0, 10)}</span></span>
+                    </label>
+                    {attachment ? <select disabled={!editable} value={attachment.attachmentType} onChange={(event) => setDraft((current) => ({ ...current, attachments: current.attachments.map((item) => item.documentId === document.id ? { ...item, attachmentType: event.target.value } : item) }))} className="lh-input"><option value="clinical_support">Clinical support</option><option value="prescription">Prescription</option><option value="laboratory_request">Laboratory request</option><option value="radiology_request">Radiology request</option><option value="referral">Referral</option><option value="hospital_breakdown">Hospital breakdown</option><option value="discharge_document">Discharge document</option><option value="other">Other</option></select> : null}
+                  </div>
+                );
+              })}
+              {!context.documents.length ? <p className="rounded-lg border border-dashed border-line p-4 text-sm text-body">No patient documents are available to attach.</p> : null}
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Internal preparation note" detail="Visible to claim staff; not part of the patient-facing invoice.">
+            <textarea disabled={!editable} value={draft.notes} onChange={setField('notes')} rows={3} maxLength={1000} className="lh-input h-auto py-2" />
+          </PreparationSection>
+        </div>
+
+        <aside className="border-t border-line bg-surface/45 p-4 xl:border-l xl:border-t-0">
+          <div className="xl:sticky xl:top-4">
+            <p className="text-sm font-semibold text-ink">Preparation readiness</p>
+            <p className="mt-1 text-xs text-body">Required information must be complete before validation.</p>
+            <div className="mt-4 space-y-3">
+              {checks.map((item) => (
+                <div key={item.label} className="flex gap-2.5">
+                  {item.complete ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" /> : <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${item.required ? 'text-danger' : 'text-warning'}`} />}
+                  <div><p className="text-xs font-semibold text-ink">{item.label}{!item.required ? ' (recommended)' : ''}</p><p className="mt-0.5 text-xs text-body">{item.detail}</p></div>
+                </div>
+              ))}
+            </div>
+            {validation?.errors?.length ? (
+              <div className="mt-5 border-t border-line pt-4"><p className="text-xs font-semibold text-danger">Server validation</p>{validation.errors.map((item) => <p key={`${item.code}-${item.field}`} className="mt-2 text-xs text-body">{item.message}</p>)}</div>
+            ) : null}
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function PreparationSection({ title, detail, children }) {
+  return <section className="px-4 py-5 sm:px-5"><h3 className="text-sm font-semibold text-ink">{title}</h3><p className="mt-1 text-xs text-body">{detail}</p><div className="mt-4">{children}</div></section>;
+}
+
+function PreparationField({ label, required = false, children }) {
+  return <label className="block min-w-0"><span className="mb-1.5 block text-xs font-semibold text-ink">{label}{required ? <span className="ml-1 text-danger">*</span> : null}</span>{children}</label>;
+}
+
+function ReadOnlyField({ label, value, alert = false }) {
+  return <div className="min-w-0"><p className="text-xs text-muted">{label}</p><p className={`mt-1 truncate text-sm font-medium ${alert ? 'text-danger' : 'text-ink'}`}>{value || 'Not recorded'}</p></div>;
+}
+
 function ClaimModuleDetail({
   claim,
   module,
@@ -489,6 +911,7 @@ function ClaimModuleDetail({
   captureBiometric,
   submitClaimToSwitch,
   prepareEmailClaimForm,
+  saveEmailClaimPreparation,
   sendClaimForClientAuthentication,
   authenticateEmailClaim,
   submitEmailClaim,
@@ -574,6 +997,7 @@ function ClaimModuleDetail({
         <EmailPackPanel
           claim={claim}
           prepareEmailClaimForm={prepareEmailClaimForm}
+          saveEmailClaimPreparation={saveEmailClaimPreparation}
           sendClaimForClientAuthentication={sendClaimForClientAuthentication}
           authenticateEmailClaim={authenticateEmailClaim}
           submitEmailClaim={submitEmailClaim}
@@ -739,68 +1163,174 @@ function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch 
 function EmailPackPanel({
   claim,
   prepareEmailClaimForm,
+  saveEmailClaimPreparation,
   sendClaimForClientAuthentication,
   authenticateEmailClaim,
   submitEmailClaim,
 }) {
+  const makeDraft = (sourceClaim) => {
+    const existing = sourceClaim.emailSubmission || {};
+    const payer = sourceClaim.plan || sourceClaim.payerName || 'International insurer';
+    const serviceDate = sourceClaim.serviceDate || 'the recorded service date';
+    const memberEnding = sourceClaim.memberNo ? String(sourceClaim.memberNo).slice(-4) : 'pending';
+    return {
+      providerEmail: existing.providerEmail || '',
+      memberEmail: existing.memberEmail || '',
+      claimForm: existing.claimForm || `${payer} claim form`,
+      followUpDays: String(existing.followUpDays || 3),
+      memberSubject: existing.memberSubject || `Action required: review claim ${sourceClaim.id}`,
+      memberBody: existing.memberBody || `Hello ${sourceClaim.patient},\n\nLuminary Health has prepared a medical claim relating to your visit on ${serviceDate}.\n\nPlease review the claim using the secure link below and authorise its submission using the one-time code sent to you.\n\n[Review and authorise claim]\n\nThis link expires in 48 hours. Please do not reply to this email with medical information.\n\nLuminary Health`,
+      insurerSubject: existing.insurerSubject || existing.subject || `Claim submission | ${sourceClaim.id} | Member ending ${memberEnding}`,
+      insurerBody: existing.insurerBody || `Dear Claims Team,\n\nPlease find attached an authorised medical claim submitted by Luminary Health.\n\nPractice: Luminary Health\nProvider: ${sourceClaim.provider || 'Not assigned'}\nClaim reference: ${sourceClaim.id}\nService date: ${serviceDate}\nClaimed amount: ${claimAmount(sourceClaim)}\n\nPrepared by Luminary Health on behalf of the member and reviewed and authorised by the member before submission.\n\nPlease acknowledge receipt and quote ${sourceClaim.id} in future correspondence.\n\nRegards,\nLuminary Health Claims Team`,
+      requiredDocuments: existing.requiredDocuments || ['Claim form', 'Itemised invoice', 'Clinical notes'],
+      attachments: existing.attachments || sourceClaim.attachments || ['Claim form draft', `${sourceClaim.invoice || sourceClaim.id} itemised invoice`],
+    };
+  };
+
+  const [activeEditor, setActiveEditor] = useState('pack');
+  const [draft, setDraft] = useState(() => makeDraft(claim));
+  const [saved, setSaved] = useState(() => Boolean(claim.emailSubmission?.memberSubject && claim.emailSubmission?.memberBody && claim.emailSubmission?.insurerSubject && claim.emailSubmission?.insurerBody));
+
+  useEffect(() => {
+    setDraft(makeDraft(claim));
+    setSaved(Boolean(claim.emailSubmission?.memberSubject && claim.emailSubmission?.memberBody && claim.emailSubmission?.insurerSubject && claim.emailSubmission?.insurerBody));
+    setActiveEditor('pack');
+    // The draft intentionally resets only when another claim is selected.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claim.id]);
+
   const pack = claim.emailSubmission || {};
-  const requiredDocuments = pack.requiredDocuments || ['Claim form', 'Itemised invoice', 'Clinical notes'];
-  const attachments = pack.attachments || claim.attachments || [];
   const authenticated = claim.status === 'Client authenticated' || claim.status === 'Email submitted';
   const sent = claim.status === 'Email submitted';
+  const locked = authenticated || sent;
+  const selectedDocument = (document) => draft.attachments.some((attachment) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0]));
+  const missing = [
+    !draft.memberEmail.trim() && 'Member email address',
+    !draft.providerEmail.trim() && 'Insurer claims email',
+    !draft.claimForm.trim() && 'Provider claim form',
+    !draft.memberSubject.trim() && 'Member message subject',
+    !draft.memberBody.trim() && 'Member message content',
+    !draft.insurerSubject.trim() && 'Insurer email subject',
+    !draft.insurerBody.trim() && 'Insurer email content',
+    ...draft.requiredDocuments.filter((document) => !selectedDocument(document)).map((document) => `${document} attachment`),
+  ].filter(Boolean);
+
+  const updateDraft = (field, value) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    setSaved(false);
+  };
+
+  const toggleDocument = (document) => {
+    if (locked) return;
+    const included = selectedDocument(document);
+    const token = document.toLowerCase().split(' ')[0];
+    updateDraft('attachments', included
+      ? draft.attachments.filter((attachment) => !String(attachment.name || attachment).toLowerCase().includes(token))
+      : [...draft.attachments, document]);
+  };
+
+  const saveDraft = () => {
+    saveEmailClaimPreparation(claim.id, {
+      ...draft,
+      subject: draft.insurerSubject,
+      followUp: `${draft.followUpDays || 3} business days after submission`,
+    });
+    setSaved(true);
+  };
+
+  const preparePack = () => {
+    saveDraft();
+    prepareEmailClaimForm(claim.id);
+  };
 
   return (
-    <div className="grid min-w-0 items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(280px,320px)]">
-      <div className="min-w-0 space-y-4">
-        <InfoList
-          title="Email claim pack"
-          rows={[
-            ['Provider email', pack.providerEmail || 'Not configured'],
-            ['Claim form', pack.claimForm || 'Provider form not selected'],
-            ['Prepared by', pack.preparedBy || 'Not prepared'],
-            ['Review link', pack.reviewLink || 'Not generated'],
-            ['Authentication', pack.authentication || 'Not started'],
-            ['Email subject', pack.subject || `Claim ${claim.id} · ${claim.patient}`],
-          ]}
-        />
-
-        <div className="rounded-lg bg-surface/60 p-4">
-          <p className="text-sm font-semibold text-ink">Document checklist</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {requiredDocuments.map((document) => (
-              <ChecklistItem key={document} done={attachments.some((attachment) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0]))} label={document} />
-            ))}
-          </div>
+    <div className="min-w-0 space-y-4">
+      <div className="flex flex-col gap-3 border-b border-line pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-ink">Email preparation studio</p>
+          <p className="mt-1 text-xs text-body">Prepare the member review and insurer submission from one controlled claim pack.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {['pack', 'member', 'insurer'].map((view) => (
+            <button key={view} type="button" onClick={() => setActiveEditor(view)} className={`rounded-md px-3 py-2 text-xs font-semibold transition ${activeEditor === view ? 'bg-ink text-white' : 'border border-line bg-white text-body hover:text-ink'}`}>
+              {view === 'pack' ? 'Claim pack' : view === 'member' ? 'Member message' : 'Insurer email'}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className="rounded-lg bg-surface/60 p-4">
-        <p className="text-sm font-semibold text-ink">Client-assisted workflow</p>
-        <div className="mt-3 space-y-2 text-sm">
-          <ChecklistItem done={Boolean(pack.claimForm) || claim.status !== 'Draft'} label="Form prepared by staff" />
-          <ChecklistItem done={claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Review link sent to client" />
-          <ChecklistItem done={authenticated} label="Client OTP declaration captured" />
-          <ChecklistItem done={sent} label="Claim pack emailed to insurer" />
+      <div className="grid min-w-0 items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0">
+          {activeEditor === 'pack' ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <PreparationField label="Member email" required><input type="email" value={draft.memberEmail} disabled={locked} onChange={(event) => updateDraft('memberEmail', event.target.value)} placeholder="member@example.com" className="lh-input disabled:bg-surface" /></PreparationField>
+                <PreparationField label="Insurer claims email" required><input type="email" value={draft.providerEmail} disabled={locked} onChange={(event) => updateDraft('providerEmail', event.target.value)} placeholder="claims@insurer.com" className="lh-input disabled:bg-surface" /></PreparationField>
+                <PreparationField label="Provider claim form" required><input value={draft.claimForm} disabled={locked} onChange={(event) => updateDraft('claimForm', event.target.value)} className="lh-input disabled:bg-surface" /></PreparationField>
+                <PreparationField label="Follow up after"><div className="flex items-center gap-2"><input type="number" min="1" max="30" value={draft.followUpDays} disabled={locked} onChange={(event) => updateDraft('followUpDays', event.target.value)} className="lh-input max-w-24 disabled:bg-surface" /><span className="text-sm text-body">business days</span></div></PreparationField>
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-ink">Required attachments</p><p className="mt-1 text-xs text-body">Select exactly what will be included in the authorised pack.</p></div><StatusPill label={`${draft.attachments.length} selected`} tone="neutral" /></div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {draft.requiredDocuments.map((document) => {
+                    const included = selectedDocument(document);
+                    return <label key={document} className={`flex min-h-[44px] items-center gap-3 rounded-md border px-3 py-2 text-sm ${included ? 'border-success/30 bg-success-soft text-ink' : 'border-line bg-white text-body'}`}><input type="checkbox" checked={included} disabled={locked} onChange={() => toggleDocument(document)} className="h-4 w-4 accent-teal" /><span>{document}</span>{!included ? <span className="ml-auto text-xs text-danger">Required</span> : null}</label>;
+                  })}
+                </div>
+                {draft.attachments.filter((attachment) => !draft.requiredDocuments.some((document) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0]))).map((attachment) => <div key={String(attachment.name || attachment)} className="mt-2 flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm text-ink"><Paperclip size={14} className="text-muted" />{attachment.name || attachment}</div>)}
+              </div>
+            </div>
+          ) : null}
+
+          {activeEditor === 'member' ? <MessageEditor recipient={draft.memberEmail || 'Member email required'} subject={draft.memberSubject} body={draft.memberBody} disabled={locked} onSubjectChange={(value) => updateDraft('memberSubject', value)} onBodyChange={(value) => updateDraft('memberBody', value)} footer="The secure review link is inserted when this message is sent." /> : null}
+          {activeEditor === 'insurer' ? <MessageEditor recipient={draft.providerEmail || 'Insurer email required'} subject={draft.insurerSubject} body={draft.insurerBody} disabled={locked} onSubjectChange={(value) => updateDraft('insurerSubject', value)} onBodyChange={(value) => updateDraft('insurerBody', value)} footer={`${draft.attachments.length} attachments will accompany this email after member authorisation.`} /> : null}
+
+          <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+            {!locked ? <button type="button" onClick={saveDraft} disabled={saved} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />{saved ? 'Saved' : 'Save changes'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-success" />Content locked after member authorisation</p>}
+            {claim.status === 'Draft' ? <button type="button" onClick={preparePack} disabled={missing.length > 0} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><FileCheck2 size={15} />Prepare pack</button> : null}
+          </div>
         </div>
-        <div className="mt-4 flex flex-col gap-2">
-          {claim.status === 'Draft' ? (
-            <ActionButton onClick={() => prepareEmailClaimForm(claim.id)} icon={Mail}>Prepare form</ActionButton>
-          ) : null}
-          {claim.status === 'Form prepared' ? (
-            <ActionButton onClick={() => sendClaimForClientAuthentication(claim.id)} icon={Send}>Send to client</ActionButton>
-          ) : null}
-          {claim.status === 'Awaiting client authentication' ? (
-            <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton>
-          ) : null}
-          {claim.status === 'Client authenticated' ? (
-            <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Submit by email</ActionButton>
-          ) : null}
-          {sent ? (
-            <p className="rounded-md border border-success/25 bg-success-soft px-3 py-2 text-xs text-success-deep">
-              Submission reference: {claim.externalReference || 'Email message id pending'}
-            </p>
-          ) : null}
-        </div>
+
+        <aside className="space-y-4">
+          <div className={`rounded-lg border p-4 ${missing.length ? 'border-warning/35 bg-warning-wash' : 'border-success/25 bg-success-soft'}`}>
+            <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-ink">Preparation readiness</p><p className="mt-1 text-xs text-body">{missing.length ? `${missing.length} required items remain` : 'Both messages and the pack are complete'}</p></div><StatusPill label={missing.length ? 'Incomplete' : 'Ready'} tone={missing.length ? 'warm' : 'success'} /></div>
+            {missing.length ? <ul className="mt-3 space-y-2">{missing.map((item) => <li key={item} className="flex items-center gap-2 text-xs text-body"><AlertTriangle size={13} className="shrink-0 text-warning" />{item}</li>)}</ul> : null}
+          </div>
+
+          <div className="rounded-lg border border-line bg-white p-4">
+            <p className="text-sm font-semibold text-ink">Claim pack progress</p>
+            <div className="mt-3 space-y-2 text-sm">
+              <ChecklistItem done={Boolean(pack.claimForm) || claim.status !== 'Draft'} label="Pack prepared" />
+              <ChecklistItem done={claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Member review requested" />
+              <ChecklistItem done={authenticated} label="Member authorisation recorded" />
+              <ChecklistItem done={sent} label="Insurer email recorded" />
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              {claim.status === 'Form prepared' ? <button type="button" onClick={() => sendClaimForClientAuthentication(claim.id)} disabled={missing.length > 0 || !saved} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50"><Send size={15} />Send member review</button> : null}
+              {claim.status === 'Awaiting client authentication' ? <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton> : null}
+              {claim.status === 'Client authenticated' ? <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Email insurer</ActionButton> : null}
+              {sent ? <p className="rounded-md border border-success/25 bg-success-soft px-3 py-2 text-xs text-success-deep">Submission reference: {claim.externalReference || 'Email message id pending'}</p> : null}
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function MessageEditor({ recipient, subject, body, disabled, onSubjectChange, onBodyChange, footer }) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.85fr)]">
+      <div className="space-y-4">
+        <PreparationField label="To"><div className="lh-input flex items-center bg-surface text-body">{recipient}</div></PreparationField>
+        <PreparationField label="Subject" required><input value={subject} disabled={disabled} onChange={(event) => onSubjectChange(event.target.value)} className="lh-input disabled:bg-surface" /></PreparationField>
+        <PreparationField label="Message" required><textarea value={body} disabled={disabled} onChange={(event) => onBodyChange(event.target.value)} rows={15} className="lh-textarea resize-y disabled:bg-surface" /></PreparationField>
+        <p className="text-xs text-body">{footer}</p>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-line bg-white">
+        <div className="border-b border-line bg-surface/70 px-4 py-3"><p className="text-xs font-semibold text-ink">Email preview</p></div>
+        <div className="space-y-3 border-b border-line px-4 py-3 text-xs"><p><span className="text-muted">To:</span> <span className="font-medium text-ink">{recipient}</span></p><p><span className="text-muted">Subject:</span> <span className="font-medium text-ink">{subject || 'Subject required'}</span></p></div>
+        <div className="min-h-[320px] whitespace-pre-wrap break-words px-5 py-5 text-sm leading-6 text-body">{body || 'Message content required'}</div>
       </div>
     </div>
   );

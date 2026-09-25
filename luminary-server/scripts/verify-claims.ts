@@ -53,6 +53,8 @@ const routes = await readFile(new URL('../src/modules/claims/claims.routes.ts', 
 [
   "'/claims'",
   "'/claims/:id/validate'",
+  "'/claims/:id/preparation-context'",
+  "'/claims/:id/preparation'",
   "'/claims/:id/submit'",
   "'/claims/:id/refresh-status'",
   "'/claims/:id/events'",

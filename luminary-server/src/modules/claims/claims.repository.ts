@@ -48,16 +48,18 @@ export const claimsRepository = {
   async find(client: PoolClient, id: string): Promise<CanonicalClaim | null> {
     const { rows } = await client.query(
       `SELECT c.*, i.reference AS invoice_reference, p.full_name AS patient_name,
-              p.reference AS patient_reference, p.date_of_birth, p.sex, p.national_id,
-              p.principal_member, p.dependant_code, p.member_suffix AS patient_member_suffix,
-              p.relationship_to_member AS patient_relationship_to_member,
-              s.name AS scheme_name, pay.name AS payer_name
-         FROM luminary.claim c
-         LEFT JOIN luminary.invoice i ON i.id = c.invoice_id
-         JOIN luminary.patient p ON p.id = c.patient_id
-         LEFT JOIN luminary.scheme s ON s.id = c.scheme_id
-         LEFT JOIN luminary.payer pay ON pay.id = c.payer_id
-        WHERE c.id = $1 AND c.deleted_at IS NULL`,
+               p.reference AS patient_reference, p.date_of_birth, p.sex, p.national_id,
+               p.principal_member, p.dependant_code, p.member_suffix AS patient_member_suffix,
+               p.relationship_to_member AS patient_relationship_to_member,
+               s.name AS scheme_name, pay.name AS payer_name,
+               e.status AS encounter_status, e.signed_at AS encounter_signed_at
+          FROM luminary.claim c
+          LEFT JOIN luminary.invoice i ON i.id = c.invoice_id
+          JOIN luminary.patient p ON p.id = c.patient_id
+          LEFT JOIN luminary.scheme s ON s.id = c.scheme_id
+          LEFT JOIN luminary.payer pay ON pay.id = c.payer_id
+          LEFT JOIN luminary.encounter e ON e.id = c.encounter_id
+         WHERE c.id = $1 AND c.deleted_at IS NULL`,
       [id],
     );
     const claim = rows[0] as CanonicalClaim | undefined;

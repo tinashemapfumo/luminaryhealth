@@ -15,6 +15,7 @@ export interface Actor {
 
 const SUBMITTABLE = new Set(['READY', 'READY_FOR_SUBMISSION', 'VALIDATION_FAILED', 'DRAFT', 'FAILED']);
 const COMPLETE = new Set(['APPROVED', 'PARTIALLY_APPROVED', 'REJECTED']);
+const PREPARABLE = new Set(['DRAFT', 'READY', 'VALIDATION_FAILED', 'READY_FOR_SUBMISSION', 'REQUIRES_ACTION', 'FAILED']);
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 const issue = (code: string, field: string, message: string): ValidationIssue => ({ code, field, message });
@@ -315,6 +316,157 @@ export const claimsService = {
     return rows[0];
   },
 
+  async preparationContext(client: PoolClient, actor: Actor, id: string) {
+    assertClaimsRead(actor);
+    const claim = await loadClaim(client, id, actor.userId);
+    const [patientResult, encounterResult, documentResult, providerResult] = await Promise.all([
+      client.query(
+        `SELECT p.id, p.reference, p.full_name, p.date_of_birth, p.sex, p.national_id,
+                p.member_number, p.member_suffix, p.principal_member, p.dependant_code,
+                p.relationship_to_member, p.cover_effective_from, p.cover_valid_until,
+                p.cover_status, p.cover_verification_status, s.name AS scheme_name,
+                pay.name AS payer_name
+           FROM luminary.patient p
+           LEFT JOIN luminary.scheme s ON s.id = p.scheme_id AND s.deleted_at IS NULL
+           LEFT JOIN luminary.payer pay ON pay.id = s.payer_id AND pay.deleted_at IS NULL
+          WHERE p.id = $1 AND p.deleted_at IS NULL`,
+        [claim.patient_id],
+      ),
+      client.query(
+        `SELECT e.id, e.note_type, e.status, e.diagnoses, e.created_at, e.signed_at,
+                author.display_name AS provider_name
+           FROM luminary.encounter e
+           JOIN luminary.app_user author ON author.id = e.author_id
+          WHERE e.patient_id = $1 AND e.deleted_at IS NULL
+          ORDER BY e.created_at DESC`,
+        [claim.patient_id],
+      ),
+      client.query(
+        `SELECT d.id, d.encounter_id, d.kind, d.filename, d.content_type, d.byte_size,
+                d.notes, d.created_at,
+                EXISTS (
+                  SELECT 1 FROM luminary.claim_attachment ca
+                   WHERE ca.claim_id = $2 AND ca.document_id = d.id AND ca.deleted_at IS NULL
+                ) AS attached
+           FROM luminary.patient_document d
+          WHERE d.patient_id = $1 AND d.deleted_at IS NULL
+          ORDER BY d.created_at DESC`,
+        [claim.patient_id, id],
+      ),
+      client.query(
+        `SELECT id, display_name, registration_number, job_title
+           FROM luminary.app_user
+          WHERE active AND deleted_at IS NULL
+          ORDER BY display_name`,
+      ),
+    ]);
+    return {
+      claim,
+      patient: patientResult.rows[0] ?? null,
+      encounters: encounterResult.rows,
+      documents: documentResult.rows,
+      providers: providerResult.rows,
+    };
+  },
+
+  async savePreparation(client: PoolClient, actor: Actor, id: string, input: {
+    encounterId?: string | null;
+    membershipNumber: string;
+    memberSuffix?: string | null;
+    relationshipToMember?: string | null;
+    serviceFromDate?: string | null;
+    serviceToDate?: string | null;
+    notes?: string | null;
+    diagnoses: Array<{ code: string; description?: string; kind: 'primary' | 'secondary' }>;
+    lines: Array<{ id: string; tariffCode: string; tariffDescription?: string; practitionerId?: string | null; serviceDate?: string | null }>;
+    attachments: Array<{ documentId: string; attachmentType: string; reason: string }>;
+  }) {
+    if (!can(actor.role, 'editClaims') && !can(actor.role, 'submitClaims')) {
+      throw new Forbidden('Your role cannot prepare claims');
+    }
+    const claim = await loadClaim(client, id, actor.userId);
+    if (!PREPARABLE.has(claim.status)) throw new Conflict('This claim is no longer editable');
+    if (input.serviceFromDate && input.serviceToDate && input.serviceToDate < input.serviceFromDate) {
+      throw new BadRequest('Service end date cannot be before the start date');
+    }
+    if (input.encounterId) {
+      const encounter = await requireEncounterInTenant(client, input.encounterId);
+      assertSamePatient(encounter.patient_id, claim.patient_id, 'That encounter belongs to another patient');
+    }
+
+    const lineIds = (claim.lines ?? []).map((line) => String(line.id));
+    if (input.lines.length !== lineIds.length || input.lines.some((line) => !lineIds.includes(line.id))) {
+      throw new BadRequest('Preparation must include every line belonging to this claim');
+    }
+    const documentIds = input.attachments.map((attachment) => attachment.documentId);
+    if (new Set(documentIds).size !== documentIds.length) throw new BadRequest('A document can only be attached once');
+    if (documentIds.length) {
+      const { rows } = await client.query(
+        `SELECT id FROM luminary.patient_document
+          WHERE patient_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL`,
+        [claim.patient_id, documentIds],
+      );
+      if (rows.length !== documentIds.length) throw new BadRequest('Every attachment must belong to this patient');
+    }
+
+    await client.query(
+      `UPDATE luminary.claim
+          SET encounter_id = $2, membership_number = $3, member_suffix = $4,
+              relationship_to_member = $5, service_from_date = $6::date,
+              service_to_date = $7::date, notes = $8, status = 'DRAFT',
+              validation_result = '{"valid":false,"errors":[],"warnings":[]}'::jsonb,
+              updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [
+        id, input.encounterId ?? null, input.membershipNumber.trim(), input.memberSuffix?.trim() || null,
+        input.relationshipToMember?.trim() || null, input.serviceFromDate ?? null,
+        input.serviceToDate ?? input.serviceFromDate ?? null, input.notes?.trim() || null,
+      ],
+    );
+
+    await client.query(`UPDATE luminary.claim_diagnosis SET deleted_at = now(), updated_at = now() WHERE claim_id = $1 AND deleted_at IS NULL`, [id]);
+    for (const [index, diagnosis] of input.diagnoses.entries()) {
+      await client.query(
+        `INSERT INTO luminary.claim_diagnosis
+           (practice_id, claim_id, code, description, kind, sequence, source)
+         VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, 'claim_preparation')`,
+        [id, diagnosis.code.trim(), diagnosis.description?.trim() || '', diagnosis.kind, index + 1],
+      );
+    }
+
+    for (const line of input.lines) {
+      await client.query(
+        `UPDATE luminary.claim_line
+            SET tariff_code = $2, tariff_description = $3,
+                practitioner_id = $4, service_date = $5::date, updated_at = now()
+          WHERE id = $1 AND claim_id = $6 AND deleted_at IS NULL`,
+        [line.id, line.tariffCode.trim(), line.tariffDescription?.trim() || '', line.practitionerId ?? null, line.serviceDate ?? input.serviceFromDate ?? null, id],
+      );
+    }
+
+    await client.query(`UPDATE luminary.claim_attachment SET deleted_at = now(), updated_at = now() WHERE claim_id = $1 AND deleted_at IS NULL`, [id]);
+    for (const attachment of input.attachments) {
+      await client.query(
+        `INSERT INTO luminary.claim_attachment
+           (practice_id, claim_id, document_id, attachment_type, reason, added_by)
+         VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5)
+         ON CONFLICT (practice_id, claim_id, document_id)
+         DO UPDATE SET attachment_type = EXCLUDED.attachment_type, reason = EXCLUDED.reason,
+                       added_by = EXCLUDED.added_by, deleted_at = NULL, updated_at = now()`,
+        [id, attachment.documentId, attachment.attachmentType, attachment.reason.trim(), actor.userId],
+      );
+    }
+
+    await claimsRepository.addEvent(client, {
+      claimId: id, type: 'preparation_saved', actorId: actor.userId,
+      previousStatus: claim.status, newStatus: 'DRAFT',
+      metadata: { encounterId: input.encounterId ?? null, diagnoses: input.diagnoses.length, attachments: input.attachments.length },
+    });
+    await client.query(`SELECT luminary.write_audit('Prepared claim', 'claim', $1, $2, $3, 'notice')`,
+      [id, claim.claim_number, `${input.diagnoses.length} diagnoses; ${input.attachments.length} attachments`]);
+    return loadClaim(client, id, actor.userId);
+  },
+
   async events(client: PoolClient, actor: Actor, id: string) {
     assertClaimsRead(actor);
     await loadClaim(client, id, actor.userId);
@@ -528,9 +680,15 @@ function baseValidation(claim: CanonicalClaim): ClaimValidationResult {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   if (!claim.patient_id) errors.push(issue('PATIENT_REQUIRED', 'patientId', 'A claim must name a patient'));
+  if (!claim.date_of_birth) errors.push(issue('DATE_OF_BIRTH_REQUIRED', 'patient.dateOfBirth', 'Patient date of birth is required'));
+  if (!claim.sex) errors.push(issue('SEX_REQUIRED', 'patient.sex', 'Patient sex is required'));
   if (!claim.membership_number) errors.push(issue('MEMBERSHIP_REQUIRED', 'membershipNumber', 'Medical aid membership number is required'));
   if (!claim.payer_id && !claim.scheme_id) errors.push(issue('PAYER_REQUIRED', 'payerId', 'A funder or scheme must be selected'));
   if (!claim.service_from_date) errors.push(issue('SERVICE_DATE_REQUIRED', 'serviceFromDate', 'Treatment date is required'));
+  if (!claim.encounter_id) errors.push(issue('ENCOUNTER_REQUIRED', 'encounterId', 'Choose the encounter that supports this claim'));
+  if (claim.encounter_id && !['signed', 'amended'].includes(String(claim.encounter_status ?? '').toLowerCase())) {
+    errors.push(issue('SIGNED_ENCOUNTER_REQUIRED', 'encounterId', 'The supporting encounter must be signed'));
+  }
   if (!claim.lines?.length) errors.push(issue('CLAIM_LINES_REQUIRED', 'lines', 'At least one claim line is required'));
   for (const [index, line] of (claim.lines ?? []).entries()) {
     if (!line.tariff_code) errors.push(issue('TARIFF_REQUIRED', `lines.${index}.tariffCode`, 'Each claim line needs a tariff code'));

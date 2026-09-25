@@ -306,6 +306,8 @@ export const api = {
     get: (id) => get(`/claims/${id}`),
     create: (claim) => post('/claims', claim),
     update: (id, changes) => patch(`/claims/${id}`, changes),
+    preparationContext: (id) => get(`/claims/${id}/preparation-context`),
+    savePreparation: (id, body) => put(`/claims/${id}/preparation`, body),
     validate: (id, body = {}) => post(`/claims/${id}/validate`, body),
     submitCanonical: (id, body = {}) => post(`/claims/${id}/submit`, body),
     refreshStatus: (id) => post(`/claims/${id}/refresh-status`, {}),

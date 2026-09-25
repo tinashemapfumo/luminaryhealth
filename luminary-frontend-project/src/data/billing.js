@@ -45,6 +45,7 @@ export const initialClaims = [
     submissionChannel: 'Email',
     emailSubmission: {
       providerEmail: 'globalclaims@bupa.example',
+      memberEmail: 'nyasha.chari@example.com',
       claimForm: 'Bupa Global member claim form',
       preparedBy: 'Luminary Health admin',
       reviewLink: 'Secure client review link generated',

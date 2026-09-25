@@ -2025,6 +2025,47 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     setClaims((prev) => prev.map((claim) => (claim.id === id ? updater(claim) : claim)));
   };
 
+  const createClaimFromInvoice = async (invoice) => {
+    if (live) {
+      if (!invoice?.apiId) throw new Error('This invoice is not available in the live claims service.');
+      const created = await api.claims.create({ invoiceId: invoice.apiId });
+      await liveWorkspace.reload();
+      return created.claim_number || created.reference || created.id;
+    }
+
+    const nextSequence = claims.reduce((highest, claim) => {
+      const match = String(claim.id || '').match(/(\d+)$/);
+      return Math.max(highest, match ? Number(match[1]) : 0);
+    }, 0) + 1;
+    const id = `CLM-${new Date().getFullYear()}-${String(nextSequence).padStart(4, '0')}`;
+    const insurerAmount = (invoice.services || []).reduce((sum, line) => sum + Number(line.insurance || line.estimatedFunder || 0), 0)
+      || Number(invoice.insurerResponsibility || invoice.estimatedInsurerResponsibility || 0);
+    const primaryLine = invoice.services?.[0];
+
+    setClaims((previous) => [...previous, {
+      id,
+      patient: invoice.patient,
+      memberNo: invoice.memberNo || 'Not recorded',
+      plan: invoice.insurance || invoice.payerName || 'Insurer not assigned',
+      payerName: invoice.payerName || invoice.insurance || 'Insurer not assigned',
+      provider: invoice.provider || currentUser.name,
+      serviceDate: invoice.issuedOn || invoice.date,
+      amount: `${invoice.currency || 'USD'} ${insurerAmount.toFixed(2)}`,
+      claimed: insurerAmount,
+      currency: invoice.currency || 'USD',
+      invoice: invoice.id,
+      tariff: primaryLine?.code ? `${primaryLine.code} · ${primaryLine.desc || primaryLine.service || 'Invoice service'}` : 'No tariff lines',
+      icd10: 'Not coded',
+      status: 'Draft',
+      biometric: 'Not captured',
+      eligibility: 'Not checked',
+      lines: invoice.services || [],
+      attachments: [],
+      responses: [{ label: `Draft created from ${invoice.id}`, time: 'Just now', tone: 'neutral' }],
+    }]);
+    return id;
+  };
+
   const captureBiometric = async (id) => {
     if (live) {
       const claim = claims.find((item) => item.id === id);
@@ -2070,7 +2111,31 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     notify(`${id} email claim form prepared`);
   };
 
+  const saveEmailClaimPreparation = (id, preparation) => {
+    updateClaim(id, (claim) => ({
+      ...claim,
+      submissionChannel: 'Email',
+      emailSubmission: {
+        ...(claim.emailSubmission || {}),
+        ...preparation,
+        preparedBy: claim.emailSubmission?.preparedBy || currentUser.name,
+        authenticationMethod: claim.emailSubmission?.authenticationMethod || 'OTP + declaration',
+        authentication: claim.emailSubmission?.authentication || 'Not authenticated',
+      },
+    }));
+    notify(`${id} email preparation saved`);
+  };
+
   const sendClaimForClientAuthentication = (id) => {
+    const pending = claims.find((claim) => claim.id === id);
+    const emailPack = pending?.emailSubmission || {};
+    const requiredDocuments = emailPack.requiredDocuments || [];
+    const selectedDocuments = emailPack.attachments || [];
+    const missingDocument = requiredDocuments.find((document) => !selectedDocuments.some((attachment) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0])));
+    if (!emailPack.memberEmail || !emailPack.providerEmail || !emailPack.memberSubject || !emailPack.memberBody || !emailPack.insurerSubject || !emailPack.insurerBody || missingDocument) {
+      notify(`${id} still has required email preparation items`);
+      return;
+    }
     updateClaim(id, (claim) => ({
       ...claim,
       status: 'Awaiting client authentication',
@@ -3578,6 +3643,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const workspace = {
     // identity and access
     currentUser, practice, access, roleInfo, doctorIdentity, grants,
+    reloadWorkspace: liveWorkspace.reload,
     // tenant-scoped collections
     practicePatients, myPatientList, practiceSchedule, todaysSchedule,
     practiceInvoices, practiceClaims, practiceEncounters, practiceEpisodes: episodes, practiceMessages, practiceQueue,
@@ -3614,8 +3680,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     billVisit, unbilledVisits,
     // clinical
     openNote, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, openNoteForVisit, applyDictationEncounter,
-    setSelectedInvoice, setSelectedClaimId, captureBiometric, submitClaimToSwitch,
-    prepareEmailClaimForm, sendClaimForClientAuthentication, authenticateEmailClaim, submitEmailClaim,
+    setSelectedInvoice, setSelectedClaimId, createClaimFromInvoice, captureBiometric, submitClaimToSwitch,
+    prepareEmailClaimForm, saveEmailClaimPreparation, sendClaimForClientAuthentication, authenticateEmailClaim, submitEmailClaim,
     recordAdjudication, proposePatientResponsibility, REJECTION_REASONS,
   };
 
@@ -3813,6 +3879,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
             <button
               type="button"
               onClick={() => toggleHeaderMenu('user')}
+              aria-label="Account menu"
               aria-expanded={headerMenu === 'user'}
               aria-haspopup="menu"
               className={`relative z-40 flex w-full items-center rounded-md transition duration-fast hover:bg-ink/[0.04] ${sidebarCollapsed ? 'justify-center p-2' : 'gap-2.5 px-2 py-2'}`}
@@ -4033,7 +4100,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           </div>
         </header>
 
-        <nav aria-label="Modules" className="lh-glass-subtle relative z-20 flex shrink-0 gap-1 overflow-x-auto border-b border-line/50 px-3 py-2 lg:hidden">
+        <nav aria-label="Modules" className="lh-glass-subtle relative z-10 flex shrink-0 gap-1 overflow-x-auto border-b border-line/50 px-3 py-2 lg:hidden">
           {mobileNavItems.map((item) => {
             const selected = activeView === item.id;
             return (

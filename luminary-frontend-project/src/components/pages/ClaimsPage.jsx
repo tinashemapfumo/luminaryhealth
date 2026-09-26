@@ -1310,6 +1310,7 @@ function EmailPackPanel({
     const serviceDate = sourceClaim.serviceDate || 'the recorded service date';
     const memberEnding = sourceClaim.memberNo ? String(sourceClaim.memberNo).slice(-4) : 'pending';
     return {
+      destinationId: existing.destinationId || '',
       providerEmail: existing.providerEmail || '',
       memberEmail: existing.memberEmail || '',
       claimForm: existing.claimForm || `${payer} claim form`,
@@ -1327,6 +1328,7 @@ function EmailPackPanel({
   const [draft, setDraft] = useState(() => makeDraft(claim));
   const [saved, setSaved] = useState(() => Boolean(claim.emailSubmission?.memberSubject && claim.emailSubmission?.memberBody && claim.emailSubmission?.insurerSubject && claim.emailSubmission?.insurerBody));
   const [working, setWorking] = useState(false);
+  const [destinations, setDestinations] = useState([]);
 
   useEffect(() => {
     setDraft(makeDraft(claim));
@@ -1336,12 +1338,30 @@ function EmailPackPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claim.id]);
 
+  useEffect(() => {
+    let active = true;
+    if (!live) return undefined;
+    api.claims.emailDestinations(claim.apiId || claim.id).then((rows) => {
+      if (!active) return;
+      setDestinations(rows || []);
+      const selected = (rows || []).find((item) => item.id === claim.emailSubmission?.destinationId)
+        || (rows || []).find((item) => item.is_default)
+        || (rows || [])[0];
+      if (selected && !claim.emailSubmission?.providerEmail) {
+        setDraft((current) => ({ ...current, destinationId: selected.id, providerEmail: selected.email }));
+        setSaved(false);
+      }
+    }).catch(() => setDestinations([]));
+    return () => { active = false; };
+  }, [claim.apiId, claim.emailSubmission?.destinationId, claim.emailSubmission?.providerEmail, claim.id, live]);
+
   const pack = claim.emailSubmission || {};
   const packPrepared = pack.status === 'PREPARED' || claim.status === 'Form prepared';
   const authenticated = claim.status === 'Client authenticated' || claim.status === 'Email submitted';
   const sent = claim.status === 'Email submitted';
   const locked = authenticated || sent;
   const selectedDocument = (document) => draft.attachments.some((attachment) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0]));
+  const configuredDestination = destinations.find((item) => item.id === draft.destinationId);
   const missing = [
     !draft.memberEmail.trim() && 'Member email address',
     !draft.providerEmail.trim() && 'Insurer claims email',
@@ -1405,7 +1425,13 @@ function EmailPackPanel({
             <div className="space-y-5">
               <div className="grid gap-4 md:grid-cols-2">
                 <PreparationField label="Member email" required><input type="email" value={draft.memberEmail} disabled={locked} onChange={(event) => updateDraft('memberEmail', event.target.value)} placeholder="member@example.com" className="lh-input disabled:bg-surface" /></PreparationField>
-                <PreparationField label="Insurer claims email" required><input type="email" value={draft.providerEmail} disabled={locked} onChange={(event) => updateDraft('providerEmail', event.target.value)} placeholder="claims@insurer.com" className="lh-input disabled:bg-surface" /></PreparationField>
+                <PreparationField label="Insurer destination" required><select value={draft.destinationId || 'manual'} disabled={locked} onChange={(event) => {
+                  const selected = destinations.find((item) => item.id === event.target.value);
+                  setDraft((current) => ({ ...current, destinationId: selected?.id || '', providerEmail: selected?.email || '' }));
+                  setSaved(false);
+                }} className="lh-input disabled:bg-surface"><option value="manual">Enter address manually</option>{destinations.map((destination) => <option key={destination.id} value={destination.id}>{destination.label} | {destination.email}{destination.is_default ? ' | Default' : ''}</option>)}</select></PreparationField>
+                <PreparationField label={draft.destinationId ? 'Selected claims email' : 'Manual claims email'} required><input type="email" value={draft.providerEmail} disabled={locked || Boolean(draft.destinationId)} onChange={(event) => updateDraft('providerEmail', event.target.value)} placeholder="claims@insurer.com" className="lh-input disabled:bg-surface" /></PreparationField>
+                {configuredDestination?.cc_email ? <ReadOnlyField label="CC recipient" value={configuredDestination.cc_email} /> : null}
                 <PreparationField label="Provider claim form" required><input value={draft.claimForm} disabled={locked} onChange={(event) => updateDraft('claimForm', event.target.value)} className="lh-input disabled:bg-surface" /></PreparationField>
                 <PreparationField label="Follow up after"><div className="flex items-center gap-2"><input type="number" min="1" max="30" value={draft.followUpDays} disabled={locked} onChange={(event) => updateDraft('followUpDays', event.target.value)} className="lh-input max-w-24 disabled:bg-surface" /><span className="text-sm text-body">business days</span></div></PreparationField>
               </div>

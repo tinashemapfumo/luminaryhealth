@@ -17,6 +17,7 @@ const attachmentType = z.enum([
   'proof_of_payment', 'clinical_support', 'other',
 ]);
 const emailDraftBody = z.object({
+  destinationId: z.string().uuid().nullable().optional(),
   memberEmail: z.string().trim().email().or(z.literal('')),
   providerEmail: z.string().trim().email().or(z.literal('')),
   claimForm: z.string().trim().max(240),
@@ -177,6 +178,15 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
       const { id } = idParams.parse(request.params);
       const actor = actorOf(request);
       return run(actor, (client) => claimsService.startEmailDraft(client, actor, id));
+    },
+  });
+
+  app.get('/claims/:id/email-destinations', {
+    preHandler: requirePermission('readClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.emailDestinations(client, actor, id));
     },
   });
 

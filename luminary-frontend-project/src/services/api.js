@@ -311,6 +311,7 @@ export const api = {
     startEmailDraft: (id) => post(`/claims/${id}/email-draft/start`, {}),
     saveEmailDraft: (id, body) => put(`/claims/${id}/email-draft`, body),
     prepareEmailDraft: (id) => post(`/claims/${id}/email-draft/prepare`, {}),
+    emailDestinations: (id) => get(`/claims/${id}/email-destinations`),
     validate: (id, body = {}) => post(`/claims/${id}/validate`, body),
     submitCanonical: (id, body = {}) => post(`/claims/${id}/submit`, body),
     refreshStatus: (id) => post(`/claims/${id}/refresh-status`, {}),
@@ -385,6 +386,10 @@ export const api = {
     upsertTariff: (tariff) => post('/settings/tariffs', tariff),
     updateSecurity: (changes) => patch('/settings/security', changes),
     updateIntegrations: (changes) => patch('/settings/integrations', changes),
+    claimEmailDestinations: () => get('/settings/claim-email-destinations'),
+    createClaimEmailDestination: (destination) => post('/settings/claim-email-destinations', destination),
+    updateClaimEmailDestination: (id, destination) => put(`/settings/claim-email-destinations/${id}`, destination),
+    deleteClaimEmailDestination: (id) => del(`/settings/claim-email-destinations/${id}`),
   },
 
   sync: {

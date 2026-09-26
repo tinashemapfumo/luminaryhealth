@@ -119,6 +119,7 @@ export const ENDPOINTS = {
     startEmailDraft: { method: 'POST', path: '/claims/:id/email-draft/start', permission: 'editClaims' },
     saveEmailDraft: { method: 'PUT', path: '/claims/:id/email-draft', permission: 'editClaims', note: 'persists the editable member and insurer email pack' },
     prepareEmailDraft: { method: 'POST', path: '/claims/:id/email-draft/prepare', permission: 'editClaims', note: 'checks completeness and freezes the prepared state; it does not send email' },
+    emailDestinations: { method: 'GET', path: '/claims/:id/email-destinations', permission: 'readClaims' },
     validate: { method: 'POST', path: '/claims/:id/validate', permission: 'readClaims', note: 'base and adapter-specific validation result' },
     submitCanonical: { method: 'POST', path: '/claims/:id/submit', permission: 'submitClaims', note: 'creates immutable snapshot and records a transmission' },
     refreshStatus: { method: 'POST', path: '/claims/:id/refresh-status', permission: 'refreshClaimStatus' },
@@ -164,6 +165,10 @@ export const ENDPOINTS = {
     upsertTariff: { method: 'POST', path: '/settings/tariffs', permission: 'manageConfiguration' },
     updateSecurity: { method: 'PATCH', path: '/settings/security', permission: 'manageConfiguration' },
     updateIntegrations: { method: 'PATCH', path: '/settings/integrations', permission: 'manageIntegrations' },
+    claimEmailDestinations: { method: 'GET', path: '/settings/claim-email-destinations', permission: 'manageCover' },
+    createClaimEmailDestination: { method: 'POST', path: '/settings/claim-email-destinations', permission: 'manageCover' },
+    updateClaimEmailDestination: { method: 'PUT', path: '/settings/claim-email-destinations/:id', permission: 'manageCover' },
+    deleteClaimEmailDestination: { method: 'DELETE', path: '/settings/claim-email-destinations/:id', permission: 'manageCover' },
   },
 
   access: {

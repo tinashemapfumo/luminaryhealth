@@ -135,6 +135,7 @@ export const claimsService = {
   },
 
   async saveEmailDraft(client: PoolClient, actor: Actor, id: string, input: {
+    destinationId?: string | null;
     memberEmail: string; providerEmail: string; claimForm: string; followUpDays: number;
     memberSubject: string; memberBody: string; insurerSubject: string; insurerBody: string;
     requiredDocuments: string[]; attachments: unknown[];
@@ -144,8 +145,25 @@ export const claimsService = {
     }
     const claim = await loadClaim(client, id, actor.userId);
     if (!PREPARABLE.has(claim.status)) throw new Conflict(`A claim in ${claim.status} cannot be prepared for email`);
+    let destination: Record<string, unknown> | null = null;
+    if (input.destinationId) {
+      const { rows } = await client.query(
+        `SELECT id, label, email, cc_email, payer_id, scheme_id
+           FROM luminary.claim_email_destination
+          WHERE id = $1 AND active AND deleted_at IS NULL
+            AND (payer_id IS NULL OR payer_id = $2)
+            AND (scheme_id IS NULL OR scheme_id = $3)`,
+        [input.destinationId, claim.payer_id, claim.scheme_id],
+      );
+      destination = rows[0] ?? null;
+      if (!destination) throw new BadRequest('The selected email destination does not apply to this claim');
+    }
     const draft = {
       ...input,
+      providerEmail: destination ? String(destination.email) : input.providerEmail,
+      destinationLabel: destination ? String(destination.label) : null,
+      destinationCcEmail: destination?.cc_email ? String(destination.cc_email) : null,
+      manualRecipient: !destination,
       status: 'DRAFT',
       savedAt: new Date().toISOString(),
       savedBy: actor.userId,
@@ -159,9 +177,32 @@ export const claimsService = {
     await claimsRepository.addEvent(client, {
       claimId: id, type: 'email_draft_saved', actorId: actor.userId,
       previousStatus: claim.status, newStatus: claim.status,
-      metadata: { memberEmail: input.memberEmail, providerEmail: input.providerEmail, attachments: input.attachments.length },
+      metadata: {
+        memberEmail: input.memberEmail,
+        providerEmail: destination ? String(destination.email) : input.providerEmail,
+        destinationId: input.destinationId ?? null,
+        manualRecipient: !destination,
+        attachments: input.attachments.length,
+      },
     });
     return claimsRepository.find(client, id);
+  },
+
+  async emailDestinations(client: PoolClient, actor: Actor, id: string) {
+    assertClaimsRead(actor);
+    const claim = await loadClaim(client, id, actor.userId);
+    const { rows } = await client.query(
+      `SELECT id, label, email, cc_email, purpose, is_default, notes, verified_at,
+              payer_id, scheme_id
+         FROM luminary.claim_email_destination
+        WHERE active AND deleted_at IS NULL AND purpose = 'CLAIMS'
+          AND (payer_id IS NULL OR payer_id = $1)
+          AND (scheme_id IS NULL OR scheme_id = $2)
+        ORDER BY (scheme_id = $2) DESC NULLS LAST,
+                 (payer_id = $1) DESC NULLS LAST, is_default DESC, label`,
+      [claim.payer_id, claim.scheme_id],
+    );
+    return rows;
   },
 
   async prepareEmailDraft(client: PoolClient, actor: Actor, id: string) {

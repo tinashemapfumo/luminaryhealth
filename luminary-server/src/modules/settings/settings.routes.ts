@@ -20,6 +20,21 @@ import { catalogueService } from '../catalogue/catalogue.service.js';
 
 interface Actor { userId: string; role: Role; practiceId: string }
 
+const claimEmailDestinationBody = z.object({
+  label: z.string().trim().min(1).max(160),
+  payerId: z.string().uuid().nullable(),
+  schemeId: z.string().uuid().nullable(),
+  email: z.string().trim().email(),
+  ccEmail: z.string().trim().email().nullable().optional(),
+  purpose: z.enum(['CLAIMS', 'PREAUTHORISATION', 'QUERIES', 'REMITTANCE']).default('CLAIMS'),
+  isDefault: z.boolean().default(false),
+  active: z.boolean().default(true),
+  notes: z.string().trim().max(1000).nullable().optional(),
+  verified: z.boolean().default(false),
+}).refine((value) => !value.schemeId || value.payerId, {
+  message: 'A scheme-specific destination must also select its payer', path: ['payerId'],
+});
+
 export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   const actorOf = (request: FastifyRequest): Actor => {
     if (!request.session) throw new Unauthorized();
@@ -37,7 +52,7 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/settings', async (request) => {
     const actor = actorOf(request);
     return run(actor, async (client) => {
-      const [practice, settings, rooms, schemes, tariffs, providers] = await Promise.all([
+      const [practice, settings, rooms, schemes, tariffs, providers, payers, claimEmailDestinations] = await Promise.all([
         client.query(
           `SELECT id, name, short_name, address_line, city, phone, email,
                   primary_currency, secondary_currency, usd_rate, plan
@@ -51,6 +66,13 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         client.query(`SELECT id, display_name, job_title, registration_number, registration_expires, active
                         FROM luminary.app_user
                        WHERE is_provider AND deleted_at IS NULL ORDER BY display_name`),
+        client.query(`SELECT id, name, active FROM luminary.payer WHERE deleted_at IS NULL ORDER BY name`),
+        client.query(`SELECT d.*, p.name AS payer_name, s.name AS scheme_name
+                        FROM luminary.claim_email_destination d
+                        LEFT JOIN luminary.payer p ON p.id = d.payer_id
+                        LEFT JOIN luminary.scheme s ON s.id = d.scheme_id
+                       WHERE d.deleted_at IS NULL
+                       ORDER BY d.active DESC, p.name NULLS LAST, s.name NULLS LAST, d.label`),
       ]);
 
       const config = settings.rows[0] ?? {};
@@ -82,10 +104,137 @@ export async function settingsRoutes(app: FastifyInstance): Promise<void> {
         providers: providers.rows,
         rooms: rooms.rows,
         schemes: schemes.rows,
+        payers: payers.rows,
+        claimEmailDestinations: claimEmailDestinations.rows,
         tariffs: tariffs.rows,
         ...(integrations ? { integrations } : {}),
       };
     });
+  });
+
+  app.get('/settings/claim-email-destinations', {
+    preHandler: requirePermission('manageCover'),
+    handler: async (request) => {
+      const actor = actorOf(request);
+      return run(actor, async (client) => {
+        const { rows } = await client.query(
+          `SELECT d.*, p.name AS payer_name, s.name AS scheme_name
+             FROM luminary.claim_email_destination d
+             LEFT JOIN luminary.payer p ON p.id = d.payer_id
+             LEFT JOIN luminary.scheme s ON s.id = d.scheme_id
+            WHERE d.deleted_at IS NULL
+            ORDER BY d.active DESC, p.name NULLS LAST, s.name NULLS LAST, d.label`,
+        );
+        return rows;
+      });
+    },
+  });
+
+  app.post('/settings/claim-email-destinations', {
+    preHandler: requirePermission('manageCover'),
+    handler: async (request, reply) => {
+      const body = claimEmailDestinationBody.parse(request.body);
+      const actor = actorOf(request);
+      const destination = await run(actor, async (client) => {
+        if (body.schemeId) {
+          const { rows } = await client.query(
+            `SELECT 1 FROM luminary.scheme WHERE id = $1 AND payer_id = $2 AND deleted_at IS NULL`,
+            [body.schemeId, body.payerId],
+          );
+          if (!rows[0]) throw new BadRequest('The selected scheme does not belong to that payer');
+        }
+        if (body.isDefault) {
+          await client.query(
+            `UPDATE luminary.claim_email_destination SET is_default = false, updated_at = now()
+              WHERE payer_id IS NOT DISTINCT FROM $1::uuid
+                AND scheme_id IS NOT DISTINCT FROM $2::uuid
+                AND purpose = $3 AND deleted_at IS NULL`,
+            [body.payerId, body.schemeId, body.purpose],
+          );
+        }
+        const { rows } = await client.query(
+          `INSERT INTO luminary.claim_email_destination
+             (practice_id, payer_id, scheme_id, label, email, cc_email, purpose,
+              is_default, active, notes, verified_at, created_by)
+           VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
+                   CASE WHEN $10 THEN now() ELSE NULL END, $11)
+           RETURNING *`,
+          [body.payerId, body.schemeId, body.label, body.email, body.ccEmail || null,
+           body.purpose, body.isDefault, body.active, body.notes || null, body.verified, actor.userId],
+        );
+        await client.query(
+          `SELECT luminary.write_audit('Created claim email destination', 'payer', $1, $2, $3, 'notice')`,
+          [rows[0].id, body.label, body.email],
+        );
+        return rows[0];
+      });
+      return reply.code(201).send(destination);
+    },
+  });
+
+  app.put('/settings/claim-email-destinations/:id', {
+    preHandler: requirePermission('manageCover'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = claimEmailDestinationBody.parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, async (client) => {
+        if (body.schemeId) {
+          const { rows } = await client.query(
+            `SELECT 1 FROM luminary.scheme WHERE id = $1 AND payer_id = $2 AND deleted_at IS NULL`,
+            [body.schemeId, body.payerId],
+          );
+          if (!rows[0]) throw new BadRequest('The selected scheme does not belong to that payer');
+        }
+        if (body.isDefault) {
+          await client.query(
+            `UPDATE luminary.claim_email_destination SET is_default = false, updated_at = now()
+              WHERE id <> $1 AND payer_id IS NOT DISTINCT FROM $2::uuid
+                AND scheme_id IS NOT DISTINCT FROM $3::uuid
+                AND purpose = $4 AND deleted_at IS NULL`,
+            [id, body.payerId, body.schemeId, body.purpose],
+          );
+        }
+        const { rows } = await client.query(
+          `UPDATE luminary.claim_email_destination SET
+             payer_id = $2, scheme_id = $3, label = $4, email = $5, cc_email = $6,
+             purpose = $7, is_default = $8, active = $9, notes = $10,
+             verified_at = CASE WHEN $11 THEN COALESCE(verified_at, now()) ELSE NULL END,
+             updated_at = now()
+           WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
+          [id, body.payerId, body.schemeId, body.label, body.email, body.ccEmail || null,
+           body.purpose, body.isDefault, body.active, body.notes || null, body.verified],
+        );
+        if (!rows[0]) throw new NotFound('Claim email destination not found');
+        await client.query(
+          `SELECT luminary.write_audit('Changed claim email destination', 'payer', $1, $2, $3, 'notice')`,
+          [id, body.label, body.email],
+        );
+        return rows[0];
+      });
+    },
+  });
+
+  app.delete('/settings/claim-email-destinations/:id', {
+    preHandler: requirePermission('manageCover'),
+    handler: async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, async (client) => {
+        const { rows } = await client.query(
+          `UPDATE luminary.claim_email_destination
+              SET active = false, deleted_at = now(), updated_at = now()
+            WHERE id = $1 AND deleted_at IS NULL RETURNING id, label, email`,
+          [id],
+        );
+        if (!rows[0]) throw new NotFound('Claim email destination not found');
+        await client.query(
+          `SELECT luminary.write_audit('Removed claim email destination', 'payer', $1, $2, $3, 'notice')`,
+          [id, rows[0].label, rows[0].email],
+        );
+        return rows[0];
+      });
+    },
   });
 
   app.patch('/settings/practice', {

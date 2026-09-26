@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertTriangle, Building2, CalendarClock, Check, Copy, DoorOpen,
+  AlertTriangle, Building2, CalendarClock, Check, Copy, DoorOpen, Mail, Pencil, Plus,
   Plug, ShieldCheck, Stethoscope, Trash2, UserPlus, Users, Wallet,
 } from 'lucide-react';
 import { Field, Input, Select, Button, EmptyState, Modal } from '../ui';
@@ -17,12 +17,17 @@ const TABS = [
   { id: 'rooms', label: 'Rooms', detail: 'Bookable resources', icon: DoorOpen },
   { id: 'hours', label: 'Hours', detail: 'Calendar availability', icon: CalendarClock },
   { id: 'billing', label: 'Billing', detail: 'Schemes and tariffs', icon: Wallet },
+  { id: 'claims', label: 'Claim email', detail: 'Payer inbox routing', icon: Mail },
   { id: 'integrations', label: 'Integrations', detail: 'Identifiers only', icon: Plug },
   { id: 'security', label: 'Security', detail: 'Access policy', icon: ShieldCheck },
 ];
 
 const ROLE_LABELS = { admin: 'Administrator', doctor: 'Doctor', nurse: 'Nurse', manager: 'Practice manager', receptionist: 'Receptionist' };
 const INVITABLE_ROLES = ['doctor', 'nurse', 'manager', 'receptionist'];
+const emptyClaimEmailDestination = () => ({
+  label: '', payerId: '', schemeId: '', email: '', ccEmail: '', purpose: 'CLAIMS',
+  isDefault: false, active: true, notes: '', verified: false,
+});
 
 function Section({ title, detail, children, action }) {
   return (
@@ -92,6 +97,23 @@ function settingsFromApi(payload, fallback) {
       requiresPreAuth: !!scheme.requires_preauth,
       active: scheme.active !== false,
     })),
+    payers: (payload.payers || []).map((payer) => ({ id: payer.id, name: payer.name, active: payer.active !== false })),
+    claimEmailDestinations: (payload.claimEmailDestinations || []).map((destination) => ({
+      id: destination.id,
+      label: destination.label,
+      payerId: destination.payer_id || '',
+      payerName: destination.payer_name || 'All payers',
+      schemeId: destination.scheme_id || '',
+      schemeName: destination.scheme_name || '',
+      email: destination.email,
+      ccEmail: destination.cc_email || '',
+      purpose: destination.purpose,
+      isDefault: destination.is_default,
+      active: destination.active !== false,
+      notes: destination.notes || '',
+      verified: Boolean(destination.verified_at),
+      verifiedAt: destination.verified_at || '',
+    })),
     services: (payload.tariffs || []).map((tariff) => ({
       code: tariff.code,
       description: tariff.description,
@@ -154,6 +176,9 @@ export default function SettingsPage() {
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteDraft, setInviteDraft] = useState({ fullName: '', email: '', role: 'receptionist', jobTitle: '' });
   const [inviteResult, setInviteResult] = useState(null);
+  const [destinationDraft, setDestinationDraft] = useState(emptyClaimEmailDestination);
+  const [editingDestinationId, setEditingDestinationId] = useState(null);
+  const [destinationBusy, setDestinationBusy] = useState(false);
   const settings = liveSettings || workspaceSettings;
   const practiceUsers = liveUsers || workspaceUsers;
   const canConfigure = access.can.manageConfiguration;
@@ -415,6 +440,79 @@ export default function SettingsPage() {
         notify(`${report.user.name}: ${report.guidance}`);
       })
       .catch((error) => notify(error.message || 'Could not load offboarding report'));
+  };
+
+  const editClaimEmailDestination = (destination) => {
+    setEditingDestinationId(destination.id);
+    setDestinationDraft({
+      label: destination.label, payerId: destination.payerId || '', schemeId: destination.schemeId || '',
+      email: destination.email, ccEmail: destination.ccEmail || '', purpose: destination.purpose || 'CLAIMS',
+      isDefault: destination.isDefault, active: destination.active, notes: destination.notes || '',
+      verified: destination.verified,
+    });
+  };
+
+  const resetClaimEmailDestination = () => {
+    setEditingDestinationId(null);
+    setDestinationDraft(emptyClaimEmailDestination());
+  };
+
+  const saveClaimEmailDestination = async () => {
+    if (!canManageCover || destinationBusy) return;
+    if (!destinationDraft.label.trim() || !destinationDraft.email.trim()) {
+      notify('Destination name and email are required');
+      return;
+    }
+    setDestinationBusy(true);
+    const payload = {
+      ...destinationDraft,
+      payerId: destinationDraft.payerId || null,
+      schemeId: destinationDraft.schemeId || null,
+      ccEmail: destinationDraft.ccEmail.trim() || null,
+      notes: destinationDraft.notes.trim() || null,
+    };
+    try {
+      if (live) {
+        if (editingDestinationId) await api.settings.updateClaimEmailDestination(editingDestinationId, payload);
+        else await api.settings.createClaimEmailDestination(payload);
+        await refreshAdmin();
+      } else {
+        const nextItem = { ...payload, id: editingDestinationId || `CED-${Date.now()}` };
+        const current = settings.claimEmailDestinations || [];
+        const next = editingDestinationId
+          ? current.map((item) => item.id === editingDestinationId ? nextItem : item)
+          : [...current, nextItem];
+        updateSettings({ ...settings, claimEmailDestinations: next });
+      }
+      notify(`Claim email destination ${editingDestinationId ? 'updated' : 'created'}`);
+      resetClaimEmailDestination();
+    } catch (error) {
+      notify(error.message || 'Could not save claim email destination');
+    } finally {
+      setDestinationBusy(false);
+    }
+  };
+
+  const removeClaimEmailDestination = async (destination) => {
+    if (!canManageCover || destinationBusy) return;
+    setDestinationBusy(true);
+    try {
+      if (live) {
+        await api.settings.deleteClaimEmailDestination(destination.id);
+        await refreshAdmin();
+      } else {
+        updateSettings({
+          ...settings,
+          claimEmailDestinations: (settings.claimEmailDestinations || []).filter((item) => item.id !== destination.id),
+        });
+      }
+      if (editingDestinationId === destination.id) resetClaimEmailDestination();
+      notify(`${destination.label} removed`);
+    } catch (error) {
+      notify(error.message || 'Could not remove claim email destination');
+    } finally {
+      setDestinationBusy(false);
+    }
   };
 
   return (
@@ -876,6 +974,60 @@ export default function SettingsPage() {
             </div>
           </Section>
         </>
+      )}
+
+      {tab === 'claims' && (
+        <Section
+          title="Claim email routing"
+          detail="Configure verified payer inboxes. Scheme-specific destinations outrank payer defaults, while a destination without a payer acts as the practice fallback."
+        >
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.7fr)]">
+            <div className="space-y-2">
+              {(settings.claimEmailDestinations || []).map((destination) => (
+                <div key={destination.id} className="rounded-lg border border-line bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-ink">{destination.label}</p>
+                        {destination.isDefault ? <StatusPill label="Default" tone="accent" /> : null}
+                        <StatusPill label={destination.active ? 'Active' : 'Inactive'} tone={destination.active ? 'success' : 'neutral'} />
+                        <StatusPill label={destination.verified ? 'Verified' : 'Unverified'} tone={destination.verified ? 'success' : 'warm'} />
+                      </div>
+                      <p className="mt-1 break-all text-sm text-body">{destination.email}{destination.ccEmail ? ` | CC ${destination.ccEmail}` : ''}</p>
+                      <p className="mt-1 text-xs text-muted">{destination.schemeName || destination.payerName || 'All payers'} | {String(destination.purpose || 'CLAIMS').replace('_', ' ')}</p>
+                      {destination.notes ? <p className="mt-2 text-xs text-body">{destination.notes}</p> : null}
+                    </div>
+                    {canManageCover ? <div className="flex shrink-0 gap-1">
+                      <button type="button" onClick={() => editClaimEmailDestination(destination)} className="lh-icon-button" aria-label={`Edit ${destination.label}`}><Pencil size={14} /></button>
+                      <button type="button" onClick={() => removeClaimEmailDestination(destination)} className="lh-icon-button text-danger" aria-label={`Remove ${destination.label}`}><Trash2 size={14} /></button>
+                    </div> : null}
+                  </div>
+                </div>
+              ))}
+              {!(settings.claimEmailDestinations || []).length ? <EmptyState title="No claim email destinations" detail="Add the first payer inbox to make it selectable during claim preparation." /> : null}
+            </div>
+
+            <div className="rounded-lg border border-line bg-surface/60 p-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div><p className="text-sm font-semibold text-ink">{editingDestinationId ? 'Edit destination' : 'Add destination'}</p><p className="mt-1 text-xs text-body">Only active entries appear on claims.</p></div>
+                {editingDestinationId ? <button type="button" onClick={resetClaimEmailDestination} className="lh-secondary-button">Cancel</button> : null}
+              </div>
+              <div className="space-y-3">
+                <Field label="Destination name" required><Input value={destinationDraft.label} disabled={!canManageCover} onChange={(event) => setDestinationDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Cimas claims - general" /></Field>
+                <Field label="Payer"><select className="lh-input" disabled={!canManageCover} value={destinationDraft.payerId} onChange={(event) => setDestinationDraft((current) => ({ ...current, payerId: event.target.value, schemeId: '' }))}><option value="">All payers (fallback)</option>{(settings.payers || []).filter((payer) => payer.active).map((payer) => <option key={payer.id} value={payer.id}>{payer.name}</option>)}</select></Field>
+                <Field label="Scheme"><select className="lh-input" disabled={!canManageCover || !destinationDraft.payerId} value={destinationDraft.schemeId} onChange={(event) => setDestinationDraft((current) => ({ ...current, schemeId: event.target.value }))}><option value="">All schemes for payer</option>{(settings.schemes || []).filter((scheme) => scheme.payerId === destinationDraft.payerId && scheme.active).map((scheme) => <option key={scheme.id} value={scheme.id}>{scheme.name}</option>)}</select></Field>
+                <Field label="Purpose"><select className="lh-input" disabled={!canManageCover} value={destinationDraft.purpose} onChange={(event) => setDestinationDraft((current) => ({ ...current, purpose: event.target.value }))}><option value="CLAIMS">Claims</option><option value="PREAUTHORISATION">Pre-authorisation</option><option value="QUERIES">Queries</option><option value="REMITTANCE">Remittance</option></select></Field>
+                <Field label="Claims email" required><Input type="email" value={destinationDraft.email} disabled={!canManageCover} onChange={(event) => setDestinationDraft((current) => ({ ...current, email: event.target.value }))} placeholder="claims@payer.example" /></Field>
+                <Field label="CC email"><Input type="email" value={destinationDraft.ccEmail} disabled={!canManageCover} onChange={(event) => setDestinationDraft((current) => ({ ...current, ccEmail: event.target.value }))} /></Field>
+                <Field label="Routing notes"><Input value={destinationDraft.notes} disabled={!canManageCover} onChange={(event) => setDestinationDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Forms or regional routing requirements" /></Field>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-ink">
+                  {[['isDefault', 'Default for this scope'], ['active', 'Active'], ['verified', 'Address verified']].map(([key, label]) => <label key={key} className="flex items-center gap-2"><input type="checkbox" checked={destinationDraft[key]} disabled={!canManageCover} onChange={(event) => setDestinationDraft((current) => ({ ...current, [key]: event.target.checked }))} className="h-4 w-4 accent-brand" />{label}</label>)}
+                </div>
+                {canManageCover ? <button type="button" disabled={destinationBusy} onClick={saveClaimEmailDestination} className="lh-primary-button w-full justify-center disabled:opacity-50"><Plus size={15} />{destinationBusy ? 'Saving...' : editingDestinationId ? 'Save destination' : 'Add destination'}</button> : null}
+              </div>
+            </div>
+          </div>
+        </Section>
       )}
 
       {tab === 'integrations' && (

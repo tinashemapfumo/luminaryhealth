@@ -9,7 +9,7 @@ import { StatusPill } from '../shared/StatusPill';
 import { useWorkspace } from '../../lib/workspace';
 
 export default function PatientsPage() {
-  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNote, openNoteForVisit, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, applyDictationEncounter, roleInfo, patientTab, setPatientTab, currency, openDialog, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders, coverPlanOptions, defaultCoverPlan } = useWorkspace();
+  const { access, practice, practicePatients, myPatientList, practiceSchedule, practiceInvoices, practiceClaims, practiceEpisodes, practiceOrders, showWholePractice, setShowWholePractice, patientSearch, setPatientSearch, sortKey, setSortKey, selectedPatient, setSelectedPatient, requestPatientFile, fileOpen, setFileOpen, patientRecords, patientFileTab, setPatientFileTab, savePatientRecord, uploadPatientDocument, downloadPatientDocument, exportPatientFile, notesForPatient, openNote, openNoteForVisit, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, applyDictationEncounter, roleInfo, patientTab, setPatientTab, currency, openDialog, recordCompleteness, formatMoney, outstandingOn, updateEpisode, mergePatients, configuredProviders, coverPlanOptions, defaultCoverPlan, live } = useWorkspace();
   const defaultProvider = configuredProviders[0] || 'Unassigned';
   const [mergeOpen, setMergeOpen] = React.useState(false);
   const [mergeSourceId, setMergeSourceId] = React.useState('');
@@ -17,6 +17,13 @@ export default function PatientsPage() {
   const [mergeError, setMergeError] = React.useState('');
   const canMergePatients = Boolean(access.can.manageCover || access.can.reviewAudit);
   const selectedCanonicalId = selectedPatient?.patientId || selectedPatient?.id;
+  const selectedRecord = selectedPatient ? patientRecords[selectedPatient.id] : null;
+  const selectedPrescriptions = selectedRecord?.prescriptions ?? (live ? [] : prescriptionsByPatient[selectedPatient?.name] ?? []);
+  const selectedLabs = selectedRecord?.labs ?? (live ? [] : labResultsByPatient[selectedPatient?.name] ?? []);
+  const selectedCarePlans = selectedRecord?.carePlans ?? (live ? [] : carePlansByPatient[selectedPatient?.name] ?? []);
+  const selectedAppointments = practiceSchedule.filter((appointment) => appointment.patient === selectedPatient?.name);
+  const selectedInvoices = practiceInvoices.filter((invoice) => invoice.patient === selectedPatient?.name);
+  const latestInvoice = selectedInvoices[0];
   const mergeCandidates = practicePatients.filter((patient) =>
     (patient.patientId || patient.id) !== selectedCanonicalId
   );
@@ -93,9 +100,9 @@ export default function PatientsPage() {
           onEditEpisode={(episode) => openDialog('episode', episode)}
           onUpdateEpisode={updateEpisode}
           orders={practiceOrders}
-          prescriptions={patientRecords[selectedPatient.id]?.prescriptions ?? prescriptionsByPatient[selectedPatient.name] ?? []}
-          labs={labResultsByPatient[selectedPatient.name] || []}
-          carePlans={carePlansByPatient[selectedPatient.name] || []}
+          prescriptions={selectedPrescriptions}
+          labs={selectedLabs}
+          carePlans={selectedCarePlans}
           invoices={practiceInvoices}
           claims={practiceClaims}
           appointments={practiceSchedule}
@@ -262,20 +269,21 @@ export default function PatientsPage() {
       },
     };
 
-    const patientData = patientDetails[selectedPatient.name] || {
-      age: patientRecords[selectedPatient.id]?.age || 'Not recorded',
-      gender: patientRecords[selectedPatient.id]?.sex || 'Not recorded',
-      phone: patientRecords[selectedPatient.id]?.phone || 'Not recorded',
-      email: patientRecords[selectedPatient.id]?.email || 'Not recorded',
-      insurance: selectedPatient.coverPlan || selectedPatient.insurance || 'Not recorded',
-      risk: 'Not assessed',
+    const patientData = (!live ? patientDetails[selectedPatient.name] : null) || {
+      age: selectedPatient.age || selectedRecord?.age || 'Not recorded',
+      gender: selectedRecord?.sex || 'Not recorded',
+      phone: selectedRecord?.phone || 'Not recorded',
+      email: selectedRecord?.email || 'Not recorded',
+      insurance: selectedRecord?.coverPlan || selectedPatient.coverPlan || selectedPatient.insurance || 'Not recorded',
+      coverStatus: selectedRecord?.coverStatus || 'Not verified',
+      risk: selectedRecord?.risk || 'Not assessed',
       lastVisit: selectedPatient.lastVisit || 'Not recorded',
       nextVisit: selectedPatient.next || 'Not scheduled',
-      conditions: ['Not recorded'],
-      medications: ['Not recorded'],
-      allergies: ['Not recorded'],
-      notes: 'No clinical summary has been recorded for this patient yet.',
-      timeline: [],
+      conditions: selectedRecord?.conditions?.length ? selectedRecord.conditions : ['Not recorded'],
+      medications: selectedRecord?.medications?.length ? selectedRecord.medications : ['Not recorded'],
+      allergies: selectedRecord?.allergies?.length ? selectedRecord.allergies : ['Not recorded'],
+      notes: selectedRecord?.notes || 'No clinical summary has been recorded for this patient yet.',
+      timeline: selectedRecord?.timeline || [],
     };
 
     // Registry search spans the practice, never other tenants. A clinician's
@@ -554,7 +562,7 @@ export default function PatientsPage() {
                   <div>
                     <p className="lh-section-label mb-3">Active care plans</p>
                     <div className="space-y-2">
-                      {(carePlansByPatient[selectedPatient.name] || []).map((plan) => (
+                      {selectedCarePlans.map((plan) => (
                         <div key={plan.id} className="rounded-lg bg-surface/70 p-3.5">
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -598,7 +606,7 @@ export default function PatientsPage() {
                       )}
                     </div>
                     <div className="mt-3 space-y-2">
-                      {(prescriptionsByPatient[selectedPatient.name] || []).map((rx) => (
+                      {selectedPrescriptions.map((rx) => (
                         <div key={rx.id} className="rounded-md bg-white p-2.5 shadow-hairline">
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -616,7 +624,7 @@ export default function PatientsPage() {
                   <div className="rounded-lg bg-surface/70 p-3.5">
                     <p className="lh-section-label">Lab results</p>
                     <div className="mt-3 space-y-2">
-                      {(labResultsByPatient[selectedPatient.name] || []).map((lab) => (
+                      {selectedLabs.map((lab) => (
                         <div key={lab.test} className="rounded-md bg-white p-2.5 shadow-hairline">
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -651,15 +659,13 @@ export default function PatientsPage() {
                     <p className="lh-section-label">Upcoming</p>
                     <p className="mt-2 text-md font-medium text-ink">{patientData.nextVisit}</p>
                   </div>
-                  {[
-                    { label: 'Annual review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
-                    { label: 'Medication review', date: 'Not scheduled', provider: selectedPatient.provider || 'Unassigned' },
-                  ].map((appointment) => (
-                    <div key={appointment.label} className="rounded-lg border border-line/70 p-3.5">
-                      <p className="text-base font-medium text-ink">{appointment.label}</p>
-                      <p className="mt-1 text-sm text-body">{appointment.date} · {appointment.provider}</p>
+                  {selectedAppointments.map((appointment) => (
+                    <div key={appointment.id} className="rounded-lg border border-line/70 p-3.5">
+                      <p className="text-base font-medium text-ink">{appointment.type || 'Appointment'}</p>
+                      <p className="mt-1 text-sm text-body">{appointment.date || appointment.day || 'Date not recorded'} {appointment.time || ''} · {appointment.provider || 'Unassigned'}</p>
                     </div>
                   ))}
+                  {selectedAppointments.length === 0 && <p className="text-base text-muted">No appointments scheduled.</p>}
                 </div>
               )}
 
@@ -671,11 +677,15 @@ export default function PatientsPage() {
                   </div>
                   <div className="rounded-lg border border-line/70 p-3.5">
                     <p className="lh-section-label">Coverage</p>
-                    <p className="mt-2 text-base text-ink-soft">{patientData.insurance} · Active</p>
+                    <p className="mt-2 text-base text-ink-soft">{patientData.insurance} · {patientData.coverStatus || 'Active'}</p>
                   </div>
                   <div className="rounded-lg border border-line/70 p-3.5">
                     <p className="lh-section-label">Last invoice</p>
-                    <p className="mt-2 text-base text-ink-soft">INV-2024-09 · USD 60.00 · Paid</p>
+                    <p className="mt-2 text-base text-ink-soft">
+                      {latestInvoice
+                        ? `${latestInvoice.id} · ${formatMoney(latestInvoice.amount, latestInvoice.currency)} · ${latestInvoice.status}`
+                        : 'No invoices recorded'}
+                    </p>
                   </div>
                 </div>
               )}

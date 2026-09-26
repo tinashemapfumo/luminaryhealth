@@ -14,7 +14,7 @@ export default function ClinicalPage() {
     openNote, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage,
     applyDictationEncounter,
     todaysSchedule, practiceEncounters, practicePatients, practiceQueue,
-    openNoteForVisit, visitStatuses, notify, setActiveView,
+    openNoteForVisit, visitStatuses, notify, setActiveView, live,
   } = useWorkspace();
   const [prescriptionToPrint, setPrescriptionToPrint] = useState(null);
   const [prescriptionPatient, setPrescriptionPatient] = useState(null);
@@ -53,11 +53,14 @@ export default function ClinicalPage() {
       : practiceEncounters;
 
     const unsigned = myNotes.filter((note) => note.status === NOTE_STATUS.DRAFT);
-    const abnormalLabs = Object.entries(labResultsByPatient)
-      .flatMap(([name, results]) => results.filter((r) => r.tone === 'alert' || r.tone === 'warm').map((r) => ({ ...r, patient: name })))
+    const clinicalRecords = live
+      ? practicePatients.map((patient) => [patient.name, patientRecords[patient.id]])
+      : Object.entries(labResultsByPatient).map(([name, labs]) => [name, { labs, prescriptions: prescriptionsByPatient[name] || [] }]);
+    const abnormalLabs = clinicalRecords
+      .flatMap(([name, record]) => (record?.labs || []).filter((r) => r.tone === 'alert' || r.tone === 'warm').map((r) => ({ ...r, patient: name })))
       .filter((r) => !access.ownPatientsOnly || myPatients.some((v) => v.patient === r.patient));
-    const refillsDue = Object.entries(prescriptionsByPatient)
-      .flatMap(([name, list]) => list.filter((rx) => rx.refills === '0' || rx.tone === 'warm').map((rx) => ({ ...rx, patient: name })))
+    const refillsDue = clinicalRecords
+      .flatMap(([name, record]) => (record?.prescriptions || []).filter((rx) => Number(rx.refills) === 0 || rx.tone === 'warm').map((rx) => ({ ...rx, patient: name })))
       .filter((rx) => !access.ownPatientsOnly || myPatients.some((v) => v.patient === rx.patient));
 
     if (!access.can.viewClinicalNotes) {

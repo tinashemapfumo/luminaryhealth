@@ -296,6 +296,35 @@ export const prescriptionFromApi = (row, fallbackPrescriberName) => ({
     : row.created_at ? `${shortDate(row.created_at)} ${timeLabel(row.created_at)}` : '',
 });
 
+export const labResultFromApi = (row) => ({
+  id: row.id,
+  patientId: row.patient_id,
+  test: row.test_name,
+  value: row.value || 'Not recorded',
+  unit: row.unit || '',
+  normal: row.normal_range || 'Not recorded',
+  date: shortDate(row.resulted_on),
+  status: row.reviewed_at ? 'Reviewed' : row.abnormal ? 'Requires review' : 'Resulted',
+  tone: row.abnormal ? 'alert' : row.reviewed_at ? 'success' : 'neutral',
+});
+
+const carePlanItems = (items) => (Array.isArray(items)
+  ? items.map((item) => (typeof item === 'string' ? item : item?.text)).filter(Boolean)
+  : []);
+
+export const carePlanFromApi = (row) => ({
+  id: row.id,
+  patientId: row.patient_id,
+  name: row.name,
+  status: titleCase(row.status || 'active'),
+  progress: `${Number(row.progress) || 0}%`,
+  goals: carePlanItems(row.goals),
+  interventions: carePlanItems(row.interventions),
+  startDate: shortDate(row.created_at),
+  nextReview: shortDate(row.next_review),
+  tone: statusTone(row.status),
+});
+
 /**
  * Fold medicine rows into prescriptions: one entry per issue, carrying its
  * medicines as `items`, in the order the (newest-first) list presents them.

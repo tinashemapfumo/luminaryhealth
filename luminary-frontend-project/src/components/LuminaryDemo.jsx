@@ -84,7 +84,7 @@ import {
 import { initialPatientRows, patientStatusTone } from '../data/registry';
 import { usePatientDirectory, createBodyFromForm, patchFromChanges, documentFromApi, formatBytes } from '../services/patients';
 import { api, isLive } from '../services/api';
-import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi, settingsFromApi, prescriptionFromApi } from '../services/liveWorkspace';
+import { useLiveWorkspaceData, encounterFromApi, invoiceFromApi, settingsFromApi, prescriptionFromApi, labResultFromApi, carePlanFromApi } from '../services/liveWorkspace';
 
 /** Fallback for a user with no job title recorded. */
 const ROLE_LABELS = {
@@ -3104,6 +3104,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               ...prev[patient.id],
               documents: documents.map(documentFromApi),
               prescriptions: (clinicalSummary?.prescriptions ?? []).map((row) => prescriptionFromApi(row)),
+              labs: (clinicalSummary?.labs ?? []).map(labResultFromApi),
+              carePlans: (clinicalSummary?.carePlans ?? []).map(carePlanFromApi),
             },
           }));
         } catch (error) {
@@ -3646,7 +3648,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
    */
   const workspace = {
     // identity and access
-    currentUser, practice, access, roleInfo, doctorIdentity, grants,
+    currentUser, practice, access, roleInfo, doctorIdentity, grants, live,
     reloadWorkspace: liveWorkspace.reload,
     // tenant-scoped collections
     practicePatients, myPatientList, practiceSchedule, todaysSchedule,

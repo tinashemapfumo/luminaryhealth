@@ -108,7 +108,11 @@ function downloadExcelReport({ filename, title, metrics, columns, rows, highligh
   URL.revokeObjectURL(url);
 }
 
-function activeCarePlansFor(patients) {
+function activeCarePlansFor(patients, patientRecords, live) {
+  if (live) {
+    return patients.flatMap((patient) => (patientRecords?.[patient.id]?.carePlans || [])
+      .map((plan) => ({ patient: patient.name, ...plan })));
+  }
   const visiblePatients = new Set(patients.map((patient) => patient.name));
   return Object.entries(carePlansByPatient)
     .filter(([patient]) => visiblePatients.has(patient))
@@ -131,6 +135,8 @@ function buildReportData(workspace) {
     practiceQueue,
     practiceOrders,
     visitStatuses,
+    patientRecords,
+    live,
   } = workspace;
 
   const money = currency || currencyFallback;
@@ -144,7 +150,7 @@ function buildReportData(workspace) {
   const schedule = practiceSchedule || [];
   const today = todaysSchedule || [];
   const audit = auditLog || [];
-  const carePlans = activeCarePlansFor(patients);
+  const carePlans = activeCarePlansFor(patients, patientRecords, live);
   const openInvoices = invoices.filter((invoice) => invoice.status !== 'Paid');
   const outstanding = invoices.reduce((sum, invoice) => sum + number(outstandingOn ? outstandingOn(invoice) : invoice.amount), 0);
   const overdueInvoices = openInvoices.filter((invoice) => (daysOverdue ? daysOverdue(invoice) : 0) > 0);

@@ -9,6 +9,13 @@ import { claimsService, type Actor } from './claims.service.js';
 const channel = z.enum(['NH263', 'EMAIL_PDF', 'MANUAL']);
 const idParams = z.object({ id: z.string().uuid() });
 const remittanceParams = z.object({ id: z.string().uuid(), remittanceId: z.string().uuid() });
+const attachmentType = z.enum([
+  'preauthorization', 'prescription', 'laboratory_request', 'laboratory_result',
+  'radiology_request', 'radiology_report', 'pathology_report', 'referral',
+  'clinical_motivation', 'operation_note', 'anaesthetic_record', 'implant_device',
+  'hospital_breakdown', 'discharge_document', 'accident_report', 'consent',
+  'proof_of_payment', 'clinical_support', 'other',
+]);
 
 export async function claimsRoutes(app: FastifyInstance): Promise<void> {
   const actorOf = (request: FastifyRequest): Actor => {
@@ -89,6 +96,39 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
         serviceFromDate: date.nullable().optional(),
         serviceToDate: date.nullable().optional(),
         notes: z.string().max(1000).nullable().optional(),
+        supportingInfo: z.object({
+          preAuthorization: z.object({
+            number: z.string().trim().max(120), type: z.string().trim().max(120),
+            validFrom: date.or(z.literal('')), validTo: date.or(z.literal('')),
+            approvedService: z.string().trim().max(500),
+          }),
+          referral: z.object({
+            provider: z.string().trim().max(180), registrationNumber: z.string().trim().max(120),
+            date: date.or(z.literal('')), reason: z.string().trim().max(1000),
+          }),
+          clinicalMotivation: z.string().trim().max(4000),
+          event: z.object({
+            kind: z.enum(['none', 'accident', 'work_related', 'third_party']),
+            date: date.or(z.literal('')), location: z.string().trim().max(240),
+            reference: z.string().trim().max(160), description: z.string().trim().max(1000),
+          }),
+          admission: z.object({
+            facility: z.string().trim().max(240), admittedOn: date.or(z.literal('')),
+            dischargedOn: date.or(z.literal('')),
+          }),
+          otherCover: z.object({
+            payer: z.string().trim().max(180), memberNumber: z.string().trim().max(120),
+            policyNumber: z.string().trim().max(120),
+          }),
+          consent: z.object({
+            releaseInformation: z.boolean(), assignmentOfBenefits: z.boolean(),
+            patientSignature: z.boolean(), signedOn: date.or(z.literal('')),
+          }),
+          procedures: z.array(z.object({
+            code: z.string().trim().max(80), description: z.string().trim().max(500),
+            date: date.or(z.literal('')), deviceIdentifier: z.string().trim().max(180),
+          })).max(30),
+        }),
         diagnoses: z.array(z.object({
           code: z.string().trim().min(1).max(30),
           description: z.string().trim().max(240).optional(),
@@ -103,10 +143,7 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
         })).min(1),
         attachments: z.array(z.object({
           documentId: z.string().uuid(),
-          attachmentType: z.enum([
-            'prescription', 'laboratory_request', 'radiology_request', 'referral',
-            'hospital_breakdown', 'discharge_document', 'clinical_support', 'other',
-          ]),
+          attachmentType,
           reason: z.string().trim().min(5).max(500),
         })).max(50),
       }).parse(request.body);
@@ -277,10 +314,7 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
       const { id } = idParams.parse(request.params);
       const body = z.object({
         documentId: z.string().uuid(),
-        attachmentType: z.enum([
-          'prescription', 'laboratory_request', 'radiology_request', 'referral',
-          'hospital_breakdown', 'discharge_document', 'clinical_support', 'other',
-        ]),
+        attachmentType,
         reason: z.string().min(5).max(500),
       }).parse(request.body);
       const actor = actorOf(request);

@@ -377,6 +377,7 @@ export const claimsService = {
     serviceFromDate?: string | null;
     serviceToDate?: string | null;
     notes?: string | null;
+    supportingInfo: Record<string, unknown>;
     diagnoses: Array<{ code: string; description?: string; kind: 'primary' | 'secondary' }>;
     lines: Array<{ id: string; tariffCode: string; tariffDescription?: string; practitionerId?: string | null; serviceDate?: string | null }>;
     attachments: Array<{ documentId: string; attachmentType: string; reason: string }>;
@@ -388,6 +389,18 @@ export const claimsService = {
     if (!PREPARABLE.has(claim.status)) throw new Conflict('This claim is no longer editable');
     if (input.serviceFromDate && input.serviceToDate && input.serviceToDate < input.serviceFromDate) {
       throw new BadRequest('Service end date cannot be before the start date');
+    }
+    const supporting = input.supportingInfo as {
+      preAuthorization?: { validFrom?: string; validTo?: string };
+      admission?: { admittedOn?: string; dischargedOn?: string };
+    };
+    if (supporting.preAuthorization?.validFrom && supporting.preAuthorization?.validTo
+      && supporting.preAuthorization.validTo < supporting.preAuthorization.validFrom) {
+      throw new BadRequest('Pre-authorisation end date cannot be before its start date');
+    }
+    if (supporting.admission?.admittedOn && supporting.admission?.dischargedOn
+      && supporting.admission.dischargedOn < supporting.admission.admittedOn) {
+      throw new BadRequest('Discharge date cannot be before admission date');
     }
     if (input.encounterId) {
       const encounter = await requireEncounterInTenant(client, input.encounterId);
@@ -414,6 +427,7 @@ export const claimsService = {
           SET encounter_id = $2, membership_number = $3, member_suffix = $4,
               relationship_to_member = $5, service_from_date = $6::date,
               service_to_date = $7::date, notes = $8, status = 'DRAFT',
+              supporting_info = $9::jsonb,
               validation_result = '{"valid":false,"errors":[],"warnings":[]}'::jsonb,
               updated_at = now()
         WHERE id = $1 AND deleted_at IS NULL`,
@@ -421,6 +435,7 @@ export const claimsService = {
         id, input.encounterId ?? null, input.membershipNumber.trim(), input.memberSuffix?.trim() || null,
         input.relationshipToMember?.trim() || null, input.serviceFromDate ?? null,
         input.serviceToDate ?? input.serviceFromDate ?? null, input.notes?.trim() || null,
+        JSON.stringify(input.supportingInfo),
       ],
     );
 
@@ -460,7 +475,7 @@ export const claimsService = {
     await claimsRepository.addEvent(client, {
       claimId: id, type: 'preparation_saved', actorId: actor.userId,
       previousStatus: claim.status, newStatus: 'DRAFT',
-      metadata: { encounterId: input.encounterId ?? null, diagnoses: input.diagnoses.length, attachments: input.attachments.length },
+      metadata: { encounterId: input.encounterId ?? null, diagnoses: input.diagnoses.length, attachments: input.attachments.length, supportingInfo: true },
     });
     await client.query(`SELECT luminary.write_audit('Prepared claim', 'claim', $1, $2, $3, 'notice')`,
       [id, claim.claim_number, `${input.diagnoses.length} diagnoses; ${input.attachments.length} attachments`]);
@@ -698,6 +713,23 @@ function baseValidation(claim: CanonicalClaim): ClaimValidationResult {
   if (!claim.diagnoses?.some((d) => d.kind === 'primary')) {
     errors.push(issue('PRIMARY_DIAGNOSIS_REQUIRED', 'diagnoses', 'At least one primary ICD-10 diagnosis is required'));
   }
+  const supporting = claim.supporting_info ?? {};
+  const event = supporting.event as { kind?: string; date?: string; description?: string } | undefined;
+  const preAuthorization = supporting.preAuthorization as { number?: string; approvedService?: string } | undefined;
+  const referral = supporting.referral as { provider?: string; reason?: string } | undefined;
+  const consent = supporting.consent as { releaseInformation?: boolean; patientSignature?: boolean } | undefined;
+  if (event?.kind && event.kind !== 'none') {
+    if (!event.date) errors.push(issue('EVENT_DATE_REQUIRED', 'supportingInfo.event.date', 'The accident or event date is required'));
+    if (!event.description) errors.push(issue('EVENT_DESCRIPTION_REQUIRED', 'supportingInfo.event.description', 'Describe the accident or event supporting this claim'));
+  }
+  if (preAuthorization?.number && !preAuthorization.approvedService) {
+    warnings.push(issue('AUTH_SCOPE_MISSING', 'supportingInfo.preAuthorization.approvedService', 'Record what the pre-authorisation approved'));
+  }
+  if (referral?.provider && !referral.reason) {
+    warnings.push(issue('REFERRAL_REASON_MISSING', 'supportingInfo.referral.reason', 'Record the reason for referral'));
+  }
+  if (!consent?.releaseInformation) warnings.push(issue('RELEASE_CONSENT_MISSING', 'supportingInfo.consent.releaseInformation', 'Release-of-information consent is not recorded'));
+  if (!consent?.patientSignature) warnings.push(issue('PATIENT_SIGNATURE_MISSING', 'supportingInfo.consent.patientSignature', 'Patient or principal-member signature is not recorded'));
   return { valid: errors.length === 0, errors, warnings };
 }
 

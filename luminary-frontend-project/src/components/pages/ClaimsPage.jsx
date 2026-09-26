@@ -568,9 +568,22 @@ function ClaimQueueItem({ claim, selected, onSelect }) {
 const editablePreparationStatuses = new Set(['Draft', 'Ready', 'Validation failed', 'Ready for submission', 'Requires action', 'Failed']);
 
 const emptyDiagnosis = () => ({ code: '', description: '', kind: 'secondary' });
+const emptyProcedure = () => ({ code: '', description: '', date: '', deviceIdentifier: '' });
+const attachmentTypes = [
+  ['clinical_support', 'Clinical support'], ['preauthorization', 'Pre-authorisation'],
+  ['referral', 'Referral'], ['clinical_motivation', 'Clinical motivation'],
+  ['prescription', 'Prescription'], ['laboratory_request', 'Laboratory request'],
+  ['laboratory_result', 'Laboratory result'], ['radiology_request', 'Radiology request'],
+  ['radiology_report', 'Radiology report'], ['pathology_report', 'Pathology report'],
+  ['operation_note', 'Operation note'], ['anaesthetic_record', 'Anaesthetic record'],
+  ['implant_device', 'Implant or device'], ['hospital_breakdown', 'Hospital breakdown'],
+  ['discharge_document', 'Discharge document'], ['accident_report', 'Accident report'],
+  ['consent', 'Consent'], ['proof_of_payment', 'Proof of payment'], ['other', 'Other'],
+];
 
 function draftFromPreparation(context) {
   const claim = context.claim;
+  const supporting = claim.supporting_info || {};
   const attachedByDocument = new Map((claim.attachments || []).map((item) => [item.document_id, item]));
   return {
     encounterId: claim.encounter_id || '',
@@ -580,6 +593,16 @@ function draftFromPreparation(context) {
     serviceFromDate: claim.service_from_date || '',
     serviceToDate: claim.service_to_date || claim.service_from_date || '',
     notes: claim.notes || '',
+    supportingInfo: {
+      preAuthorization: { number: '', type: '', validFrom: '', validTo: '', approvedService: '', ...(supporting.preAuthorization || {}) },
+      referral: { provider: '', registrationNumber: '', date: '', reason: '', ...(supporting.referral || {}) },
+      clinicalMotivation: supporting.clinicalMotivation || '',
+      event: { kind: 'none', date: '', location: '', reference: '', description: '', ...(supporting.event || {}) },
+      admission: { facility: '', admittedOn: '', dischargedOn: '', ...(supporting.admission || {}) },
+      otherCover: { payer: '', memberNumber: '', policyNumber: '', ...(supporting.otherCover || {}) },
+      consent: { releaseInformation: false, assignmentOfBenefits: false, patientSignature: false, signedOn: '', ...(supporting.consent || {}) },
+      procedures: Array.isArray(supporting.procedures) ? supporting.procedures : [],
+    },
     diagnoses: (claim.diagnoses || []).map((item) => ({
       code: item.code || '', description: item.description || '', kind: item.kind || 'secondary',
     })),
@@ -619,6 +642,13 @@ function preparationChecks(context, draft) {
     { label: 'Claim lines', complete: draft.lines.length > 0, detail: `${draft.lines.length} line${draft.lines.length === 1 ? '' : 's'}`, required: true },
     { label: 'Tariff codes', complete: draft.lines.length > 0 && draft.lines.every((item) => item.tariffCode.trim()), detail: 'Every line needs a tariff code', required: true },
     { label: 'Treating providers', complete: draft.lines.length > 0 && draft.lines.every((item) => item.practitionerId), detail: 'Recommended on every line', required: false },
+    { label: 'Clinical motivation', complete: Boolean(draft.supportingInfo.clinicalMotivation), detail: draft.supportingInfo.clinicalMotivation ? 'Recorded' : 'Add when medical necessity needs explanation', required: false },
+    { label: 'Release consent', complete: draft.supportingInfo.consent.releaseInformation, detail: draft.supportingInfo.consent.releaseInformation ? 'Recorded' : 'Confirm authority to share clinical information', required: false },
+    { label: 'Patient signature', complete: draft.supportingInfo.consent.patientSignature, detail: draft.supportingInfo.consent.patientSignature ? 'Recorded' : 'Confirm patient or principal-member signature', required: false },
+    ...(draft.supportingInfo.event.kind !== 'none' ? [
+      { label: 'Event date', complete: Boolean(draft.supportingInfo.event.date), detail: draft.supportingInfo.event.date || 'Required for this event', required: true },
+      { label: 'Event description', complete: Boolean(draft.supportingInfo.event.description), detail: draft.supportingInfo.event.description || 'Required for this event', required: true },
+    ] : []),
     { label: 'Supporting documents', complete: draft.attachments.length > 0, detail: draft.attachments.length ? `${draft.attachments.length} selected` : 'Add only documents relevant to the claim', required: false },
   ];
 }
@@ -679,6 +709,20 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
     ...current,
     lines: current.lines.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
   }));
+  const setSupportingField = (section, key, value) => setDraft((current) => ({
+    ...current,
+    supportingInfo: {
+      ...current.supportingInfo,
+      [section]: key == null ? value : { ...current.supportingInfo[section], [key]: value },
+    },
+  }));
+  const updateProcedure = (index, key, value) => setDraft((current) => ({
+    ...current,
+    supportingInfo: {
+      ...current.supportingInfo,
+      procedures: current.supportingInfo.procedures.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
+    },
+  }));
 
   const chooseEncounter = (event) => {
     const encounterId = event.target.value;
@@ -727,6 +771,7 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
         serviceFromDate: draft.serviceFromDate,
         serviceToDate: draft.serviceToDate || draft.serviceFromDate,
         notes: draft.notes || null,
+        supportingInfo: draft.supportingInfo,
         diagnoses: draft.diagnoses.filter((item) => item.code.trim()).map((item) => ({
           code: item.code, description: item.description, kind: item.kind,
         })),
@@ -821,6 +866,50 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
             {selectedEncounter && !['signed', 'amended'].includes(String(selectedEncounter.status).toLowerCase()) ? <p className="mt-3 flex items-center gap-2 text-sm text-danger"><AlertTriangle size={15} />This encounter is not signed.</p> : null}
           </PreparationSection>
 
+          <PreparationSection title="Authorisation and referral" detail="Capture references and scope when the payer or service requires prior approval or referral.">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <PreparationField label="Pre-authorisation number"><input disabled={!editable} value={draft.supportingInfo.preAuthorization.number} onChange={(event) => setSupportingField('preAuthorization', 'number', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Authorisation type"><input disabled={!editable} value={draft.supportingInfo.preAuthorization.type} onChange={(event) => setSupportingField('preAuthorization', 'type', event.target.value)} placeholder="Treatment, admission, chronic medicine" className="lh-input" /></PreparationField>
+              <PreparationField label="Approved service or limit"><input disabled={!editable} value={draft.supportingInfo.preAuthorization.approvedService} onChange={(event) => setSupportingField('preAuthorization', 'approvedService', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Valid from"><input disabled={!editable} type="date" value={draft.supportingInfo.preAuthorization.validFrom} onChange={(event) => setSupportingField('preAuthorization', 'validFrom', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Valid to"><input disabled={!editable} type="date" value={draft.supportingInfo.preAuthorization.validTo} onChange={(event) => setSupportingField('preAuthorization', 'validTo', event.target.value)} className="lh-input" /></PreparationField>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <PreparationField label="Referring provider"><input disabled={!editable} value={draft.supportingInfo.referral.provider} onChange={(event) => setSupportingField('referral', 'provider', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Registration number"><input disabled={!editable} value={draft.supportingInfo.referral.registrationNumber} onChange={(event) => setSupportingField('referral', 'registrationNumber', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Referral date"><input disabled={!editable} type="date" value={draft.supportingInfo.referral.date} onChange={(event) => setSupportingField('referral', 'date', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Referral reason"><input disabled={!editable} value={draft.supportingInfo.referral.reason} onChange={(event) => setSupportingField('referral', 'reason', event.target.value)} className="lh-input" /></PreparationField>
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Clinical motivation and procedures" detail="Explain medical necessity and record procedures or devices not fully described by the invoice line.">
+            <PreparationField label="Clinical motivation"><textarea disabled={!editable} value={draft.supportingInfo.clinicalMotivation} onChange={(event) => setSupportingField('clinicalMotivation', null, event.target.value)} rows={4} maxLength={4000} className="lh-input h-auto py-2" /></PreparationField>
+            <div className="mt-4 flex items-center justify-between gap-3"><p className="text-xs font-semibold text-ink">Procedures and devices</p><button type="button" disabled={!editable} onClick={() => setDraft((current) => ({ ...current, supportingInfo: { ...current.supportingInfo, procedures: [...current.supportingInfo.procedures, emptyProcedure()] } }))} className="lh-secondary-button"><Plus size={15} />Add procedure</button></div>
+            <div className="mt-3 space-y-2">
+              {draft.supportingInfo.procedures.map((procedure, index) => <div key={index} className="grid gap-2 sm:grid-cols-[120px_minmax(0,1fr)_150px_minmax(0,0.8fr)_36px]"><input disabled={!editable} value={procedure.code} onChange={(event) => updateProcedure(index, 'code', event.target.value)} placeholder="Code" className="lh-input" /><input disabled={!editable} value={procedure.description} onChange={(event) => updateProcedure(index, 'description', event.target.value)} placeholder="Procedure description" className="lh-input" /><input disabled={!editable} type="date" value={procedure.date} onChange={(event) => updateProcedure(index, 'date', event.target.value)} className="lh-input" /><input disabled={!editable} value={procedure.deviceIdentifier} onChange={(event) => updateProcedure(index, 'deviceIdentifier', event.target.value)} placeholder="Device or implant ID" className="lh-input" /><button type="button" disabled={!editable} onClick={() => setDraft((current) => ({ ...current, supportingInfo: { ...current.supportingInfo, procedures: current.supportingInfo.procedures.filter((_, itemIndex) => itemIndex !== index) } }))} className="lh-icon-button" aria-label="Remove procedure"><X size={15} /></button></div>)}
+              {!draft.supportingInfo.procedures.length ? <p className="text-sm text-body">No additional procedures recorded.</p> : null}
+            </div>
+          </PreparationSection>
+
+          <PreparationSection title="Event, admission, and other cover" detail="Complete only the sections that apply to this episode of care.">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <PreparationField label="Claim event"><select disabled={!editable} value={draft.supportingInfo.event.kind} onChange={(event) => setSupportingField('event', 'kind', event.target.value)} className="lh-input"><option value="none">Not applicable</option><option value="accident">Accident</option><option value="work_related">Work related</option><option value="third_party">Third party involved</option></select></PreparationField>
+              <PreparationField label="Event date" required={draft.supportingInfo.event.kind !== 'none'}><input disabled={!editable} type="date" value={draft.supportingInfo.event.date} onChange={(event) => setSupportingField('event', 'date', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Location"><input disabled={!editable} value={draft.supportingInfo.event.location} onChange={(event) => setSupportingField('event', 'location', event.target.value)} className="lh-input" /></PreparationField>
+              <PreparationField label="Reference"><input disabled={!editable} value={draft.supportingInfo.event.reference} onChange={(event) => setSupportingField('event', 'reference', event.target.value)} placeholder="Police, employer, or third party" className="lh-input" /></PreparationField>
+            </div>
+            {draft.supportingInfo.event.kind !== 'none' ? <PreparationField label="Event description" required><textarea disabled={!editable} value={draft.supportingInfo.event.description} onChange={(event) => setSupportingField('event', 'description', event.target.value)} rows={2} className="lh-input mt-3 h-auto py-2" /></PreparationField> : null}
+            <div className="mt-4 grid gap-3 sm:grid-cols-3"><PreparationField label="Facility"><input disabled={!editable} value={draft.supportingInfo.admission.facility} onChange={(event) => setSupportingField('admission', 'facility', event.target.value)} className="lh-input" /></PreparationField><PreparationField label="Admission date"><input disabled={!editable} type="date" value={draft.supportingInfo.admission.admittedOn} onChange={(event) => setSupportingField('admission', 'admittedOn', event.target.value)} className="lh-input" /></PreparationField><PreparationField label="Discharge date"><input disabled={!editable} type="date" value={draft.supportingInfo.admission.dischargedOn} onChange={(event) => setSupportingField('admission', 'dischargedOn', event.target.value)} className="lh-input" /></PreparationField></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3"><PreparationField label="Other insurer"><input disabled={!editable} value={draft.supportingInfo.otherCover.payer} onChange={(event) => setSupportingField('otherCover', 'payer', event.target.value)} className="lh-input" /></PreparationField><PreparationField label="Other member number"><input disabled={!editable} value={draft.supportingInfo.otherCover.memberNumber} onChange={(event) => setSupportingField('otherCover', 'memberNumber', event.target.value)} className="lh-input" /></PreparationField><PreparationField label="Policy number"><input disabled={!editable} value={draft.supportingInfo.otherCover.policyNumber} onChange={(event) => setSupportingField('otherCover', 'policyNumber', event.target.value)} className="lh-input" /></PreparationField></div>
+          </PreparationSection>
+
+          <PreparationSection title="Consent and declaration" detail="Record the authority supporting release, payment assignment, and submission.">
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              {[['releaseInformation', 'Release clinical information'], ['assignmentOfBenefits', 'Assignment of benefits'], ['patientSignature', 'Patient or principal-member signature']].map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm text-ink"><input disabled={!editable} type="checkbox" checked={draft.supportingInfo.consent[key]} onChange={(event) => setSupportingField('consent', key, event.target.checked)} className="h-4 w-4 accent-teal" />{label}</label>)}
+              <PreparationField label="Signed on"><input disabled={!editable} type="date" value={draft.supportingInfo.consent.signedOn} onChange={(event) => setSupportingField('consent', 'signedOn', event.target.value)} className="lh-input w-44" /></PreparationField>
+            </div>
+          </PreparationSection>
+
           <PreparationSection title="Diagnoses" detail="The primary diagnosis explains the services being claimed.">
             <div className="mb-3 flex flex-wrap gap-2">
               <button type="button" disabled={!editable || !draft.encounterId} onClick={importEncounterDiagnoses} className="lh-secondary-button">Use encounter diagnoses</button>
@@ -857,12 +946,13 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
               {context.documents.map((document) => {
                 const attachment = draft.attachments.find((item) => item.documentId === document.id);
                 return (
-                  <div key={document.id} className="grid gap-2 border-b border-line py-2 first:pt-0 last:border-0 sm:grid-cols-[minmax(0,1fr)_190px]">
+                  <div key={document.id} className="grid gap-2 border-b border-line py-2 first:pt-0 last:border-0 lg:grid-cols-[minmax(0,1fr)_190px_minmax(180px,0.8fr)]">
                     <label className="flex min-w-0 items-start gap-3">
                       <input disabled={!editable} type="checkbox" checked={Boolean(attachment)} onChange={() => toggleDocument(document)} className="mt-1 h-4 w-4 accent-teal" />
                       <span className="min-w-0"><span className="block truncate text-sm font-medium text-ink">{document.filename}</span><span className="text-xs text-body">{document.kind} | {String(document.created_at).slice(0, 10)}</span></span>
                     </label>
-                    {attachment ? <select disabled={!editable} value={attachment.attachmentType} onChange={(event) => setDraft((current) => ({ ...current, attachments: current.attachments.map((item) => item.documentId === document.id ? { ...item, attachmentType: event.target.value } : item) }))} className="lh-input"><option value="clinical_support">Clinical support</option><option value="prescription">Prescription</option><option value="laboratory_request">Laboratory request</option><option value="radiology_request">Radiology request</option><option value="referral">Referral</option><option value="hospital_breakdown">Hospital breakdown</option><option value="discharge_document">Discharge document</option><option value="other">Other</option></select> : null}
+                    {attachment ? <select disabled={!editable} value={attachment.attachmentType} onChange={(event) => setDraft((current) => ({ ...current, attachments: current.attachments.map((item) => item.documentId === document.id ? { ...item, attachmentType: event.target.value } : item) }))} className="lh-input">{attachmentTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : null}
+                    {attachment ? <input disabled={!editable} value={attachment.reason} onChange={(event) => setDraft((current) => ({ ...current, attachments: current.attachments.map((item) => item.documentId === document.id ? { ...item, reason: event.target.value } : item) }))} placeholder="Why this document supports the claim" className="lh-input" /> : null}
                   </div>
                 );
               })}
@@ -889,6 +979,9 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
             </div>
             {validation?.errors?.length ? (
               <div className="mt-5 border-t border-line pt-4"><p className="text-xs font-semibold text-danger">Server validation</p>{validation.errors.map((item) => <p key={`${item.code}-${item.field}`} className="mt-2 text-xs text-body">{item.message}</p>)}</div>
+            ) : null}
+            {validation?.warnings?.length ? (
+              <div className="mt-5 border-t border-line pt-4"><p className="text-xs font-semibold text-warning">Recommended information</p>{validation.warnings.map((item) => <p key={`${item.code}-${item.field}`} className="mt-2 text-xs text-body">{item.message}</p>)}</div>
             ) : null}
           </div>
         </aside>

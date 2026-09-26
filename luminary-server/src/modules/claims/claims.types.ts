@@ -61,6 +61,7 @@ export interface CanonicalClaim {
   total_rejected_amount: string | number;
   member_liability: string | number;
   insurer_liability: string | number;
+  supporting_info?: Record<string, unknown>;
   submission_snapshot?: unknown;
   lines?: Record<string, unknown>[];
   diagnoses?: Record<string, unknown>[];

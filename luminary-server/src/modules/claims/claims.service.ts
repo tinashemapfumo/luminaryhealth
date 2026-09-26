@@ -105,6 +105,94 @@ export const claimsService = {
     return claimsRepository.find(client, id);
   },
 
+  async startEmailDraft(client: PoolClient, actor: Actor, id: string) {
+    if (!can(actor.role, 'editClaims') && !can(actor.role, 'submitClaims')) {
+      throw new Forbidden('Your role cannot prepare claim email drafts');
+    }
+    const claim = await loadClaim(client, id, actor.userId);
+    if (!PREPARABLE.has(claim.status)) throw new Conflict(`A claim in ${claim.status} cannot be prepared for email`);
+    const initial = {
+      status: 'DRAFT',
+      memberEmail: claim.patient_email ?? '',
+      followUpDays: 3,
+      requiredDocuments: ['Claim form', 'Itemised invoice', 'Clinical notes'],
+      startedAt: new Date().toISOString(),
+      startedBy: actor.userId,
+    };
+    await client.query(
+      `UPDATE luminary.claim
+          SET submission_channel = 'EMAIL_PDF',
+              email_draft = $2::jsonb || COALESCE(email_draft, '{}'::jsonb),
+              updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [id, JSON.stringify(initial)],
+    );
+    await claimsRepository.addEvent(client, {
+      claimId: id, type: 'email_draft_started', actorId: actor.userId,
+      previousStatus: claim.status, newStatus: claim.status, metadata: { channel: 'EMAIL_PDF' },
+    });
+    return claimsRepository.find(client, id);
+  },
+
+  async saveEmailDraft(client: PoolClient, actor: Actor, id: string, input: {
+    memberEmail: string; providerEmail: string; claimForm: string; followUpDays: number;
+    memberSubject: string; memberBody: string; insurerSubject: string; insurerBody: string;
+    requiredDocuments: string[]; attachments: unknown[];
+  }) {
+    if (!can(actor.role, 'editClaims') && !can(actor.role, 'submitClaims')) {
+      throw new Forbidden('Your role cannot edit claim email drafts');
+    }
+    const claim = await loadClaim(client, id, actor.userId);
+    if (!PREPARABLE.has(claim.status)) throw new Conflict(`A claim in ${claim.status} cannot be prepared for email`);
+    const draft = {
+      ...input,
+      status: 'DRAFT',
+      savedAt: new Date().toISOString(),
+      savedBy: actor.userId,
+    };
+    await client.query(
+      `UPDATE luminary.claim
+          SET submission_channel = 'EMAIL_PDF', email_draft = $2::jsonb, updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [id, JSON.stringify(draft)],
+    );
+    await claimsRepository.addEvent(client, {
+      claimId: id, type: 'email_draft_saved', actorId: actor.userId,
+      previousStatus: claim.status, newStatus: claim.status,
+      metadata: { memberEmail: input.memberEmail, providerEmail: input.providerEmail, attachments: input.attachments.length },
+    });
+    return claimsRepository.find(client, id);
+  },
+
+  async prepareEmailDraft(client: PoolClient, actor: Actor, id: string) {
+    if (!can(actor.role, 'editClaims') && !can(actor.role, 'submitClaims')) {
+      throw new Forbidden('Your role cannot prepare claim email drafts');
+    }
+    const claim = await loadClaim(client, id, actor.userId);
+    if (!PREPARABLE.has(claim.status)) throw new Conflict(`A claim in ${claim.status} cannot be prepared for email`);
+    const draft = claim.email_draft ?? {};
+    const missing = emailDraftMissing(draft);
+    if (missing.length) throw new BadRequest(`Complete the email draft: ${missing.join(', ')}`);
+    const prepared = {
+      ...draft,
+      status: 'PREPARED',
+      preparedAt: new Date().toISOString(),
+      preparedBy: actor.userId,
+    };
+    await client.query(
+      `UPDATE luminary.claim
+          SET submission_channel = 'EMAIL_PDF', email_draft = $2::jsonb, updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [id, JSON.stringify(prepared)],
+    );
+    await claimsRepository.addEvent(client, {
+      claimId: id, type: 'email_pack_prepared', actorId: actor.userId,
+      previousStatus: claim.status, newStatus: claim.status,
+      metadata: { providerEmail: draft.providerEmail, attachments: Array.isArray(draft.attachments) ? draft.attachments.length : 0 },
+    });
+    return claimsRepository.find(client, id);
+  },
+
   async validate(client: PoolClient, actor: Actor, id: string, channel?: SubmissionChannel) {
     assertClaimsRead(actor);
     const claim = await loadClaim(client, id, actor.userId);
@@ -731,6 +819,33 @@ function baseValidation(claim: CanonicalClaim): ClaimValidationResult {
   if (!consent?.releaseInformation) warnings.push(issue('RELEASE_CONSENT_MISSING', 'supportingInfo.consent.releaseInformation', 'Release-of-information consent is not recorded'));
   if (!consent?.patientSignature) warnings.push(issue('PATIENT_SIGNATURE_MISSING', 'supportingInfo.consent.patientSignature', 'Patient or principal-member signature is not recorded'));
   return { valid: errors.length === 0, errors, warnings };
+}
+
+function emailDraftMissing(draft: Record<string, unknown>): string[] {
+  const missing: string[] = [];
+  const requiredFields: Array<[string, string]> = [
+    ['memberEmail', 'member email'], ['providerEmail', 'insurer claims email'],
+    ['claimForm', 'claim form'], ['memberSubject', 'member subject'],
+    ['memberBody', 'member message'], ['insurerSubject', 'insurer subject'],
+    ['insurerBody', 'insurer message'],
+  ];
+  for (const [field, label] of requiredFields) {
+    if (!String(draft[field] ?? '').trim()) missing.push(label);
+  }
+  const requiredDocuments = Array.isArray(draft.requiredDocuments) ? draft.requiredDocuments : [];
+  const attachments = Array.isArray(draft.attachments) ? draft.attachments : [];
+  const attachmentNames = attachments.map((attachment) => {
+    if (typeof attachment === 'string') return attachment.toLowerCase();
+    if (!attachment || typeof attachment !== 'object') return '';
+    const item = attachment as Record<string, unknown>;
+    return String(item.name ?? item.filename ?? item.attachmentType ?? '').toLowerCase();
+  });
+  for (const document of requiredDocuments) {
+    const label = String(document);
+    const token = label.toLowerCase().split(/\s+/)[0] ?? '';
+    if (!attachmentNames.some((name) => name.includes(token))) missing.push(`${label} attachment`);
+  }
+  return missing;
 }
 
 function submissionChannelFrom(value: unknown): SubmissionChannel | null {

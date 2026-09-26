@@ -42,6 +42,7 @@ export interface CanonicalClaim {
   date_of_birth?: string | null;
   sex?: string | null;
   national_id?: string | null;
+  patient_email?: string | null;
   encounter_id: string | null;
   encounter_status?: string | null;
   encounter_signed_at?: string | null;
@@ -62,6 +63,7 @@ export interface CanonicalClaim {
   member_liability: string | number;
   insurer_liability: string | number;
   supporting_info?: Record<string, unknown>;
+  email_draft?: Record<string, unknown>;
   submission_snapshot?: unknown;
   lines?: Record<string, unknown>[];
   diagnoses?: Record<string, unknown>[];

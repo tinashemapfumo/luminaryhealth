@@ -2087,7 +2087,19 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }));
   };
 
-  const prepareEmailClaimForm = (id) => {
+  const prepareEmailClaimForm = async (id) => {
+    if (live) {
+      const claim = claims.find((item) => item.id === id);
+      try {
+        await api.claims.startEmailDraft(claim?.apiId || id);
+        await liveWorkspace.reload();
+        notify(`${id} email draft opened`);
+        return true;
+      } catch (error) {
+        notify(error.message);
+        return false;
+      }
+    }
     updateClaim(id, (claim) => ({
       ...claim,
       status: 'Form prepared',
@@ -2110,9 +2122,22 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       ],
     }));
     notify(`${id} email claim form prepared`);
+    return true;
   };
 
-  const saveEmailClaimPreparation = (id, preparation) => {
+  const saveEmailClaimPreparation = async (id, preparation) => {
+    if (live) {
+      const claim = claims.find((item) => item.id === id);
+      try {
+        await api.claims.saveEmailDraft(claim?.apiId || id, preparation);
+        await liveWorkspace.reload();
+        notify(`${id} email preparation saved`);
+        return true;
+      } catch (error) {
+        notify(error.message);
+        return false;
+      }
+    }
     updateClaim(id, (claim) => ({
       ...claim,
       submissionChannel: 'Email',
@@ -2125,6 +2150,23 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       },
     }));
     notify(`${id} email preparation saved`);
+    return true;
+  };
+
+  const finalizeEmailClaimPreparation = async (id) => {
+    if (live) {
+      const claim = claims.find((item) => item.id === id);
+      try {
+        await api.claims.prepareEmailDraft(claim?.apiId || id);
+        await liveWorkspace.reload();
+        notify(`${id} email pack prepared`);
+        return true;
+      } catch (error) {
+        notify(error.message);
+        return false;
+      }
+    }
+    return prepareEmailClaimForm(id);
   };
 
   const sendClaimForClientAuthentication = (id) => {
@@ -3687,7 +3729,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     // clinical
     openNote, setOpenNoteId, saveNote, signNote, addAddendum, completeTriage, openNoteForVisit, applyDictationEncounter,
     setSelectedInvoice, setSelectedClaimId, createClaimFromInvoice, captureBiometric, submitClaimToSwitch,
-    prepareEmailClaimForm, saveEmailClaimPreparation, sendClaimForClientAuthentication, authenticateEmailClaim, submitEmailClaim,
+    prepareEmailClaimForm, saveEmailClaimPreparation, finalizeEmailClaimPreparation,
+    sendClaimForClientAuthentication, authenticateEmailClaim, submitEmailClaim,
     recordAdjudication, proposePatientResponsibility, REJECTION_REASONS,
   };
 

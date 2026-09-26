@@ -49,6 +49,7 @@ export const claimsRepository = {
     const { rows } = await client.query(
       `SELECT c.*, i.reference AS invoice_reference, p.full_name AS patient_name,
                p.reference AS patient_reference, p.date_of_birth, p.sex, p.national_id,
+               p.email AS patient_email,
                p.principal_member, p.dependant_code, p.member_suffix AS patient_member_suffix,
                p.relationship_to_member AS patient_relationship_to_member,
                s.name AS scheme_name, pay.name AS payer_name,

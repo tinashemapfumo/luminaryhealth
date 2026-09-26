@@ -35,6 +35,7 @@ const EMAIL_STATUSES = new Set(['Form prepared', 'Awaiting client authentication
 const IN_FLIGHT_STATUSES = new Set(['Submitted', 'Acknowledged', 'Processing', 'Submitting', 'Email submitted']);
 const APPROVED_STATUSES = new Set(['Approved', 'Adjudicated', 'Partially approved']);
 const REMITTANCE_STATUSES = new Set(['Remitted']);
+const isEmailChannel = (value) => value === 'Email' || value === 'EMAIL_PDF';
 
 const MODULES = [
   {
@@ -55,7 +56,7 @@ const MODULES = [
     id: 'email',
     label: 'Email',
     detail: 'Prepare international claim forms, client authentication, and email submission.',
-    matches: (claim) => EMAIL_STATUSES.has(claim.status) || (claim.submissionChannel || claim.channel) === 'Email',
+    matches: (claim) => EMAIL_STATUSES.has(claim.status) || isEmailChannel(claim.submissionChannel || claim.channel),
     detailTabs: ['Summary', 'Email pack', 'Documents', 'Timeline'],
   },
   {
@@ -137,7 +138,7 @@ function invoiceInsurerAmount(invoice) {
 }
 
 function moduleForClaim(claim) {
-  if (EMAIL_STATUSES.has(claim.status) || (claim.submissionChannel || claim.channel) === 'Email') return MODULES.find((item) => item.id === 'email') || MODULES[0];
+  if (EMAIL_STATUSES.has(claim.status) || isEmailChannel(claim.submissionChannel || claim.channel)) return MODULES.find((item) => item.id === 'email') || MODULES[0];
   if (ACTION_STATUSES.has(claim.status)) return MODULES.find((item) => item.id === 'resolve') || MODULES[0];
   if (READY_STATUSES.has(claim.status)) return MODULES.find((item) => item.id === 'submit') || MODULES[0];
   if (IN_FLIGHT_STATUSES.has(claim.status)) return MODULES.find((item) => item.id === 'track') || MODULES[0];
@@ -160,6 +161,7 @@ export default function ClaimsPage() {
     submitClaimToSwitch,
     prepareEmailClaimForm,
     saveEmailClaimPreparation,
+    finalizeEmailClaimPreparation,
     sendClaimForClientAuthentication,
     authenticateEmailClaim,
     submitEmailClaim,
@@ -447,14 +449,22 @@ export default function ClaimsPage() {
             notify={notify}
             captureBiometric={captureBiometric}
             submitClaimToSwitch={submitClaimToSwitch}
-            prepareEmailClaimForm={prepareEmailClaimForm}
+            prepareEmailClaimForm={async (id) => {
+              const started = await prepareEmailClaimForm(id);
+              if (started) {
+                setActiveModule('email');
+                setDetailTab('Email pack');
+              }
+            }}
             saveEmailClaimPreparation={saveEmailClaimPreparation}
+            finalizeEmailClaimPreparation={finalizeEmailClaimPreparation}
             sendClaimForClientAuthentication={sendClaimForClientAuthentication}
             authenticateEmailClaim={authenticateEmailClaim}
             submitEmailClaim={submitEmailClaim}
             recordAdjudication={recordAdjudication}
             proposePatientResponsibility={proposePatientResponsibility}
             rejectionReasons={REJECTION_REASONS}
+            live={live}
           />
         ) : (
           <EmptyState title={`No claims in ${module.label}`} detail="Change module, search, or reset filters to find the claim you need." />
@@ -1034,12 +1044,14 @@ function ClaimModuleDetail({
   submitClaimToSwitch,
   prepareEmailClaimForm,
   saveEmailClaimPreparation,
+  finalizeEmailClaimPreparation,
   sendClaimForClientAuthentication,
   authenticateEmailClaim,
   submitEmailClaim,
   recordAdjudication,
   proposePatientResponsibility,
   rejectionReasons,
+  live,
 }) {
   const blockers = blockerCount(claim);
   const channel = claim.submissionChannel || claim.channel || 'Manual';
@@ -1118,11 +1130,12 @@ function ClaimModuleDetail({
       {detailTab === 'Email pack' ? (
         <EmailPackPanel
           claim={claim}
-          prepareEmailClaimForm={prepareEmailClaimForm}
           saveEmailClaimPreparation={saveEmailClaimPreparation}
+          finalizeEmailClaimPreparation={finalizeEmailClaimPreparation}
           sendClaimForClientAuthentication={sendClaimForClientAuthentication}
           authenticateEmailClaim={authenticateEmailClaim}
           submitEmailClaim={submitEmailClaim}
+          live={live}
         />
       ) : null}
       {detailTab === 'Timeline' ? (
@@ -1160,8 +1173,8 @@ function ModuleActions({
       {moduleId === 'prepare' && claim.status === 'Draft' && access.can.captureBiometric ? (
         <ActionButton onClick={() => captureBiometric(claim.id)} icon={Fingerprint}>Capture</ActionButton>
       ) : null}
-      {moduleId === 'prepare' && (claim.submissionChannel || claim.channel) !== 'Email' ? (
-        <ActionButton onClick={() => prepareEmailClaimForm(claim.id)} icon={Mail}>Email route</ActionButton>
+      {moduleId === 'prepare' && !isEmailChannel(claim.submissionChannel || claim.channel) ? (
+        <ActionButton onClick={() => prepareEmailClaimForm(claim.id)} icon={Mail}>Prepare email route</ActionButton>
       ) : null}
       {moduleId === 'submit' && READY_STATUSES.has(claim.status) && access.can.submitClaims ? (
         <ActionButton onClick={() => submitClaimToSwitch(claim.id)} icon={UploadCloud}>Submit</ActionButton>
@@ -1284,11 +1297,12 @@ function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch 
 
 function EmailPackPanel({
   claim,
-  prepareEmailClaimForm,
   saveEmailClaimPreparation,
+  finalizeEmailClaimPreparation,
   sendClaimForClientAuthentication,
   authenticateEmailClaim,
   submitEmailClaim,
+  live,
 }) {
   const makeDraft = (sourceClaim) => {
     const existing = sourceClaim.emailSubmission || {};
@@ -1312,6 +1326,7 @@ function EmailPackPanel({
   const [activeEditor, setActiveEditor] = useState('pack');
   const [draft, setDraft] = useState(() => makeDraft(claim));
   const [saved, setSaved] = useState(() => Boolean(claim.emailSubmission?.memberSubject && claim.emailSubmission?.memberBody && claim.emailSubmission?.insurerSubject && claim.emailSubmission?.insurerBody));
+  const [working, setWorking] = useState(false);
 
   useEffect(() => {
     setDraft(makeDraft(claim));
@@ -1322,6 +1337,7 @@ function EmailPackPanel({
   }, [claim.id]);
 
   const pack = claim.emailSubmission || {};
+  const packPrepared = pack.status === 'PREPARED' || claim.status === 'Form prepared';
   const authenticated = claim.status === 'Client authenticated' || claim.status === 'Email submitted';
   const sent = claim.status === 'Email submitted';
   const locked = authenticated || sent;
@@ -1351,18 +1367,20 @@ function EmailPackPanel({
       : [...draft.attachments, document]);
   };
 
-  const saveDraft = () => {
-    saveEmailClaimPreparation(claim.id, {
-      ...draft,
-      subject: draft.insurerSubject,
-      followUp: `${draft.followUpDays || 3} business days after submission`,
-    });
-    setSaved(true);
+  const saveDraft = async () => {
+    setWorking(true);
+    const savedDraft = await saveEmailClaimPreparation(claim.id, draft);
+    setWorking(false);
+    if (savedDraft) setSaved(true);
+    return savedDraft;
   };
 
-  const preparePack = () => {
-    saveDraft();
-    prepareEmailClaimForm(claim.id);
+  const preparePack = async () => {
+    const savedDraft = await saveDraft();
+    if (!savedDraft) return;
+    setWorking(true);
+    await finalizeEmailClaimPreparation(claim.id);
+    setWorking(false);
   };
 
   return (
@@ -1408,8 +1426,8 @@ function EmailPackPanel({
           {activeEditor === 'insurer' ? <MessageEditor recipient={draft.providerEmail || 'Insurer email required'} subject={draft.insurerSubject} body={draft.insurerBody} disabled={locked} onSubjectChange={(value) => updateDraft('insurerSubject', value)} onBodyChange={(value) => updateDraft('insurerBody', value)} footer={`${draft.attachments.length} attachments will accompany this email after member authorisation.`} /> : null}
 
           <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            {!locked ? <button type="button" onClick={saveDraft} disabled={saved} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />{saved ? 'Saved' : 'Save changes'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-success" />Content locked after member authorisation</p>}
-            {claim.status === 'Draft' ? <button type="button" onClick={preparePack} disabled={missing.length > 0} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><FileCheck2 size={15} />Prepare pack</button> : null}
+            {!locked ? <button type="button" onClick={saveDraft} disabled={saved || working} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />{working ? 'Saving...' : saved ? 'Saved' : 'Save changes'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-success" />Content locked after member authorisation</p>}
+            {!packPrepared ? <button type="button" onClick={preparePack} disabled={missing.length > 0 || working} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><FileCheck2 size={15} />{working ? 'Preparing...' : 'Prepare pack'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-success"><CheckCircle2 size={15} />Pack prepared and saved</p>}
           </div>
         </div>
 
@@ -1422,15 +1440,16 @@ function EmailPackPanel({
           <div className="rounded-lg border border-line bg-white p-4">
             <p className="text-sm font-semibold text-ink">Claim pack progress</p>
             <div className="mt-3 space-y-2 text-sm">
-              <ChecklistItem done={Boolean(pack.claimForm) || claim.status !== 'Draft'} label="Pack prepared" />
-              <ChecklistItem done={claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Member review requested" />
+              <ChecklistItem done={packPrepared} label="Pack prepared" />
+              <ChecklistItem done={!live && claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Member review requested" />
               <ChecklistItem done={authenticated} label="Member authorisation recorded" />
               <ChecklistItem done={sent} label="Insurer email recorded" />
             </div>
             <div className="mt-4 flex flex-col gap-2">
-              {claim.status === 'Form prepared' ? <button type="button" onClick={() => sendClaimForClientAuthentication(claim.id)} disabled={missing.length > 0 || !saved} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50"><Send size={15} />Send member review</button> : null}
-              {claim.status === 'Awaiting client authentication' ? <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton> : null}
-              {claim.status === 'Client authenticated' ? <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Email insurer</ActionButton> : null}
+              {live && packPrepared ? <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-deep">Email delivery and secure member authorisation are not connected yet. This pack is saved and ready for that integration.</p> : null}
+              {!live && claim.status === 'Form prepared' ? <button type="button" onClick={() => sendClaimForClientAuthentication(claim.id)} disabled={missing.length > 0 || !saved} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50"><Send size={15} />Send member review</button> : null}
+              {!live && claim.status === 'Awaiting client authentication' ? <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton> : null}
+              {!live && claim.status === 'Client authenticated' ? <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Email insurer</ActionButton> : null}
               {sent ? <p className="rounded-md border border-success/25 bg-success-soft px-3 py-2 text-xs text-success-deep">Submission reference: {claim.externalReference || 'Email message id pending'}</p> : null}
             </div>
           </div>

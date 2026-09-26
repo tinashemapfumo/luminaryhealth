@@ -217,6 +217,7 @@ export const claimFromApi = (row) => ({
   diagnoses: row.diagnoses ?? [],
   attachments: row.attachments ?? [],
   validation: row.validation_result ?? { valid: false, errors: [], warnings: [] },
+  emailSubmission: row.email_draft ?? {},
   biometric: row.biometric_at ? `Captured ${shortDate(row.biometric_at)} ${timeLabel(row.biometric_at)}` : 'Not captured',
   eligibility: row.scheme_name ? 'Cover on file' : 'Self-pay',
   responses: Array.isArray(row.responses) ? row.responses : [],

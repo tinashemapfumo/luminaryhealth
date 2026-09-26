@@ -16,6 +16,25 @@ const attachmentType = z.enum([
   'hospital_breakdown', 'discharge_document', 'accident_report', 'consent',
   'proof_of_payment', 'clinical_support', 'other',
 ]);
+const emailDraftBody = z.object({
+  memberEmail: z.string().trim().email().or(z.literal('')),
+  providerEmail: z.string().trim().email().or(z.literal('')),
+  claimForm: z.string().trim().max(240),
+  followUpDays: z.coerce.number().int().min(1).max(30),
+  memberSubject: z.string().trim().max(240),
+  memberBody: z.string().trim().max(10000),
+  insurerSubject: z.string().trim().max(240),
+  insurerBody: z.string().trim().max(10000),
+  requiredDocuments: z.array(z.string().trim().min(1).max(160)).max(30),
+  attachments: z.array(z.union([
+    z.string().trim().min(1).max(240),
+    z.object({
+      id: z.string().optional(), documentId: z.string().optional(),
+      name: z.string().optional(), filename: z.string().optional(),
+      attachmentType: z.string().optional(),
+    }).passthrough(),
+  ])).max(50),
+});
 
 export async function claimsRoutes(app: FastifyInstance): Promise<void> {
   const actorOf = (request: FastifyRequest): Actor => {
@@ -149,6 +168,34 @@ export async function claimsRoutes(app: FastifyInstance): Promise<void> {
       }).parse(request.body);
       const actor = actorOf(request);
       return run(actor, (client) => claimsService.savePreparation(client, actor, id, body));
+    },
+  });
+
+  app.post('/claims/:id/email-draft/start', {
+    preHandler: requirePermission('editClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.startEmailDraft(client, actor, id));
+    },
+  });
+
+  app.put('/claims/:id/email-draft', {
+    preHandler: requirePermission('editClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const body = emailDraftBody.parse(request.body);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.saveEmailDraft(client, actor, id, body));
+    },
+  });
+
+  app.post('/claims/:id/email-draft/prepare', {
+    preHandler: requirePermission('editClaims'),
+    handler: async (request) => {
+      const { id } = idParams.parse(request.params);
+      const actor = actorOf(request);
+      return run(actor, (client) => claimsService.prepareEmailDraft(client, actor, id));
     },
   });
 

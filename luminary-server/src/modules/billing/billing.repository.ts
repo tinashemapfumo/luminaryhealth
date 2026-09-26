@@ -24,14 +24,34 @@ export const billingRepository = {
     params.push(opts.limit ?? 200);
 
     const { rows } = await client.query(
-      `SELECT i.id, i.reference, i.issued_on, i.due_on, i.currency,
+      `SELECT i.id, i.reference, i.patient_id, i.issued_on, i.due_on, i.currency,
               i.total, i.scheme_portion, i.patient_portion, i.amount_paid, i.status,
               i.idempotency_key,
               p.full_name AS patient_name, p.reference AS patient_reference,
+              p.member_number, s.id AS scheme_id, s.name AS scheme_name,
+              s.payer_id, payer.name AS payer_name,
+              claim.id AS claim_id, claim.claim_number AS claim_reference,
+              claim.status AS claim_status,
               CASE WHEN i.due_on < current_date AND i.status <> 'paid'
                    THEN current_date - i.due_on ELSE 0 END AS days_overdue
          FROM luminary.invoice i
          JOIN luminary.patient p ON p.id = i.patient_id
+         LEFT JOIN luminary.scheme s ON s.id = p.scheme_id
+          AND s.active
+          AND s.deleted_at IS NULL
+          AND (p.cover_effective_from IS NULL OR p.cover_effective_from <= i.issued_on)
+          AND (p.cover_valid_until IS NULL OR p.cover_valid_until >= i.issued_on)
+          AND COALESCE(p.cover_status, '') NOT ILIKE 'Suspended%'
+         LEFT JOIN luminary.payer payer ON payer.id = s.payer_id
+          AND payer.active
+          AND payer.deleted_at IS NULL
+         LEFT JOIN LATERAL (
+           SELECT c.id, c.claim_number, c.status
+             FROM luminary.claim c
+            WHERE c.invoice_id = i.id AND c.deleted_at IS NULL
+            ORDER BY c.created_at DESC
+            LIMIT 1
+         ) claim ON true
         WHERE ${where.join(' AND ')}
         ORDER BY i.issued_on DESC, i.reference DESC
         LIMIT $${params.length}`,

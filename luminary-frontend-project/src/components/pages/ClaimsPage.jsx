@@ -166,6 +166,7 @@ export default function ClaimsPage() {
     recordAdjudication,
     proposePatientResponsibility,
     REJECTION_REASONS,
+    live,
   } = useWorkspace();
 
   const [activeModule, setActiveModule] = useState('prepare');
@@ -243,10 +244,12 @@ export default function ClaimsPage() {
     setChannelFilter('all');
   };
 
-  const coveredInvoices = useMemo(() => practiceInvoices.filter((invoice) => invoiceInsurerAmount(invoice) > 0), [practiceInvoices]);
+  const coveredInvoices = useMemo(() => practiceInvoices.filter((invoice) => (
+    live ? Boolean(invoice.schemeId && invoice.payerId) : invoiceInsurerAmount(invoice) > 0
+  )), [live, practiceInvoices]);
 
   const claimableInvoices = useMemo(() => coveredInvoices.filter((invoice) =>
-    !practiceClaims.some((claim) => claim.invoice === invoice.id)), [coveredInvoices, practiceClaims]);
+    !invoice.claimApiId && !practiceClaims.some((claim) => claim.invoice === invoice.id)), [coveredInvoices, practiceClaims]);
 
   const visibleClaimableInvoices = useMemo(() => {
     const needle = newClaimQuery.trim().toLowerCase();
@@ -334,8 +337,8 @@ export default function ClaimsPage() {
             </button>
             <button type="button" onClick={() => { setNewClaimOpen(false); setNewClaimInvoiceId(''); setNewClaimQuery(''); }} className="lh-secondary-button justify-center">Cancel</button>
           </div>
-          <p className="mt-3 text-xs text-body">A new patient appears here after an invoice with an insurer portion is issued. Invoices that already have claims stay in the claims queue and cannot be duplicated.</p>
-          {!claimableInvoices.length ? <p className="mt-2 flex items-center gap-2 text-sm font-medium text-warning"><AlertTriangle size={15} />Every covered invoice currently has a claim. Issue another covered invoice to begin a new preparation.</p> : null}
+          <p className="mt-3 text-xs text-body">A new patient appears here after an invoice is issued with a valid medical aid scheme and payer on file. Invoices that already have claims stay in the claims queue and cannot be duplicated.</p>
+          {!claimableInvoices.length ? <p className="mt-2 flex items-center gap-2 text-sm font-medium text-warning"><AlertTriangle size={15} />No unclaimed invoice has valid medical aid cover on its service date.</p> : null}
           {claimableInvoices.length && newClaimQuery && !visibleClaimableInvoices.length ? <p className="mt-2 flex items-center gap-2 text-sm font-medium text-warning"><AlertTriangle size={15} />No unclaimed covered invoice matches “{newClaimQuery}”.</p> : null}
         </section>
       ) : null}

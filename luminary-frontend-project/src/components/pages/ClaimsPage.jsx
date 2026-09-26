@@ -299,7 +299,7 @@ export default function ClaimsPage() {
   }
 
   return (
-    <div className="lh-has-sticky-bar min-w-0 max-w-full space-y-6 overflow-x-hidden">
+    <div className="lh-has-sticky-bar min-w-0 max-w-full space-y-6 overflow-x-clip">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -697,7 +697,9 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
   }, [apiId]);
 
   const checks = useMemo(() => preparationChecks(context, draft), [context, draft]);
-  const requiredRemaining = checks.filter((item) => item.required && !item.complete).length;
+  const incompleteChecks = checks.filter((item) => !item.complete);
+  const completeChecks = checks.filter((item) => item.complete);
+  const requiredRemaining = incompleteChecks.filter((item) => item.required).length;
   const editable = access.can.editClaims && editablePreparationStatuses.has(claim.status);
 
   const setField = (key) => (event) => setDraft((current) => ({ ...current, [key]: event.target.value }));
@@ -813,7 +815,7 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
   const coverProblem = patient.cover_status && !String(patient.cover_status).toLowerCase().startsWith('active');
 
   return (
-    <section className="lh-card min-w-0 overflow-hidden">
+    <section className="lh-card min-w-0 overflow-clip">
       <div className="flex flex-col gap-4 border-b border-line px-4 py-4 sm:px-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <button type="button" onClick={() => setQueueOpen(true)} className="mb-3 inline-flex items-center gap-2 text-xs font-semibold text-teal xl:hidden"><ChevronLeft size={14} />Queue</button>
@@ -832,6 +834,17 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
           </div>
         ) : <p className="text-xs font-medium text-body">Read-only at this claim status</p>}
       </div>
+
+      <details className="sticky top-[var(--lh-sticky-top)] z-10 border-b border-line bg-white/95 px-4 py-3 shadow-hairline backdrop-blur xl:hidden">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          <span aria-live="polite">{requiredRemaining ? `${requiredRemaining} required item${requiredRemaining === 1 ? '' : 's'} remain` : 'Required information complete'}</span>
+          {incompleteChecks.some((item) => !item.required) ? <span className="ml-2 text-xs font-normal text-body">Recommended items remain</span> : null}
+        </summary>
+        <div className="mt-3 max-h-[45vh] space-y-3 overflow-y-auto pr-1">
+          {incompleteChecks.map((item) => <ReadinessItem key={item.label} item={item} />)}
+          {!incompleteChecks.length ? <p className="text-xs text-success">This claim has all required and recommended preparation information.</p> : null}
+        </div>
+      </details>
 
       <div className="grid min-w-0 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 divide-y divide-line">
@@ -966,17 +979,14 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
         </div>
 
         <aside className="border-t border-line bg-surface/45 p-4 xl:border-l xl:border-t-0">
-          <div className="xl:sticky xl:top-4">
+          <div className="xl:lh-sticky-panel xl:pr-1">
             <p className="text-sm font-semibold text-ink">Preparation readiness</p>
-            <p className="mt-1 text-xs text-body">Required information must be complete before validation.</p>
+            <p className="mt-1 text-xs text-body" aria-live="polite">{requiredRemaining ? `${requiredRemaining} required item${requiredRemaining === 1 ? '' : 's'} remain before validation.` : 'Required information is complete.'}</p>
             <div className="mt-4 space-y-3">
-              {checks.map((item) => (
-                <div key={item.label} className="flex gap-2.5">
-                  {item.complete ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" /> : <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${item.required ? 'text-danger' : 'text-warning'}`} />}
-                  <div><p className="text-xs font-semibold text-ink">{item.label}{!item.required ? ' (recommended)' : ''}</p><p className="mt-0.5 text-xs text-body">{item.detail}</p></div>
-                </div>
-              ))}
+              {incompleteChecks.map((item) => <ReadinessItem key={item.label} item={item} />)}
+              {!incompleteChecks.length ? <p className="text-xs font-medium text-success">No preparation items remain.</p> : null}
             </div>
+            {completeChecks.length ? <details className="mt-5 border-t border-line pt-4"><summary className="cursor-pointer text-xs font-semibold text-body">Completed ({completeChecks.length})</summary><div className="mt-3 space-y-3">{completeChecks.map((item) => <ReadinessItem key={item.label} item={item} />)}</div></details> : null}
             {validation?.errors?.length ? (
               <div className="mt-5 border-t border-line pt-4"><p className="text-xs font-semibold text-danger">Server validation</p>{validation.errors.map((item) => <p key={`${item.code}-${item.field}`} className="mt-2 text-xs text-body">{item.message}</p>)}</div>
             ) : null}
@@ -987,6 +997,15 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
         </aside>
       </div>
     </section>
+  );
+}
+
+function ReadinessItem({ item }) {
+  return (
+    <div className="flex gap-2.5">
+      {item.complete ? <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-success" /> : <AlertTriangle size={16} className={`mt-0.5 shrink-0 ${item.required ? 'text-danger' : 'text-warning'}`} />}
+      <div className="min-w-0"><p className="text-xs font-semibold text-ink">{item.label}{!item.required ? ' (recommended)' : ''}</p><p className="mt-0.5 text-xs text-body">{item.detail}</p></div>
+    </div>
   );
 }
 

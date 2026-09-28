@@ -85,7 +85,7 @@ async function main() {
   const denied = await request(`/encounters/${encounter.payload.id}/dictations`, {
     method: 'POST',
     token: receptionist,
-    body: { transcript },
+    body: { transcript, purpose: 'encounter_note' },
   });
   expect(denied.response.status === 403, `receptionist dictation was not denied: ${denied.response.status}`);
   ok('non-doctor dictation fails closed');
@@ -93,10 +93,11 @@ async function main() {
   const created = await request(`/encounters/${encounter.payload.id}/dictations`, {
     method: 'POST',
     token: doctor,
-    body: { transcript },
+    body: { transcript, purpose: 'encounter_note' },
   });
   expect(created.response.status === 201, `dictation create failed: ${created.response.status} ${JSON.stringify(created.payload)}`);
   expect(created.payload.raw_transcript === transcript, 'raw transcript was not preserved');
+  expect(created.payload.purpose === 'encounter_note', 'dictation purpose was not preserved');
   ok('doctor captured raw transcript separately');
 
   const structured = await request(`/dictations/${created.payload.id}/structure`, {
@@ -162,10 +163,11 @@ async function main() {
       WHERE filename IN (
         '037_doctor_dictation_drafts.sql',
         '057_dictation_independent_outputs.sql',
-        '058_encounter_structured_note.sql'
+        '058_encounter_structured_note.sql',
+        '059_dictation_purpose.sql'
       )`,
   );
-  expect(migration.rows.length === 3, 'dictation migrations not recorded');
+  expect(migration.rows.length === 4, 'dictation migrations not recorded');
   const audit = await pool.query(
     `SELECT action FROM luminary.audit_event
       WHERE subject_id = $1 AND action LIKE '%dictation%'

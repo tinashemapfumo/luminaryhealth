@@ -73,11 +73,9 @@ export default function EncounterNote({
   const [serviceCaptureBusy, setServiceCaptureBusy] = useState(false);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
-  const speechRecognitionRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
   const discardRecordingRef = useRef(false);
-  const dictationTextRef = useRef('');
 
   const locked = draft.status !== NOTE_STATUS.DRAFT;
   const canWrite = can.writeNote && !locked;
@@ -154,13 +152,9 @@ export default function EncounterNote({
   const setVital = (key) => (event) =>
     setDraft((prev) => ({ ...prev, vitals: { ...prev.vitals, [key]: event.target.value } }));
 
-  const browserWindow = typeof globalThis !== 'undefined' && globalThis.window ? globalThis.window : null;
   const browserNavigator = typeof globalThis !== 'undefined' && globalThis.navigator ? globalThis.navigator : null;
   const browserMediaRecorder = typeof globalThis !== 'undefined' ? globalThis.MediaRecorder : null;
   const browserUrl = typeof globalThis !== 'undefined' ? globalThis.URL : null;
-  const speechRecognitionSupported = Boolean(
-    browserWindow?.SpeechRecognition || browserWindow?.webkitSpeechRecognition
-  );
   const microphoneSupported = Boolean(browserNavigator?.mediaDevices?.getUserMedia && browserMediaRecorder);
   const recordingActive = recordingState === 'recording' || recordingState === 'paused';
   const recordingTime = `${String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:${String(recordingSeconds % 60).padStart(2, '0')}`;
@@ -169,17 +163,6 @@ export default function EncounterNote({
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
     recordingTimerRef.current = null;
   }, []);
-
-  const blobToBase64 = (blob) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = String(reader.result || '');
-        resolve(result.includes(',') ? result.split(',').pop() : result);
-      };
-      reader.onerror = () => reject(reader.error || new Error('Could not read audio recording.'));
-      reader.readAsDataURL(blob);
-    });
 
   const startRecordingTimer = useCallback(() => {
     stopRecordingTimer();
@@ -190,12 +173,6 @@ export default function EncounterNote({
 
   const releaseRecording = useCallback(() => {
     stopRecordingTimer();
-    try {
-      speechRecognitionRef.current?.stop?.();
-    } catch {
-      // Browser speech recognition may already be stopped.
-    }
-    speechRecognitionRef.current = null;
     mediaStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     mediaStreamRef.current = null;
     mediaRecorderRef.current = null;
@@ -208,10 +185,6 @@ export default function EncounterNote({
   useEffect(() => () => {
     if (recordedAudioUrl) browserUrl?.revokeObjectURL?.(recordedAudioUrl);
   }, [browserUrl, recordedAudioUrl]);
-
-  useEffect(() => {
-    dictationTextRef.current = dictationText;
-  }, [dictationText]);
 
   const dxMatches = dxQuery.trim()
     ? ICD10.filter(
@@ -299,42 +272,17 @@ export default function EncounterNote({
         if (blob.size > 0) {
           setRecordedAudioBlob(blob);
           setRecordedAudioUrl(browserUrl?.createObjectURL?.(blob) || '');
-          setDictationStatus(dictationTextRef.current.trim() ? 'Transcript ready' : 'Audio captured');
+          setDictationStatus('Audio ready for secure transcription');
         } else {
           setDictationStatus('Failed');
           setDictationError('No audio was captured. Check the selected microphone and try again.');
         }
       };
 
-      if (speechRecognitionSupported) {
-        const Recognition = browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
-        const recognition = new Recognition();
-        let committed = dictationText.trim() ? `${dictationText.trim()} ` : '';
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-ZW';
-        recognition.onresult = (event) => {
-          let interim = '';
-          for (let index = event.resultIndex; index < event.results.length; index += 1) {
-            const text = event.results[index][0]?.transcript || '';
-            if (event.results[index].isFinal) committed += `${text.trim()} `;
-            else interim += text;
-          }
-          setDictationText(`${committed}${interim}`.trim());
-        };
-        recognition.onerror = (event) => {
-          if (event.error === 'not-allowed') {
-            setDictationError('Microphone permission was denied.');
-          }
-        };
-        speechRecognitionRef.current = recognition;
-        recognition.start();
-      }
-
       recorder.start(1000);
       startRecordingTimer();
       setRecordingState('recording');
-      setDictationStatus(speechRecognitionSupported ? 'Recording' : 'Recording audio');
+      setDictationStatus('Recording audio');
     } catch (error) {
       releaseRecording();
       setRecordingState('idle');
@@ -346,11 +294,6 @@ export default function EncounterNote({
   const pauseRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === 'recording') recorder.pause();
-    try {
-      speechRecognitionRef.current?.stop?.();
-    } catch {
-      // Already stopped.
-    }
     stopRecordingTimer();
     setRecordingState('paused');
     setDictationStatus('Paused');
@@ -359,14 +302,9 @@ export default function EncounterNote({
   const resumeRecording = () => {
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === 'paused') recorder.resume();
-    try {
-      speechRecognitionRef.current?.start?.();
-    } catch {
-      // Some browsers do not allow restarting the same recognition instance.
-    }
     startRecordingTimer();
     setRecordingState('recording');
-    setDictationStatus(speechRecognitionSupported ? 'Recording' : 'Recording audio');
+    setDictationStatus('Recording audio');
   };
 
   const stopRecording = () => {
@@ -382,18 +320,9 @@ export default function EncounterNote({
     } else {
       releaseRecording();
     }
-    try {
-      speechRecognitionRef.current?.stop?.();
-    } catch {
-      // Already stopped.
-    }
-    speechRecognitionRef.current = null;
     stopRecordingTimer();
     setRecordingState('stopped');
-    setDictationStatus('Saving audio');
-    if (!speechRecognitionSupported && !dictationTextRef.current.trim()) {
-      setDictationError('Audio was captured. Structure will send it for transcription when server speech-to-text is configured.');
-    }
+    setDictationStatus('Preparing audio');
   };
 
   const cancelRecording = () => {
@@ -412,7 +341,7 @@ export default function EncounterNote({
   };
 
   const closeDictation = () => {
-    if (recordingActive) cancelRecording();
+    if (recordingActive || recordedAudioBlob) cancelRecording();
     setDictationOpen(false);
   };
 
@@ -462,21 +391,27 @@ export default function EncounterNote({
       return;
     }
     setDictationError('');
-    setDictationStatus(transcript.length >= 12 ? 'Processing' : 'Transcribing audio');
+    setDictationStatus(recordedAudioBlob ? 'Transcribing audio' : 'Processing transcript');
     try {
       if (!isLive()) {
+        if (transcript.length < 12) {
+          setDictationStatus('Transcript required');
+          setDictationError('Server transcription requires a connected workspace. Paste a transcript to continue offline.');
+          return;
+        }
         setDictation({ id: `local-${Date.now()}` });
         setDictationDraft(localStructure(transcript));
         setDictationStatus('Structured draft ready');
         return;
       }
-      const created = transcript.length >= 12
-        ? await api.encounters.createDictation(draft.id, { transcript })
-        : await api.encounters.createDictationFromAudio(draft.id, {
-            audioBase64: await blobToBase64(recordedAudioBlob),
-            contentType: recordedAudioBlob.type || 'audio/webm',
-          });
+      const created = recordedAudioBlob
+        ? await api.encounters.createDictationFromAudio(draft.id, recordedAudioBlob, 'encounter_note')
+        : await api.encounters.createDictation(draft.id, { transcript, purpose: 'encounter_note' });
       setDictationText(created.raw_transcript || transcript);
+      if (recordedAudioUrl) browserUrl?.revokeObjectURL?.(recordedAudioUrl);
+      audioChunksRef.current = [];
+      setRecordedAudioUrl('');
+      setRecordedAudioBlob(null);
       setDictationStatus('Structuring');
       const structured = await api.dictations.structure(created.id);
       setDictation(structured);
@@ -810,9 +745,9 @@ export default function EncounterNote({
               {recordedAudioUrl && (
                 <audio controls src={recordedAudioUrl} className="mt-3 w-full" />
               )}
-              {!speechRecognitionSupported && microphoneSupported && (
+              {microphoneSupported && (
                 <p className="mt-2 text-xs text-muted">
-                  Live transcript is unavailable in this browser. Audio capture is ready; OpenAI transcription will plug into this flow once credentials are configured.
+                  Audio stays in this browser until you select Structure, then the server transcribes it securely.
                 </p>
               )}
             </div>
@@ -820,7 +755,7 @@ export default function EncounterNote({
               <Textarea
                 value={dictationText}
                 onChange={(event) => setDictationText(event.target.value)}
-                placeholder="Transcript appears here while recording on supported browsers. You can edit it before structuring."
+                placeholder="The server transcript appears here after structuring. You can also paste a transcript instead of recording."
               />
             </Field>
             {dictationError && (

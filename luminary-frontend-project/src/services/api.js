@@ -80,7 +80,7 @@ export const onSessionExpired = (fn) => {
   return () => expiryListeners.delete(fn);
 };
 
-export async function request(method, path, { body, query, token } = {}) {
+export async function request(method, path, { body, query, token, rawBody, contentType } = {}) {
   if (!BASE) {
     throw new ApiError('Luminary API URL is not configured for this build.', {
       code: 'api_url_missing',
@@ -98,10 +98,11 @@ export async function request(method, path, { body, query, token } = {}) {
     response = await fetch(url, {
       method,
       headers: {
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(rawBody ? { 'Content-Type': contentType || 'application/octet-stream' } : {}),
+        ...(!rawBody && body ? { 'Content-Type': 'application/json' } : {}),
         ...(auth ? { Authorization: `Bearer ${auth}` } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: rawBody || (body ? JSON.stringify(body) : undefined),
     });
   } catch (error) {
     // The line drops several times a day in the deployment this is built for,
@@ -189,7 +190,11 @@ export const api = {
     sign: (id) => post(`/encounters/${id}/signature`, {}),
     addendum: (id, body) => post(`/encounters/${id}/addenda`, body),
     createDictation: (id, body) => post(`/encounters/${id}/dictations`, body),
-    createDictationFromAudio: (id, body) => post(`/encounters/${id}/dictations/audio`, body),
+    createDictationFromAudio: (id, audio, purpose) => request('POST', `/encounters/${id}/dictations/audio`, {
+      rawBody: audio,
+      contentType: audio.type || 'audio/webm',
+      query: { purpose },
+    }),
     serviceEvents: {
       list: (encounterId) => get(`/encounters/${encounterId}/service-events`),
       create: (encounterId, body) => post(`/encounters/${encounterId}/service-events`, body),

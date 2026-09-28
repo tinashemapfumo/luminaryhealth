@@ -355,10 +355,8 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const [prescriptionAudioUrl, setPrescriptionAudioUrl] = useState('');
   const prescriptionRecorderRef = useRef(null);
   const prescriptionStreamRef = useRef(null);
-  const prescriptionRecognitionRef = useRef(null);
   const prescriptionChunksRef = useRef([]);
   const prescriptionTimerRef = useRef(null);
-  const prescriptionTranscriptRef = useRef('');
   const prescriptionDiscardRef = useRef(false);
 
   const stopPrescriptionTimer = useCallback(() => {
@@ -368,12 +366,6 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
 
   const releasePrescriptionMicrophone = useCallback(() => {
     stopPrescriptionTimer();
-    try {
-      prescriptionRecognitionRef.current?.stop?.();
-    } catch {
-      // Recognition may already have ended after the recorder stopped.
-    }
-    prescriptionRecognitionRef.current = null;
     prescriptionStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     prescriptionStreamRef.current = null;
     prescriptionRecorderRef.current = null;
@@ -397,7 +389,6 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   const openDialog = (name, initial = {}) => {
     if (name === 'prescriptionDictation') clearPrescriptionRecording();
     setForm(initial);
-    prescriptionTranscriptRef.current = String(initial.transcript || '');
     setFormErrors({});
     setDialog(name);
     if (name === 'prescriptionDictation') void startPrescriptionRecording();
@@ -448,31 +439,6 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         setPrescriptionRecordingState('stopped');
       };
 
-      const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (Recognition) {
-        const recognition = new Recognition();
-        let committed = prescriptionTranscriptRef.current.trim();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-ZW';
-        recognition.onresult = (event) => {
-          let interim = '';
-          for (let index = event.resultIndex; index < event.results.length; index += 1) {
-            const text = event.results[index][0]?.transcript || '';
-            if (event.results[index].isFinal) committed = `${committed} ${text}`.trim();
-            else interim += text;
-          }
-          const transcript = `${committed} ${interim}`.trim();
-          prescriptionTranscriptRef.current = transcript;
-          setForm((prev) => ({ ...prev, transcript }));
-        };
-        recognition.onerror = (event) => {
-          if (event.error === 'not-allowed') setFormErrors({ transcript: 'Microphone permission was denied.' });
-        };
-        prescriptionRecognitionRef.current = recognition;
-        recognition.start();
-      }
-
       recorder.start(1000);
       prescriptionTimerRef.current = window.setInterval(
         () => setPrescriptionRecordingSeconds((seconds) => seconds + 1),
@@ -494,20 +460,9 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     const recorder = prescriptionRecorderRef.current;
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     stopPrescriptionTimer();
-    try {
-      prescriptionRecognitionRef.current?.stop?.();
-    } catch {
-      // Recognition may already be stopping.
-    }
     setPrescriptionRecordingState('processing');
   };
 
-  const prescriptionAudioBase64 = (blob) => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
-    reader.onerror = () => reject(reader.error || new Error('Could not read the recording.'));
-    reader.readAsDataURL(blob);
-  });
   /**
    * Set a field from a plain value.
    *
@@ -2732,12 +2687,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         encounterId = created.id;
         setLiveEncounters((prev) => [encounterFromApi(created, patient), ...prev]);
       }
-      const dictation = transcript.length >= 12
-        ? await api.encounters.createDictation(encounterId, { transcript })
-        : await api.encounters.createDictationFromAudio(encounterId, {
-            audioBase64: await prescriptionAudioBase64(prescriptionAudioBlob),
-            contentType: prescriptionAudioBlob.type || 'audio/webm',
-          });
+      const dictation = prescriptionAudioBlob
+        ? await api.encounters.createDictationFromAudio(encounterId, prescriptionAudioBlob, 'prescription')
+        : await api.encounters.createDictation(encounterId, { transcript, purpose: 'prescription' });
+      clearPrescriptionRecording();
       const structured = await api.dictations.structure(dictation.id);
       const draft = structured.structured_draft || {};
       const medicationsMentioned = Array.isArray(draft.medicationsMentioned) ? draft.medicationsMentioned : [];
@@ -5238,15 +5191,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                     {prescriptionAudioUrl && <audio controls src={prescriptionAudioUrl} className="mt-3 w-full" />}
                   </div>
                   <Field
-                    label="Dictated transcript"
-                    required
+                    label="Transcript or manual fallback"
                     error={formErrors.transcript}
                     hint="Type or paste what was dictated, e.g. “Start Amoxicillin 500mg capsules, one three times daily for five days.”"
                   >
                     <Textarea
                       value={form.transcript || ''}
                       onChange={(event) => {
-                        prescriptionTranscriptRef.current = event.target.value;
                         setForm((prev) => ({ ...prev, transcript: event.target.value }));
                       }}
                       placeholder="Prescribe amoxicillin 500 milligrams, one capsule three times a day for five days…"

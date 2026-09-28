@@ -60,6 +60,12 @@ export function registerHttp(app: FastifyInstance): void {
     },
   );
 
+  app.addContentTypeParser(
+    /^audio\/(?:webm|mp4|mpeg|ogg|wav)(?:;.*)?$/,
+    { parseAs: 'buffer' },
+    (_request, body: Buffer, done) => done(null, body),
+  );
+
   app.addHook('onRequest', async (request) => {
     if (PUBLIC.has(request.routeOptions?.url ?? request.url)) return;
     const token = bearer(request.headers.authorization);

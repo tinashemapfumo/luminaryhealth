@@ -5,7 +5,7 @@ import { requirePermission } from '../../platform/permissions.js';
 import { clinicalService, type Actor } from './clinical.service.js';
 import { dictationService } from './dictation.js';
 import { catalogueService } from '../catalogue/catalogue.service.js';
-import { Unauthorized } from '../../platform/errors.js';
+import { BadRequest, Unauthorized } from '../../platform/errors.js';
 
 const diagnosis = z.object({ code: z.string().min(1), label: z.string().min(1) });
 const documentBody = z.object({
@@ -100,6 +100,8 @@ const dictationDraft = z.object({
     reason: z.string().min(1),
   })).default([]),
 });
+
+const dictationPurpose = z.enum(['encounter_note', 'prescription']);
 
 const dictatedMedication = z.object({
   sourceIndex: z.number().int().nonnegative(),
@@ -415,10 +417,13 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
     preHandler: requirePermission('prescribe'),
     handler: async (request, reply) => {
       const { id } = idParams.parse(request.params);
-      const body = z.object({ transcript: z.string().min(12).max(12000) }).parse(request.body);
+      const body = z.object({
+        transcript: z.string().min(12).max(12000),
+        purpose: dictationPurpose.default('encounter_note'),
+      }).parse(request.body);
       const actor = actorOf(request);
       const dictation = await run(actor, (client) =>
-        dictationService.createFromTranscript(client, actor, id, body.transcript),
+        dictationService.createFromTranscript(client, actor, id, body.transcript, body.purpose),
       );
       return reply.code(201).send(dictation);
     },
@@ -428,13 +433,17 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
     preHandler: requirePermission('prescribe'),
     handler: async (request, reply) => {
       const { id } = idParams.parse(request.params);
-      const body = z.object({
-        audioBase64: z.string().min(1).max(36 * 1024 * 1024),
-        contentType: z.string().min(1).max(120),
-      }).parse(request.body);
+      const { purpose } = z.object({
+        purpose: dictationPurpose.default('encounter_note'),
+      }).parse(request.query);
+      const contentType = z.enum([
+        'audio/webm', 'audio/webm;codecs=opus', 'audio/mp4',
+        'audio/mpeg', 'audio/ogg', 'audio/wav',
+      ]).parse(request.headers['content-type']?.toLowerCase());
+      if (!Buffer.isBuffer(request.body)) throw new BadRequest('Audio recording is required');
       const actor = actorOf(request);
       const dictation = await run(actor, (client) =>
-        dictationService.createFromAudio(client, actor, id, body.audioBase64, body.contentType),
+        dictationService.createFromAudio(client, actor, id, request.body as Buffer, contentType, purpose),
       );
       return reply.code(201).send(dictation);
     },

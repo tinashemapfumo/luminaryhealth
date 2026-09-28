@@ -6,6 +6,7 @@ import { assertSamePatient, requireEncounterInTenant } from '../../platform/tena
 import { clinicalService, type Actor } from './clinical.service.js';
 
 type SuggestedDiagnosis = { code: string; label: string; sourceText?: string };
+export type DictationPurpose = 'encounter_note' | 'prescription';
 type StructuredClinicalDetail = {
   chiefComplaint: string | null;
   historyOfPresentIllness: string | null;
@@ -49,9 +50,55 @@ type TranscriptionSource = {
   model: string | null;
 };
 
+type OpenAiResponsePayload = {
+  output_text?: string;
+  status?: string;
+  output?: Array<{
+    type?: string;
+    content?: Array<{ type?: string; text?: string; refusal?: string }>;
+  }>;
+};
+
 function clean(value: unknown): string | null {
   const text = String(value ?? '').trim();
   return text ? text : null;
+}
+
+function positiveInteger(value: unknown, allowZero = false): number | null {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < (allowZero ? 0 : 1)) return null;
+  return number;
+}
+
+function normalizeStrength(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  return text.replace(/\s+/g, ' ').replace(/(\d)\s*(mcg|mg|g|ml|l|units?)\b/gi, '$1 $2').toLowerCase();
+}
+
+function normalizeRoute(value: unknown): string | null {
+  const text = clean(value)?.toLowerCase();
+  if (!text) return null;
+  const routes: Record<string, string> = {
+    po: 'oral', orally: 'oral', 'by mouth': 'oral', oral: 'oral',
+    iv: 'IV', intravenous: 'IV', im: 'IM', intramuscular: 'IM',
+    sc: 'subcutaneous', sq: 'subcutaneous', subcutaneous: 'subcutaneous',
+    topical: 'topical', inhaled: 'inhaled', rectal: 'rectal', ophthalmic: 'ophthalmic',
+  };
+  return routes[text] ?? text;
+}
+
+function normalizeFrequency(value: unknown): string | null {
+  const text = clean(value)?.toLowerCase();
+  if (!text) return null;
+  const frequencies: Record<string, string> = {
+    od: 'once daily', daily: 'once daily', 'once a day': 'once daily', 'once daily': 'once daily',
+    bd: 'twice daily', bid: 'twice daily', 'twice a day': 'twice daily', 'twice daily': 'twice daily',
+    tds: 'three times daily', tid: 'three times daily', 'three times a day': 'three times daily', 'three times daily': 'three times daily',
+    qds: 'four times daily', qid: 'four times daily', 'four times a day': 'four times daily', 'four times daily': 'four times daily',
+  };
+  return frequencies[text] ?? text;
 }
 
 function normalizeClinicalDetail(value: Partial<StructuredClinicalDetail> | null | undefined): StructuredClinicalDetail {
@@ -63,6 +110,19 @@ function normalizeClinicalDetail(value: Partial<StructuredClinicalDetail> | null
     patientAdvice: clean(value?.patientAdvice),
     safetyNet: clean(value?.safetyNet),
   };
+}
+
+export function extractOpenAiResponseText(payload: OpenAiResponsePayload): string | null {
+  const sdkText = clean(payload.output_text);
+  if (sdkText) return sdkText;
+
+  const text = payload.output
+    ?.flatMap((item) => item.content ?? [])
+    .filter((part) => part.type === 'output_text')
+    .map((part) => clean(part.text))
+    .filter((part): part is string => Boolean(part))
+    .join('\n');
+  return clean(text);
 }
 
 function audioFilename(contentType: string) {
@@ -160,7 +220,7 @@ function mockStructure(transcript: string): StructuredDictation {
   };
 }
 
-async function openAiStructure(transcript: string): Promise<StructuredDictation> {
+async function openAiStructure(transcript: string, purpose: DictationPurpose): Promise<StructuredDictation> {
   if (!config.sttApiKey) throw new Conflict('OpenAI credentials are not configured');
   // A bad model name or a malformed schema is a 400, not a hang — but without
   // a client-side ceiling a slow provider round-trip leaves the doctor
@@ -179,17 +239,21 @@ async function openAiStructure(transcript: string): Promise<StructuredDictation>
       },
       body: JSON.stringify({
         model: config.clinicalAiModel,
+        store: false,
         input: [
           {
             role: 'system',
-            content: 'Extract only transcript-supported clinical documentation. Return strict JSON with SOAP fields, structured clinical detail, diagnosis suggestions, complete medication suggestions, and uncertainties. Separate chief complaint, history of presenting illness, review of systems, examination, patient advice, and safety-net instructions. Keep dose separate from strength and frequency. Use null for anything not spoken, including medication form, dose, route, duration, quantity, refills, indication, pharmacy, substitution, and instructions. Do not infer or invent facts.',
+            content: purpose === 'prescription'
+              ? 'Extract only transcript-supported prescription information. Populate medicationsMentioned and uncertainties. Leave note and diagnosis fields empty or null. Keep drug, form, strength, dose, route, frequency, duration, quantity, refills, indication, pharmacy, substitution, and instructions separate. Use null for anything not spoken. Do not infer or invent facts.'
+              : 'Extract only transcript-supported clinical documentation. Return SOAP fields, structured clinical detail, diagnosis suggestions, medication mentions, and uncertainties. Separate chief complaint, history of presenting illness, review of systems, examination, patient advice, and safety-net instructions. Keep dose separate from strength and frequency. Use null for anything not spoken. Do not infer or invent facts.',
           },
           { role: 'user', content: transcript },
         ],
         text: {
           format: {
             type: 'json_schema',
-            name: 'clinical_dictation_draft',
+            name: purpose === 'prescription' ? 'prescription_dictation_draft' : 'encounter_note_dictation_draft',
+            strict: true,
             schema: {
               type: 'object',
               additionalProperties: false,
@@ -292,13 +356,19 @@ async function openAiStructure(transcript: string): Promise<StructuredDictation>
     });
     throw new Conflict('Clinical structuring provider failed');
   }
-  const payload = await response.json() as { output_text?: string };
-  const text = payload.output_text;
-  if (!text) throw new Conflict('Clinical structuring provider returned no draft');
-  return normalizeDraft(JSON.parse(text));
+  const payload = await response.json() as OpenAiResponsePayload;
+  const text = extractOpenAiResponseText(payload);
+  if (!text) {
+    console.error('Clinical structuring provider returned no text output', {
+      status: payload.status,
+      outputTypes: payload.output?.map((item) => item.type) ?? [],
+    });
+    throw new Conflict('Clinical structuring provider returned no draft');
+  }
+  return standardizeDraft(JSON.parse(text), purpose);
 }
 
-function normalizeDraft(value: Partial<StructuredDictation>): StructuredDictation {
+export function normalizeDraft(value: Partial<StructuredDictation>): StructuredDictation {
   return {
     subjective: clean(value.subjective),
     objective: clean(value.objective),
@@ -313,14 +383,14 @@ function normalizeDraft(value: Partial<StructuredDictation>): StructuredDictatio
     })).filter((item) => item.code && item.label) : [],
     medicationsMentioned: Array.isArray(value.medicationsMentioned) ? value.medicationsMentioned.map((item) => ({
       drug: String(item.drug || '').trim(),
-      form: clean(item.form),
-      strength: clean(item.strength),
+      form: clean(item.form)?.toLowerCase() ?? null,
+      strength: normalizeStrength(item.strength),
       dose: clean(item.dose),
-      route: clean(item.route),
-      frequency: clean(item.frequency),
-      durationDays: item.durationDays == null ? null : Number(item.durationDays),
-      quantity: item.quantity == null ? null : Number(item.quantity),
-      refills: item.refills == null ? 0 : Number(item.refills),
+      route: normalizeRoute(item.route),
+      frequency: normalizeFrequency(item.frequency),
+      durationDays: positiveInteger(item.durationDays),
+      quantity: positiveInteger(item.quantity),
+      refills: positiveInteger(item.refills, true) ?? 0,
       indication: clean(item.indication),
       pharmacy: clean(item.pharmacy),
       substitutionAllowed: typeof item.substitutionAllowed === 'boolean' ? item.substitutionAllowed : null,
@@ -334,18 +404,35 @@ function normalizeDraft(value: Partial<StructuredDictation>): StructuredDictatio
   };
 }
 
-async function structureTranscript(transcript: string) {
-  if (config.clinicalAiProvider === 'openai') return openAiStructure(transcript);
-  return mockStructure(transcript);
+export function standardizeDraft(
+  value: Partial<StructuredDictation>,
+  purpose: DictationPurpose = 'encounter_note',
+): StructuredDictation {
+  const draft = normalizeDraft(value);
+  if (purpose !== 'prescription') return draft;
+  return {
+    ...draft,
+    subjective: null,
+    objective: null,
+    assessment: null,
+    plan: null,
+    followUp: null,
+    clinicalDetail: normalizeClinicalDetail(null),
+    diagnosesMentioned: [],
+  };
 }
 
-async function transcribeAudio(audioBase64: string, contentType: string): Promise<TranscriptionSource> {
+async function structureTranscript(transcript: string, purpose: DictationPurpose) {
+  if (config.clinicalAiProvider === 'openai') return openAiStructure(transcript, purpose);
+  return standardizeDraft(mockStructure(transcript), purpose);
+}
+
+async function transcribeAudio(audio: Buffer, contentType: string): Promise<TranscriptionSource> {
   if (config.sttProvider !== 'openai') {
     throw new Conflict('Audio transcription is not configured');
   }
   if (!config.sttApiKey) throw new Conflict('OpenAI credentials are not configured');
 
-  const audio = Buffer.from(audioBase64, 'base64');
   if (audio.length < 256) throw new BadRequest('Dictation audio is too short to transcribe');
   if (audio.length > 25 * 1024 * 1024) throw new BadRequest('Dictation audio is too large');
 
@@ -356,7 +443,7 @@ async function transcribeAudio(audioBase64: string, contentType: string): Promis
     'prompt',
     'Medical consultation dictation in English, with possible Zimbabwean clinical context. Preserve medication names, doses, durations, vitals, and ICD-relevant diagnoses.',
   );
-  form.append('file', new Blob([audio], { type: contentType }), audioFilename(contentType));
+  form.append('file', new Blob([Uint8Array.from(audio)], { type: contentType }), audioFilename(contentType));
 
   const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -393,7 +480,13 @@ function requireDoctor(actor: Actor) {
 }
 
 export const dictationService = {
-  async createFromTranscript(client: PoolClient, actor: Actor, encounterId: string, transcript: string) {
+  async createFromTranscript(
+    client: PoolClient,
+    actor: Actor,
+    encounterId: string,
+    transcript: string,
+    purpose: DictationPurpose = 'encounter_note',
+  ) {
     requireDoctor(actor);
     const text = transcript.trim();
     if (text.length < 12) throw new BadRequest('Dictation transcript is too short to structure');
@@ -402,24 +495,37 @@ export const dictationService = {
       transcript: text,
       provider: 'manual',
       model: config.sttModel,
-    });
+    }, purpose);
   },
 
-  async createFromAudio(client: PoolClient, actor: Actor, encounterId: string, audioBase64: string, contentType: string) {
+  async createFromAudio(
+    client: PoolClient,
+    actor: Actor,
+    encounterId: string,
+    audio: Buffer,
+    contentType: string,
+    purpose: DictationPurpose = 'encounter_note',
+  ) {
     requireDoctor(actor);
-    const source = await transcribeAudio(audioBase64, contentType);
+    const source = await transcribeAudio(audio, contentType);
     if (source.transcript.length < 12) throw new BadRequest('Dictation transcript is too short to structure');
     if (source.transcript.length > 12000) throw new BadRequest('Dictation transcript is too long');
-    return this.createCaptured(client, actor, encounterId, source);
+    return this.createCaptured(client, actor, encounterId, source, purpose);
   },
 
-  async createCaptured(client: PoolClient, actor: Actor, encounterId: string, source: TranscriptionSource) {
+  async createCaptured(
+    client: PoolClient,
+    actor: Actor,
+    encounterId: string,
+    source: TranscriptionSource,
+    purpose: DictationPurpose = 'encounter_note',
+  ) {
     const encounter = await requireEncounterInTenant(client, encounterId);
     const { rows } = await client.query(
       `INSERT INTO luminary.encounter_dictation
          (practice_id, patient_id, encounter_id, created_by, stt_provider, stt_model,
-          clinical_ai_provider, clinical_ai_model, raw_transcript)
-       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8)
+          clinical_ai_provider, clinical_ai_model, raw_transcript, purpose)
+       VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         encounter.patient_id,
@@ -430,11 +536,16 @@ export const dictationService = {
         config.clinicalAiProvider,
         config.clinicalAiModel,
         source.transcript,
+        purpose,
       ],
     );
     await client.query(
       `SELECT luminary.write_audit('Captured doctor dictation transcript', 'encounter', $1, $2, $3, 'notice')`,
-      [encounterId, source.provider === 'manual' ? 'manual transcript' : `${source.provider} transcription`, rows[0].id],
+      [
+        encounterId,
+        `${purpose}: ${source.provider === 'manual' ? 'manual transcript' : `${source.provider} transcription`}`,
+        rows[0].id,
+      ],
     );
     return rows[0];
   },
@@ -450,7 +561,8 @@ export const dictationService = {
     }
 
     try {
-      const draft = await structureTranscript(row.raw_transcript);
+      const purpose: DictationPurpose = row.purpose === 'prescription' ? 'prescription' : 'encounter_note';
+      const draft = await structureTranscript(row.raw_transcript, purpose);
       const { rows } = await client.query(
         `UPDATE luminary.encounter_dictation
             SET status = 'structured',
@@ -501,6 +613,7 @@ export const dictationService = {
     requireDoctor(actor);
     const row = await dictationFor(client, id);
     if (row.created_by !== actor.userId) throw new Forbidden('Only the dictating doctor can approve this draft');
+    if (row.purpose === 'prescription') throw new Conflict('Prescription dictation cannot be approved as an encounter note');
     if (row.status !== 'structured') throw new Conflict('Only structured dictation drafts can be approved');
     const draft = normalizeDraft(row.structured_draft ?? {});
     const noteFields = {

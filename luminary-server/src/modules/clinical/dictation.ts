@@ -64,6 +64,20 @@ function clean(value: unknown): string | null {
   return text ? text : null;
 }
 
+function normalizeClinicalText(value: unknown): string | null {
+  const text = clean(value);
+  if (!text) return null;
+  return text
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .trim();
+}
+
+function joinDistinctClinicalText(values: Array<string | null>): string | null {
+  const unique = [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return unique.length ? unique.join('\n') : null;
+}
+
 function positiveInteger(value: unknown, allowZero = false): number | null {
   if (value == null || value === '') return null;
   const number = Number(value);
@@ -103,12 +117,12 @@ function normalizeFrequency(value: unknown): string | null {
 
 function normalizeClinicalDetail(value: Partial<StructuredClinicalDetail> | null | undefined): StructuredClinicalDetail {
   return {
-    chiefComplaint: clean(value?.chiefComplaint),
-    historyOfPresentIllness: clean(value?.historyOfPresentIllness),
-    reviewOfSystems: clean(value?.reviewOfSystems),
-    examination: clean(value?.examination),
-    patientAdvice: clean(value?.patientAdvice),
-    safetyNet: clean(value?.safetyNet),
+    chiefComplaint: normalizeClinicalText(value?.chiefComplaint),
+    historyOfPresentIllness: normalizeClinicalText(value?.historyOfPresentIllness),
+    reviewOfSystems: normalizeClinicalText(value?.reviewOfSystems),
+    examination: normalizeClinicalText(value?.examination),
+    patientAdvice: normalizeClinicalText(value?.patientAdvice),
+    safetyNet: normalizeClinicalText(value?.safetyNet),
   };
 }
 
@@ -245,7 +259,7 @@ async function openAiStructure(transcript: string, purpose: DictationPurpose): P
             role: 'system',
             content: purpose === 'prescription'
               ? 'Extract only transcript-supported prescription information. Populate medicationsMentioned and uncertainties. Leave note and diagnosis fields empty or null. Keep drug, form, strength, dose, route, frequency, duration, quantity, refills, indication, pharmacy, substitution, and instructions separate. Use null for anything not spoken. Do not infer or invent facts.'
-              : 'Extract only transcript-supported clinical documentation. Return SOAP fields, structured clinical detail, diagnosis suggestions, medication mentions, and uncertainties. Separate chief complaint, history of presenting illness, review of systems, examination, patient advice, and safety-net instructions. Keep dose separate from strength and frequency. Use null for anything not spoken. Do not infer or invent facts.',
+              : 'Structure the transcript into an editable clinical note using only facts explicitly supported by the transcript. Put symptoms, history, patient-reported information, chronology, and relevant negatives in subjective. Put measured vitals, examination findings, observed facts, and available results in objective. Put only the clinician\'s explicitly stated impressions or diagnoses in assessment; never convert a symptom into a diagnosis. Put investigations, treatments, referrals, advice, and safety-net actions in plan. Put explicit review timing in followUp. Also separate chief complaint, history of presenting illness, review of systems, examination, patient advice, and safety-net instructions in clinicalDetail. Preserve negation, uncertainty, chronology, laterality, values, and units. Keep medication dose separate from strength, route, frequency, and duration. Use null for anything not spoken. Do not infer, embellish, or invent facts.',
           },
           { role: 'user', content: transcript },
         ],
@@ -259,11 +273,11 @@ async function openAiStructure(transcript: string, purpose: DictationPurpose): P
               additionalProperties: false,
               required: ['subjective', 'objective', 'assessment', 'plan', 'followUp', 'clinicalDetail', 'diagnosesMentioned', 'medicationsMentioned', 'uncertainties'],
               properties: {
-                subjective: { type: ['string', 'null'] },
-                objective: { type: ['string', 'null'] },
-                assessment: { type: ['string', 'null'] },
-                plan: { type: ['string', 'null'] },
-                followUp: { type: ['string', 'null'] },
+                subjective: { type: ['string', 'null'], description: 'Patient-reported symptoms, history, chronology, and relevant negatives only.' },
+                objective: { type: ['string', 'null'], description: 'Measured vitals, examination findings, observations, and available results only.' },
+                assessment: { type: ['string', 'null'], description: 'Only explicitly stated clinician impressions or diagnoses.' },
+                plan: { type: ['string', 'null'], description: 'Investigations, treatments, referrals, advice, and safety-net actions.' },
+                followUp: { type: ['string', 'null'], description: 'Explicit review timing or follow-up arrangement.' },
                 clinicalDetail: {
                   type: 'object',
                   additionalProperties: false,
@@ -369,18 +383,25 @@ async function openAiStructure(transcript: string, purpose: DictationPurpose): P
 }
 
 export function normalizeDraft(value: Partial<StructuredDictation>): StructuredDictation {
+  const diagnosisKeys = new Set<string>();
   return {
-    subjective: clean(value.subjective),
-    objective: clean(value.objective),
-    assessment: clean(value.assessment),
-    plan: clean(value.plan),
-    followUp: clean(value.followUp),
+    subjective: normalizeClinicalText(value.subjective),
+    objective: normalizeClinicalText(value.objective),
+    assessment: normalizeClinicalText(value.assessment),
+    plan: normalizeClinicalText(value.plan),
+    followUp: normalizeClinicalText(value.followUp),
     clinicalDetail: normalizeClinicalDetail(value.clinicalDetail),
     diagnosesMentioned: Array.isArray(value.diagnosesMentioned) ? value.diagnosesMentioned.map((item) => ({
-      code: String(item.code || '').trim(),
-      label: String(item.label || '').trim(),
-      sourceText: clean(item.sourceText) ?? undefined,
-    })).filter((item) => item.code && item.label) : [],
+      code: String(item.code || '').trim().toUpperCase().replace(/\s+/g, ''),
+      label: normalizeClinicalText(item.label) ?? '',
+      sourceText: normalizeClinicalText(item.sourceText) ?? undefined,
+    })).filter((item) => {
+      if (!item.code || !item.label) return false;
+      const key = `${item.code}|${item.label.toLowerCase()}`;
+      if (diagnosisKeys.has(key)) return false;
+      diagnosisKeys.add(key);
+      return true;
+    }) : [],
     medicationsMentioned: Array.isArray(value.medicationsMentioned) ? value.medicationsMentioned.map((item) => ({
       drug: String(item.drug || '').trim(),
       form: clean(item.form)?.toLowerCase() ?? null,
@@ -409,7 +430,21 @@ export function standardizeDraft(
   purpose: DictationPurpose = 'encounter_note',
 ): StructuredDictation {
   const draft = normalizeDraft(value);
-  if (purpose !== 'prescription') return draft;
+  if (purpose === 'encounter_note') {
+    return {
+      ...draft,
+      subjective: draft.subjective ?? joinDistinctClinicalText([
+        draft.clinicalDetail.chiefComplaint,
+        draft.clinicalDetail.historyOfPresentIllness,
+        draft.clinicalDetail.reviewOfSystems,
+      ]),
+      objective: draft.objective ?? draft.clinicalDetail.examination,
+      plan: draft.plan ?? joinDistinctClinicalText([
+        draft.clinicalDetail.patientAdvice,
+        draft.clinicalDetail.safetyNet,
+      ]),
+    };
+  }
   return {
     ...draft,
     subjective: null,

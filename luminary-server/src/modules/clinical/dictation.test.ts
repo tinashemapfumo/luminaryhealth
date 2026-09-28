@@ -76,6 +76,37 @@ void test('dictation normalization drops unsafe numeric output instead of coerci
   assert.equal(draft.medicationsMentioned[0]?.refills, 0);
 });
 
+void test('encounter-note drafts normalize SOAP text and use matching clinical detail as fallback', () => {
+  const draft = standardizeDraft({
+    subjective: null,
+    objective: '  BP  138/86.  \n  Chest clear. ',
+    assessment: '  Viral   upper respiratory infection ',
+    plan: null,
+    clinicalDetail: {
+      chiefComplaint: ' Cough ',
+      historyOfPresentIllness: ' Three-day dry cough. ',
+      reviewOfSystems: ' No shortness of breath. ',
+      examination: 'This should not replace the supplied objective.',
+      patientAdvice: ' Maintain oral fluids. ',
+      safetyNet: ' Return if breathing worsens. ',
+    },
+    diagnosesMentioned: [
+      { code: ' j06.9 ', label: ' Acute upper respiratory infection ' },
+      { code: 'J06.9', label: 'Acute upper respiratory infection' },
+    ],
+  }, 'encounter_note');
+
+  assert.equal(draft.subjective, 'Cough\nThree-day dry cough.\nNo shortness of breath.');
+  assert.equal(draft.objective, 'BP 138/86.\nChest clear.');
+  assert.equal(draft.assessment, 'Viral upper respiratory infection');
+  assert.equal(draft.plan, 'Maintain oral fluids.\nReturn if breathing worsens.');
+  assert.deepEqual(draft.diagnosesMentioned, [{
+    code: 'J06.9',
+    label: 'Acute upper respiratory infection',
+    sourceText: undefined,
+  }]);
+});
+
 void test('prescription-purpose drafts cannot populate encounter-note fields', () => {
   const draft = standardizeDraft({
     subjective: 'This must not be copied into the note',

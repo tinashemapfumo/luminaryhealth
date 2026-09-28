@@ -204,6 +204,7 @@ export const api = {
     updateDraft: (id, draft) => patch(`/dictations/${id}/draft`, draft),
     approveNote: (id, fields) => post(`/dictations/${id}/approve-note`, fields),
     approvePrescription: (id, medication) => post(`/dictations/${id}/approve-prescription`, medication),
+    approvePrescriptions: (id, body) => post(`/dictations/${id}/approve-prescriptions`, body),
   },
 
   documents: {

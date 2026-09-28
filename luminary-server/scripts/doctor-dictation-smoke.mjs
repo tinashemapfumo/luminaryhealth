@@ -117,6 +117,26 @@ async function main() {
   expect(crossTenantRead.response.status === 404, `cross-tenant dictation leaked: ${crossTenantRead.response.status}`);
   ok('cross-tenant dictation access returns not found');
 
+  const medication = structured.payload.structured_draft.medicationsMentioned[0];
+  const rx = await request(`/dictations/${created.payload.id}/approve-prescription`, {
+    method: 'POST',
+    token: doctor,
+    body: {
+      ...medication,
+      sourceIndex: 0,
+      strength: medication.strength || '625 mg',
+      route: medication.route || 'oral',
+      frequency: medication.frequency || 'three times daily',
+      durationDays: medication.durationDays || 7,
+      allergiesReviewed: true,
+    },
+  });
+  expect(rx.response.status === 201, `approve prescription failed: ${rx.response.status} ${JSON.stringify(rx.payload)}`);
+  expect(rx.payload.prescription.drug === medication.drug, 'approved prescription drug mismatch');
+  ok('doctor explicitly issued a structured prescription');
+
+  // Note approval remains available after medication issue; these are
+  // independent clinical decisions, not steps in one linear status machine.
   const approved = await request(`/dictations/${created.payload.id}/approve-note`, {
     method: 'POST',
     token: doctor,
@@ -126,29 +146,26 @@ async function main() {
       assessment: structured.payload.structured_draft.assessment,
       plan: structured.payload.structured_draft.plan,
       followUp: structured.payload.structured_draft.followUp,
+      structuredNote: structured.payload.structured_draft.clinicalDetail,
       diagnoses: structured.payload.structured_draft.diagnosesMentioned.map(({ code, label }) => ({ code, label })),
     },
   });
   expect(approved.response.ok, `approve note failed: ${approved.response.status} ${JSON.stringify(approved.payload)}`);
   expect(approved.payload.encounter.assessment, 'approved encounter assessment missing');
+  expect(approved.payload.encounter.structured_note?.chiefComplaint, 'approved structured clinical detail missing');
   expect(approved.payload.encounter.diagnoses.length > 0, 'approved diagnosis missing');
-  ok('doctor approval saved structured fields to encounter');
-
-  const medication = structured.payload.structured_draft.medicationsMentioned[0];
-  const rx = await request(`/dictations/${created.payload.id}/approve-prescription`, {
-    method: 'POST',
-    token: doctor,
-    body: { ...medication, allergiesReviewed: true },
-  });
-  expect(rx.response.status === 201, `approve prescription failed: ${rx.response.status} ${JSON.stringify(rx.payload)}`);
-  expect(rx.payload.prescription.drug === medication.drug, 'approved prescription drug mismatch');
-  ok('doctor approval created prescription explicitly');
+  ok('doctor approval saved note fields after medication issue');
 
   const pool = new pg.Pool({ connectionString: DB });
   const migration = await pool.query(
-    `SELECT 1 FROM public.schema_migration WHERE filename = '037_doctor_dictation_drafts.sql'`,
+    `SELECT filename FROM public.schema_migration
+      WHERE filename IN (
+        '037_doctor_dictation_drafts.sql',
+        '057_dictation_independent_outputs.sql',
+        '058_encounter_structured_note.sql'
+      )`,
   );
-  expect(migration.rows.length === 1, 'dictation migration not recorded');
+  expect(migration.rows.length === 3, 'dictation migrations not recorded');
   const audit = await pool.query(
     `SELECT action FROM luminary.audit_event
       WHERE subject_id = $1 AND action LIKE '%dictation%'

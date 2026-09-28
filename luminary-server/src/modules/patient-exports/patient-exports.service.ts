@@ -200,7 +200,7 @@ export const patientExportsService = {
       files.push({ name: 'Patient_Summary.pdf', bytes, checksum: digest(bytes), size: bytes.length });
     }
     if (job.included_sections.includes('clinical')) {
-      const encounters = await rows(client, `SELECT e.id,e.note_type,e.status,e.vitals,e.subjective,e.objective,e.assessment,e.plan,e.diagnoses,e.follow_up,e.signed_at,u.display_name AS author
+      const encounters = await rows(client, `SELECT e.id,e.note_type,e.status,e.vitals,e.subjective,e.objective,e.assessment,e.plan,e.diagnoses,e.follow_up,e.structured_note,e.signed_at,u.display_name AS author
         FROM luminary.encounter e JOIN luminary.app_user u ON u.id=e.author_id
         WHERE e.patient_id=$1 AND e.status IN ('signed','amended') AND e.deleted_at IS NULL
           AND ($2::date IS NULL OR e.created_at::date >= $2) AND ($3::date IS NULL OR e.created_at::date <= $3)

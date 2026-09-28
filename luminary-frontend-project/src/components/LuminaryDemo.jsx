@@ -7,10 +7,13 @@ import {
   ChevronDown,
   ChevronRight,
   Moon,
+  Mic,
   Plus,
   Search,
   Settings,
+  Square,
   Sun,
+  Trash2,
 } from 'lucide-react';
 import { LuminaryLogo, LuminaryMark } from './LuminaryLogo';
 import { Modal, Field, Input, Select, Textarea, Button, Toast, OceanWaveDecoration, HumanAvatar } from './ui';
@@ -346,13 +349,165 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   };
   const [form, setForm] = useState({});
   const [formErrors, setFormErrors] = useState({});
+  const [prescriptionRecordingState, setPrescriptionRecordingState] = useState('idle');
+  const [prescriptionRecordingSeconds, setPrescriptionRecordingSeconds] = useState(0);
+  const [prescriptionAudioBlob, setPrescriptionAudioBlob] = useState(null);
+  const [prescriptionAudioUrl, setPrescriptionAudioUrl] = useState('');
+  const prescriptionRecorderRef = useRef(null);
+  const prescriptionStreamRef = useRef(null);
+  const prescriptionRecognitionRef = useRef(null);
+  const prescriptionChunksRef = useRef([]);
+  const prescriptionTimerRef = useRef(null);
+  const prescriptionTranscriptRef = useRef('');
+  const prescriptionDiscardRef = useRef(false);
+
+  const stopPrescriptionTimer = useCallback(() => {
+    if (prescriptionTimerRef.current) window.clearInterval(prescriptionTimerRef.current);
+    prescriptionTimerRef.current = null;
+  }, []);
+
+  const releasePrescriptionMicrophone = useCallback(() => {
+    stopPrescriptionTimer();
+    try {
+      prescriptionRecognitionRef.current?.stop?.();
+    } catch {
+      // Recognition may already have ended after the recorder stopped.
+    }
+    prescriptionRecognitionRef.current = null;
+    prescriptionStreamRef.current?.getTracks?.().forEach((track) => track.stop());
+    prescriptionStreamRef.current = null;
+    prescriptionRecorderRef.current = null;
+  }, [stopPrescriptionTimer]);
+
+  const clearPrescriptionRecording = useCallback(() => {
+    const recorder = prescriptionRecorderRef.current;
+    prescriptionDiscardRef.current = true;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    releasePrescriptionMicrophone();
+    prescriptionChunksRef.current = [];
+    setPrescriptionAudioBlob(null);
+    setPrescriptionAudioUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return '';
+    });
+    setPrescriptionRecordingSeconds(0);
+    setPrescriptionRecordingState('idle');
+  }, [releasePrescriptionMicrophone]);
+
   const openDialog = (name, initial = {}) => {
+    if (name === 'prescriptionDictation') clearPrescriptionRecording();
     setForm(initial);
+    prescriptionTranscriptRef.current = String(initial.transcript || '');
     setFormErrors({});
     setDialog(name);
+    if (name === 'prescriptionDictation') void startPrescriptionRecording();
   };
-  const closeDialog = () => setDialog(null);
+  const closeDialog = () => {
+    clearPrescriptionRecording();
+    setDialog(null);
+  };
   const setField = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+
+  useEffect(() => () => clearPrescriptionRecording(), [clearPrescriptionRecording]);
+
+  const startPrescriptionRecording = async () => {
+    setFormErrors({});
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setFormErrors({ transcript: 'Microphone recording is not supported by this browser.' });
+      return;
+    }
+    try {
+      clearPrescriptionRecording();
+      prescriptionDiscardRef.current = false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      prescriptionStreamRef.current = stream;
+      prescriptionChunksRef.current = [];
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
+        .find((type) => MediaRecorder.isTypeSupported?.(type));
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      prescriptionRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) prescriptionChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        if (prescriptionDiscardRef.current) {
+          prescriptionDiscardRef.current = false;
+          releasePrescriptionMicrophone();
+          return;
+        }
+        const type = prescriptionChunksRef.current[0]?.type || recorder.mimeType || mimeType || 'audio/webm';
+        const blob = new Blob(prescriptionChunksRef.current, { type });
+        if (blob.size) {
+          setPrescriptionAudioBlob(blob);
+          setPrescriptionAudioUrl((current) => {
+            if (current) URL.revokeObjectURL(current);
+            return URL.createObjectURL(blob);
+          });
+        }
+        releasePrescriptionMicrophone();
+        setPrescriptionRecordingState('stopped');
+      };
+
+      const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (Recognition) {
+        const recognition = new Recognition();
+        let committed = prescriptionTranscriptRef.current.trim();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-ZW';
+        recognition.onresult = (event) => {
+          let interim = '';
+          for (let index = event.resultIndex; index < event.results.length; index += 1) {
+            const text = event.results[index][0]?.transcript || '';
+            if (event.results[index].isFinal) committed = `${committed} ${text}`.trim();
+            else interim += text;
+          }
+          const transcript = `${committed} ${interim}`.trim();
+          prescriptionTranscriptRef.current = transcript;
+          setForm((prev) => ({ ...prev, transcript }));
+        };
+        recognition.onerror = (event) => {
+          if (event.error === 'not-allowed') setFormErrors({ transcript: 'Microphone permission was denied.' });
+        };
+        prescriptionRecognitionRef.current = recognition;
+        recognition.start();
+      }
+
+      recorder.start(1000);
+      prescriptionTimerRef.current = window.setInterval(
+        () => setPrescriptionRecordingSeconds((seconds) => seconds + 1),
+        1000,
+      );
+      setPrescriptionRecordingState('recording');
+    } catch (error) {
+      releasePrescriptionMicrophone();
+      setPrescriptionRecordingState('idle');
+      setFormErrors({
+        transcript: error?.name === 'NotAllowedError'
+          ? 'Microphone permission was denied.'
+          : 'The microphone could not be started.',
+      });
+    }
+  };
+
+  const stopPrescriptionRecording = () => {
+    const recorder = prescriptionRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    stopPrescriptionTimer();
+    try {
+      prescriptionRecognitionRef.current?.stop?.();
+    } catch {
+      // Recognition may already be stopping.
+    }
+    setPrescriptionRecordingState('processing');
+  };
+
+  const prescriptionAudioBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || '').split(',').pop() || '');
+    reader.onerror = () => reject(reader.error || new Error('Could not read the recording.'));
+    reader.readAsDataURL(blob);
+  });
   /**
    * Set a field from a plain value.
    *
@@ -483,6 +638,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     assessment: note.assessment,
     plan: note.plan,
     follow_up: note.followUp,
+    structured_note: note.structuredNote ?? {},
     diagnoses: note.diagnoses ?? [],
   });
 
@@ -879,31 +1035,54 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
    * some not if a later row failed. The server writes all rows on one
    * transaction instead, so this either returns every prescription or none.
    */
-  const createPrescriptionBatch = async ({ patient, encounterId, allergiesReviewed, items }) => {
+  const createPrescriptionBatch = async ({ patient, encounterId, dictationId, allergiesReviewed, items }) => {
     if (!live) {
       notify('Prescriptions require the live API');
       return null;
     }
-    const created = await api.prescriptions.createBatch({
-      patientId: patient.patientId ?? patient.id,
-      encounterId: encounterId || null,
-      allergiesReviewed: Boolean(allergiesReviewed),
-      items: items.map((item) => ({
-        drug: item.drug?.trim(),
-        form: item.form?.trim() || undefined,
-        strength: item.strength?.trim(),
-        dose: item.dose?.trim() || undefined,
-        route: item.route?.trim(),
-        frequency: item.frequency?.trim(),
-        durationDays: item.durationDays !== undefined && item.durationDays !== '' ? Number(item.durationDays) : undefined,
-        quantity: item.quantity !== undefined && item.quantity !== '' ? Number(item.quantity) : undefined,
-        refills: item.refills !== undefined && item.refills !== '' ? Number(item.refills) : 0,
-        indication: item.indication?.trim() || undefined,
-        pharmacy: item.pharmacy?.trim() || undefined,
-        substitutionAllowed: item.substitutionAllowed,
-        instructions: item.instructions?.trim() || undefined,
-      })),
-    });
+    const mappedItems = items.map((item, index) => ({
+      sourceIndex: item.sourceIndex ?? index,
+      drug: item.drug?.trim(),
+      form: item.form?.trim() || undefined,
+      strength: item.strength?.trim(),
+      dose: item.dose?.trim() || undefined,
+      route: item.route?.trim(),
+      frequency: item.frequency?.trim(),
+      durationDays: item.durationDays !== undefined && item.durationDays !== '' ? Number(item.durationDays) : undefined,
+      quantity: item.quantity !== undefined && item.quantity !== '' ? Number(item.quantity) : undefined,
+      refills: item.refills !== undefined && item.refills !== '' ? Number(item.refills) : 0,
+      indication: item.indication?.trim() || undefined,
+      pharmacy: item.pharmacy?.trim() || undefined,
+      substitutionAllowed: item.substitutionAllowed === '' || item.substitutionAllowed == null
+        ? undefined
+        : item.substitutionAllowed === true || item.substitutionAllowed === 'true',
+      instructions: item.instructions?.trim() || undefined,
+    }));
+    const created = dictationId
+      ? (await api.dictations.approvePrescriptions(dictationId, {
+          allergiesReviewed: Boolean(allergiesReviewed),
+          medications: mappedItems,
+        })).prescriptions
+      : await api.prescriptions.createBatch({
+          patientId: patient.patientId ?? patient.id,
+          encounterId: encounterId || null,
+          allergiesReviewed: Boolean(allergiesReviewed),
+          items: mappedItems.map((item) => ({
+            drug: item.drug,
+            form: item.form,
+            strength: item.strength,
+            dose: item.dose,
+            route: item.route,
+            frequency: item.frequency,
+            durationDays: item.durationDays,
+            quantity: item.quantity,
+            refills: item.refills,
+            indication: item.indication,
+            pharmacy: item.pharmacy,
+            substitutionAllowed: item.substitutionAllowed,
+            instructions: item.instructions,
+          })),
+        });
     const mapped = created.map((rx) => prescriptionFromApi(rx, roleInfo.person ?? currentUser.name));
     setPatientRecords((prev) => ({
       ...prev,
@@ -2529,7 +2708,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
   };
 
   /**
-   * Turn a typed/pasted dictation transcript into a structured draft.
+   * Turn recorded audio or a typed/pasted transcript into a structured draft.
    *
    * Dictation is an encounter-scoped resource server-side, so this reuses
    * today's open (unsigned) note for the patient if one exists, and quietly
@@ -2540,7 +2719,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     event.preventDefault();
     const patient = form.patient;
     const transcript = (form.transcript || '').trim();
-    if (transcript.length < 12) {
+    if (transcript.length < 12 && !prescriptionAudioBlob) {
       setFormErrors({ transcript: 'Dictate or paste at least a sentence describing the prescription' });
       return;
     }
@@ -2553,7 +2732,12 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         encounterId = created.id;
         setLiveEncounters((prev) => [encounterFromApi(created, patient), ...prev]);
       }
-      const dictation = await api.encounters.createDictation(encounterId, { transcript });
+      const dictation = transcript.length >= 12
+        ? await api.encounters.createDictation(encounterId, { transcript })
+        : await api.encounters.createDictationFromAudio(encounterId, {
+            audioBase64: await prescriptionAudioBase64(prescriptionAudioBlob),
+            contentType: prescriptionAudioBlob.type || 'audio/webm',
+          });
       const structured = await api.dictations.structure(dictation.id);
       const draft = structured.structured_draft || {};
       const medicationsMentioned = Array.isArray(draft.medicationsMentioned) ? draft.medicationsMentioned : [];
@@ -2561,16 +2745,32 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
       // manual multi-drug form — a dictation naming three medications should
       // not force three separate trips through this dialog.
       const items = medicationsMentioned.length
-        ? medicationsMentioned.map((med) => ({
+        ? medicationsMentioned.map((med, index) => ({
             ...blankPrescriptionItem(),
             drug: med.drug || '',
             strength: med.strength || '',
+            form: med.form || '',
+            dose: med.dose || '',
             route: med.route || '',
             frequency: med.frequency || '',
             durationDays: med.durationDays || '',
+            quantity: med.quantity || '',
+            refills: med.refills ?? '0',
+            indication: med.indication || '',
+            pharmacy: med.pharmacy || '',
+            substitutionAllowed: med.substitutionAllowed == null ? '' : String(med.substitutionAllowed),
+            instructions: med.instructions || '',
+            sourceText: med.sourceText || '',
+            sourceIndex: med.sourceIndex ?? index,
           }))
         : [blankPrescriptionItem()];
-      setForm((prev) => ({ ...prev, structuring: false, dictationId: dictation.id, items }));
+      setForm((prev) => ({
+        ...prev,
+        structuring: false,
+        transcript: dictation.raw_transcript || transcript,
+        dictationId: dictation.id,
+        items,
+      }));
       if (medicationsMentioned.length === 0) {
         notify('No medication was recognised in that dictation — fill in the fields below before issuing');
       }
@@ -2580,21 +2780,21 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     }
   };
 
-  /**
-   * Issues every reviewed row through the same batch endpoint the manual
-   * multi-drug form uses, rather than /dictations/:id/approve-prescription —
-   * that endpoint (and the dictation row's approved_prescription_id column)
-   * can only ever link one prescription, so it cannot represent "this
-   * dictation produced three prescriptions." The dictation itself stays
-   * structured rather than being marked approved; the transcript and
-   * extracted draft remain on record either way.
-   */
+  /** Issue all reviewed rows together and retain per-item dictation provenance. */
   const approveDictatedPrescription = async (event) => {
     event.preventDefault();
     const patient = form.patient;
     const record = patient ? patientRecords[patient.id] : null;
     const items = form.items?.length ? form.items : [];
-    const itemErrors = items.map((item) => (!item.drug?.trim() ? { drug: 'Medication name is required' } : {}));
+    const itemErrors = items.map((item) => {
+      const error = {};
+      if (!item.drug?.trim()) error.drug = 'Medication name is required';
+      if (!item.strength?.trim()) error.strength = 'Strength is required';
+      if (!item.route?.trim()) error.route = 'Route is required';
+      if (!item.frequency?.trim()) error.frequency = 'Frequency or directions are required';
+      if (!item.durationDays) error.durationDays = 'Duration is required';
+      return error;
+    });
     const errors = {};
     if (items.length === 0) errors.items = 'Add at least one medication';
     else if (itemErrors.some((e) => Object.keys(e).length)) errors.items = 'Fix the highlighted fields below';
@@ -2607,6 +2807,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
     try {
       const mapped = await createPrescriptionBatch({
         patient,
+        dictationId: form.dictationId,
         items,
         allergiesReviewed: record?.allergiesRecorded || Boolean(form.allergiesReviewed),
       });
@@ -4821,7 +5022,7 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
         footer={<>
           <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
           <Button type="submit" form="prescription-form">
-            Issue {form.items?.length > 1 ? `${form.items.length} prescriptions` : 'prescription'}
+            Issue prescription{form.items?.length > 1 ? ` (${form.items.length} medications)` : ''}
           </Button>
         </>}
       >
@@ -4970,9 +5171,13 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
           <Button variant="secondary" type="button" onClick={closeDialog}>Cancel</Button>
           {form.dictationId
             ? <Button type="submit" form="prescription-dictation-approve-form">
-                Issue {form.items?.length > 1 ? `${form.items.length} prescriptions` : 'prescription'}
+                Issue prescription{form.items?.length > 1 ? ` (${form.items.length} medications)` : ''}
               </Button>
-            : <Button type="submit" form="prescription-dictation-transcript-form" disabled={form.structuring}>
+            : <Button
+                type="submit"
+                form="prescription-dictation-transcript-form"
+                disabled={form.structuring || ['recording', 'processing'].includes(prescriptionRecordingState)}
+              >
                 {form.structuring ? 'Structuring…' : 'Structure'}
               </Button>}
         </>}
@@ -4994,7 +5199,44 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
               </div>
 
               {!form.dictationId && (
-                <form id="prescription-dictation-transcript-form" onSubmit={structureDictation}>
+                <form id="prescription-dictation-transcript-form" onSubmit={structureDictation} className="space-y-3">
+                  <div className="rounded-lg border border-line bg-surface p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`h-2.5 w-2.5 rounded-full ${prescriptionRecordingState === 'recording' ? 'bg-danger' : 'bg-muted/40'}`} />
+                        <span className="text-sm font-semibold text-ink">
+                          {prescriptionRecordingState === 'recording'
+                            ? 'Recording'
+                            : prescriptionRecordingState === 'processing'
+                              ? 'Saving recording'
+                              : prescriptionAudioBlob
+                                ? 'Recording ready'
+                                : 'Ready'}
+                        </span>
+                      </div>
+                      <span className="font-mono text-sm tabular-nums text-ink">
+                        {String(Math.floor(prescriptionRecordingSeconds / 60)).padStart(2, '0')}:{String(prescriptionRecordingSeconds % 60).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {prescriptionRecordingState !== 'recording' && prescriptionRecordingState !== 'processing' && (
+                        <Button variant="secondary" type="button" onClick={startPrescriptionRecording} disabled={form.structuring}>
+                          <Mic size={14} /> Record
+                        </Button>
+                      )}
+                      {prescriptionRecordingState === 'recording' && (
+                        <Button variant="secondary" type="button" onClick={stopPrescriptionRecording}>
+                          <Square size={13} /> Stop
+                        </Button>
+                      )}
+                      {(prescriptionAudioBlob || prescriptionRecordingState === 'recording') && (
+                        <Button variant="secondary" type="button" onClick={clearPrescriptionRecording}>
+                          <Trash2 size={13} /> Clear
+                        </Button>
+                      )}
+                    </div>
+                    {prescriptionAudioUrl && <audio controls src={prescriptionAudioUrl} className="mt-3 w-full" />}
+                  </div>
                   <Field
                     label="Dictated transcript"
                     required
@@ -5003,7 +5245,10 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                   >
                     <Textarea
                       value={form.transcript || ''}
-                      onChange={setField('transcript')}
+                      onChange={(event) => {
+                        prescriptionTranscriptRef.current = event.target.value;
+                        setForm((prev) => ({ ...prev, transcript: event.target.value }));
+                      }}
                       placeholder="Prescribe amoxicillin 500 milligrams, one capsule three times a day for five days…"
                     />
                   </Field>
@@ -5042,19 +5287,65 @@ const LuminaryPMSDemo = ({ session, onSignOut, onLock, onSwitchPractice, auditLo
                                 <Input value={item.drug || ''} onChange={(e) => updatePrescriptionItem(index, 'drug', e.target.value)} placeholder="e.g. Amoxicillin" />
                               </Field>
                             </div>
-                            <Field label="Strength">
+                            <Field label="Form">
+                              <Select
+                                value={item.form || ''}
+                                onChange={(e) => updatePrescriptionItem(index, 'form', e.target.value)}
+                                options={['', 'tablet', 'capsule', 'cream', 'inhaler', 'syrup', 'injection', 'drops', 'ointment']}
+                                render={(value) => value || 'Choose a form...'}
+                              />
+                            </Field>
+                            <Field label="Strength" required error={itemError.strength}>
                               <Input value={item.strength || ''} onChange={(e) => updatePrescriptionItem(index, 'strength', e.target.value)} placeholder="e.g. 500 mg" />
                             </Field>
-                            <Field label="Route">
-                              <Input value={item.route || ''} onChange={(e) => updatePrescriptionItem(index, 'route', e.target.value)} placeholder="e.g. oral" />
+                            <Field label="Dose">
+                              <Input value={item.dose || ''} onChange={(e) => updatePrescriptionItem(index, 'dose', e.target.value)} placeholder="e.g. 1 capsule" />
                             </Field>
-                            <Field label="Frequency / directions">
+                            <Field label="Route" required error={itemError.route}>
+                              <Select
+                                value={item.route || ''}
+                                onChange={(e) => updatePrescriptionItem(index, 'route', e.target.value)}
+                                options={['', 'oral', 'topical', 'IM', 'IV', 'subcutaneous', 'inhaled', 'rectal', 'ophthalmic', 'other']}
+                                render={(value) => value || 'Choose a route...'}
+                              />
+                            </Field>
+                            <Field label="Frequency / directions" required error={itemError.frequency}>
                               <Input value={item.frequency || ''} onChange={(e) => updatePrescriptionItem(index, 'frequency', e.target.value)} placeholder="e.g. three times daily" />
                             </Field>
-                            <Field label="Duration (days)">
+                            <Field label="Duration (days)" required error={itemError.durationDays}>
                               <Input type="number" min="1" value={item.durationDays || ''} onChange={(e) => updatePrescriptionItem(index, 'durationDays', e.target.value)} />
                             </Field>
+                            <Field label="Quantity to dispense">
+                              <Input type="number" min="1" value={item.quantity || ''} onChange={(e) => updatePrescriptionItem(index, 'quantity', e.target.value)} />
+                            </Field>
+                            <Field label="Refills">
+                              <Input type="number" min="0" max="12" value={item.refills ?? '0'} onChange={(e) => updatePrescriptionItem(index, 'refills', e.target.value)} />
+                            </Field>
+                            <Field label="Substitution">
+                              <Select
+                                value={item.substitutionAllowed ?? ''}
+                                onChange={(e) => updatePrescriptionItem(index, 'substitutionAllowed', e.target.value)}
+                                options={['', 'true', 'false']}
+                                render={(value) => (value === 'true' ? 'Substitution allowed' : value === 'false' ? 'Do not substitute' : 'Per pharmacist judgement')}
+                              />
+                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label="Indication">
+                                <Input value={item.indication || ''} onChange={(e) => updatePrescriptionItem(index, 'indication', e.target.value)} />
+                              </Field>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Field label="Pharmacy">
+                                <Input value={item.pharmacy || ''} onChange={(e) => updatePrescriptionItem(index, 'pharmacy', e.target.value)} placeholder="Optional dispensing pharmacy" />
+                              </Field>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Field label="Additional instructions">
+                                <Textarea value={item.instructions || ''} onChange={(e) => updatePrescriptionItem(index, 'instructions', e.target.value)} />
+                              </Field>
+                            </div>
                           </div>
+                          {item.sourceText && <p className="mt-2 text-xs text-muted">From transcript: {item.sourceText}</p>}
                         </div>
                       );
                     })}

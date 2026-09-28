@@ -642,13 +642,15 @@ export const clinicalService = {
 
     const editable = [
       'note_type', 'subjective', 'objective', 'assessment', 'plan', 'follow_up',
-      'follow_up_required', 'follow_up_scheduled_for', 'diagnoses',
+      'follow_up_required', 'follow_up_scheduled_for', 'diagnoses', 'structured_note',
     ];
     const supplied = Object.keys(input).filter((k) => editable.includes(k));
     if (supplied.length === 0) throw new BadRequest('Nothing to save');
 
     const assignments = supplied.map((k, i) => `${k} = $${i + 2}`).join(', ');
-    const values = supplied.map((k) => (k === 'diagnoses' ? JSON.stringify(input[k]) : input[k]));
+    const values = supplied.map((k) => (
+      k === 'diagnoses' || k === 'structured_note' ? JSON.stringify(input[k]) : input[k]
+    ));
 
     // The trigger refuses this if the note is signed; that error is translated
     // to a 409 telling the caller to write an addendum instead.
@@ -953,9 +955,11 @@ export const clinicalService = {
     actor: Actor,
     input: {
       patientId: string; encounterId?: string | null; allergiesReviewed?: boolean;
+      sourceDictationId?: string;
       items: Array<{ drug: string; form?: string; strength?: string; dose?: string; route?: string;
         frequency?: string; durationDays?: number; quantity?: number; refills?: number;
-        indication?: string; pharmacy?: string; substitutionAllowed?: boolean; instructions?: string }>;
+        indication?: string; pharmacy?: string; substitutionAllowed?: boolean; instructions?: string;
+        sourceIndex?: number }>;
     },
   ) {
     if (!can(actor.role, 'prescribe')) throw new Forbidden('Your role cannot prescribe');
@@ -968,6 +972,41 @@ export const clinicalService = {
     if (input.encounterId) {
       const encounter = await requireEncounterInTenant(client, input.encounterId);
       assertSamePatient(encounter.patient_id, input.patientId, 'That encounter does not belong to this patient');
+    }
+
+    if (input.sourceDictationId) {
+      const { rows: sources } = await client.query(
+        `SELECT patient_id, encounter_id, created_by, status
+           FROM luminary.encounter_dictation
+          WHERE id = $1 AND practice_id = luminary.current_practice_id() AND deleted_at IS NULL`,
+        [input.sourceDictationId],
+      );
+      const source = sources[0];
+      if (!source) throw new NotFound('Source dictation not found');
+      if (source.created_by !== actor.userId) throw new Forbidden('Only the dictating doctor can issue its medications');
+      if (source.status !== 'structured') throw new Conflict('Only structured dictation drafts can be approved');
+      assertSamePatient(source.patient_id, input.patientId, 'Source dictation belongs to another patient');
+      if (source.encounter_id !== input.encounterId) throw new Conflict('Source dictation belongs to another encounter');
+      if (input.items.some((item) => !Number.isInteger(item.sourceIndex) || Number(item.sourceIndex) < 0)) {
+        throw new BadRequest('Every dictated medication needs a valid source index');
+      }
+
+      const requestedIndexes = input.items.map((item) => Number(item.sourceIndex));
+      if (new Set(requestedIndexes).size !== requestedIndexes.length) {
+        throw new BadRequest('A dictated medication cannot be issued twice in one request');
+      }
+      const existing = await client.query(
+        `SELECT * FROM luminary.prescription
+          WHERE source_dictation_id = $1
+            AND source_medication_index = ANY($2::integer[])
+            AND deleted_at IS NULL
+          ORDER BY source_medication_index`,
+        [input.sourceDictationId, requestedIndexes],
+      );
+      if (existing.rows.length === requestedIndexes.length) return existing.rows;
+      if (existing.rows.length > 0) {
+        throw new Conflict('Some dictated medications were already issued. Refresh the draft before continuing.');
+      }
     }
 
     const { rows: patient } = await client.query(
@@ -1019,16 +1058,17 @@ export const clinicalService = {
         `INSERT INTO luminary.prescription
            (practice_id, patient_id, encounter_id, prescriber_id, drug, form, strength, dose, route,
             frequency, duration_days, quantity, refills, indication, pharmacy, substitution_allowed,
-            instructions, issued_at, prescriber_name, prescriber_registration, issue_group_id)
-         VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                 $14, $15, $16, now(), $17, $18, $19)
-         RETURNING *`,
+            instructions, issued_at, prescriber_name, prescriber_registration, issue_group_id,
+            source_dictation_id, source_medication_index)
+          VALUES (luminary.current_practice_id(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                  $14, $15, $16, now(), $17, $18, $19, $20, $21)
+          RETURNING *`,
         [input.patientId, input.encounterId ?? null, actor.userId, item.drug, item.form ?? null,
          item.strength ?? null, item.dose ?? null, item.route ?? null, item.frequency ?? null,
          item.durationDays ?? null, item.quantity ?? null, item.refills ?? 0, item.indication ?? null,
          item.pharmacy ?? null, item.substitutionAllowed ?? null, item.instructions ?? null,
          prescriber[0]?.display_name ?? null, prescriber[0]?.registration_number ?? null,
-         issueGroupId],
+         issueGroupId, input.sourceDictationId ?? null, item.sourceIndex ?? null],
       );
       created.push(rows[0]);
     }

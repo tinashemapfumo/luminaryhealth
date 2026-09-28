@@ -21,6 +21,8 @@ function clientReturning(
   patientRow: Record<string, unknown>,
   captureInserts?: string[],
   captureParams?: unknown[][],
+  sourceRow?: Record<string, unknown>,
+  existingPrescriptions: Record<string, unknown>[] = [],
 ) {
   return {
     query: async (text: string, params?: unknown[]) => {
@@ -28,6 +30,11 @@ function clientReturning(
       if (text.includes('FROM luminary.app_user WHERE id')) {
         return { rows: [{ display_name: 'Dr. Chen', registration_number: 'HPCZ-GP-4471' }] };
       }
+      if (text.includes('FROM luminary.encounter_dictation')) return { rows: sourceRow ? [sourceRow] : [] };
+      if (text.includes('FROM luminary.encounter\n')) {
+        return { rows: sourceRow ? [{ id: sourceRow.encounter_id, patient_id: sourceRow.patient_id }] : [] };
+      }
+      if (text.includes('source_dictation_id = $1')) return { rows: existingPrescriptions };
       if (text.includes('INSERT INTO luminary.prescription')) {
         captureInserts?.push(text);
         captureParams?.push(params ?? []);
@@ -117,7 +124,7 @@ void test('every medicine in a batch shares one issue group, so it is one prescr
     ],
   });
   assert.ok(inserts.every((sql) => sql.includes('issue_group_id')), 'every insert sets issue_group_id');
-  const groups = params.map((p) => p.at(-1));
+  const groups = params.map((p) => p.at(-3));
   assert.equal(new Set(groups).size, 1, 'all medicines carry the same issue group');
   assert.match(String(groups[0]), /^[0-9a-f-]{36}$/, 'the issue group is a uuid');
 });
@@ -128,5 +135,66 @@ void test('two separate batches are two prescriptions', async () => {
   const item = { drug: 'Paracetamol', strength: '500 mg', route: 'oral', frequency: 'qds', durationDays: 5 };
   await clinicalService.prescribeBatch(client, doctor, { patientId: 'pat-1', items: [item] });
   await clinicalService.prescribeBatch(client, doctor, { patientId: 'pat-1', items: [item] });
-  assert.notEqual(params[0]?.at(-1), params[1]?.at(-1));
+  assert.notEqual(params[0]?.at(-3), params[1]?.at(-3));
+});
+
+void test('dictated medications retain their dictation and source indexes', async () => {
+  const params: unknown[][] = [];
+  const source = { patient_id: 'pat-1', encounter_id: 'enc-1', created_by: doctor.userId, status: 'structured' };
+  const client = clientReturning(patientReviewed, [], params, source);
+  await clinicalService.prescribeBatch(client, doctor, {
+    patientId: 'pat-1',
+    encounterId: 'enc-1',
+    sourceDictationId: 'dict-1',
+    items: [
+      { sourceIndex: 2, drug: 'Paracetamol', strength: '500 mg', route: 'oral', frequency: 'qds', durationDays: 5 },
+    ],
+  });
+  assert.equal(params[0]?.at(-2), 'dict-1');
+  assert.equal(params[0]?.at(-1), 2);
+});
+
+void test('retrying an already issued dictated medication is idempotent', async () => {
+  const inserts: string[] = [];
+  const source = { patient_id: 'pat-1', encounter_id: 'enc-1', created_by: doctor.userId, status: 'structured' };
+  const existing = [{ id: 'rx-existing', source_medication_index: 0 }];
+  const client = clientReturning(patientReviewed, inserts, undefined, source, existing);
+  const created = await clinicalService.prescribeBatch(client, doctor, {
+    patientId: 'pat-1',
+    encounterId: 'enc-1',
+    sourceDictationId: 'dict-1',
+    items: [
+      { sourceIndex: 0, drug: 'Paracetamol', strength: '500 mg', route: 'oral', frequency: 'qds', durationDays: 5 },
+    ],
+  });
+  assert.deepEqual(created, existing);
+  assert.equal(inserts.length, 0);
+});
+
+void test('structured clinical detail is persisted as JSON with the encounter draft', async () => {
+  let updateSql = '';
+  let updateParams: unknown[] = [];
+  const client = {
+    query: async (text: string, params?: unknown[]) => {
+      if (text.includes('UPDATE luminary.encounter SET')) {
+        updateSql = text;
+        updateParams = params ?? [];
+        return { rows: [{ id: 'enc-1', note_type: 'SOAP note' }] };
+      }
+      return { rows: [] };
+    },
+  } as unknown as PoolClient;
+  const structuredNote = {
+    chiefComplaint: 'Cough',
+    historyOfPresentIllness: 'Three days of productive cough',
+    reviewOfSystems: null,
+    examination: 'Basal crepitations',
+    patientAdvice: 'Hydration discussed',
+    safetyNet: 'Return for worsening breathlessness',
+  };
+
+  await clinicalService.saveDraft(client, doctor, 'enc-1', { structured_note: structuredNote });
+
+  assert.match(updateSql, /structured_note = \$2/);
+  assert.equal(updateParams[1], JSON.stringify(structuredNote));
 });

@@ -266,6 +266,7 @@ export const encounterFromApi = (row, patient) => ({
   plan: row.plan || '',
   diagnoses: Array.isArray(row.diagnoses) ? row.diagnoses : [],
   followUp: row.follow_up || '',
+  structuredNote: row.structured_note || {},
   signedBy: row.signed_by_name || '',
   signedAt: row.signed_at ? `${shortDate(row.signed_at)} ${timeLabel(row.signed_at)}` : '',
   addenda: addendaFromApi(row.addenda),

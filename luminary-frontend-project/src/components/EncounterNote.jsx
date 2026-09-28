@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -54,6 +54,7 @@ export default function EncounterNote({
   const [dictationText, setDictationText] = useState('');
   const [dictation, setDictation] = useState(null);
   const [dictationDraft, setDictationDraft] = useState(null);
+  const [approvedMedicationIndexes, setApprovedMedicationIndexes] = useState(() => new Set());
   const [dictationStatus, setDictationStatus] = useState('Ready');
   const [dictationError, setDictationError] = useState('');
   const [allergiesReviewed, setAllergiesReviewed] = useState(Boolean(patientRecord?.allergiesRecorded));
@@ -146,6 +147,10 @@ export default function EncounterNote({
   };
 
   const set = (key) => (event) => setDraft((prev) => ({ ...prev, [key]: event.target.value }));
+  const setStructuredNote = (key) => (event) => setDraft((prev) => ({
+    ...prev,
+    structuredNote: { ...prev.structuredNote, [key]: event.target.value },
+  }));
   const setVital = (key) => (event) =>
     setDraft((prev) => ({ ...prev, vitals: { ...prev.vitals, [key]: event.target.value } }));
 
@@ -160,10 +165,10 @@ export default function EncounterNote({
   const recordingActive = recordingState === 'recording' || recordingState === 'paused';
   const recordingTime = `${String(Math.floor(recordingSeconds / 60)).padStart(2, '0')}:${String(recordingSeconds % 60).padStart(2, '0')}`;
 
-  const stopRecordingTimer = () => {
+  const stopRecordingTimer = useCallback(() => {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
     recordingTimerRef.current = null;
-  };
+  }, []);
 
   const blobToBase64 = (blob) =>
     new Promise((resolve, reject) => {
@@ -176,14 +181,14 @@ export default function EncounterNote({
       reader.readAsDataURL(blob);
     });
 
-  const startRecordingTimer = () => {
+  const startRecordingTimer = useCallback(() => {
     stopRecordingTimer();
     recordingTimerRef.current = window.setInterval(() => {
       setRecordingSeconds((value) => value + 1);
     }, 1000);
-  };
+  }, [stopRecordingTimer]);
 
-  const releaseRecording = () => {
+  const releaseRecording = useCallback(() => {
     stopRecordingTimer();
     try {
       speechRecognitionRef.current?.stop?.();
@@ -194,15 +199,15 @@ export default function EncounterNote({
     mediaStreamRef.current?.getTracks?.().forEach((track) => track.stop());
     mediaStreamRef.current = null;
     mediaRecorderRef.current = null;
-  };
+  }, [stopRecordingTimer]);
 
   useEffect(() => () => {
     releaseRecording();
-  }, []);
+  }, [releaseRecording]);
 
   useEffect(() => () => {
     if (recordedAudioUrl) browserUrl?.revokeObjectURL?.(recordedAudioUrl);
-  }, [recordedAudioUrl]);
+  }, [browserUrl, recordedAudioUrl]);
 
   useEffect(() => {
     dictationTextRef.current = dictationText;
@@ -434,6 +439,14 @@ export default function EncounterNote({
       assessment: diagnosesMentioned.map((item) => item.label).join('; '),
       plan: medicationsMentioned.length ? `Medication mentioned: ${medicationsMentioned.map((item) => item.drug).join(', ')}` : '',
       followUp: '',
+      clinicalDetail: {
+        chiefComplaint: oneLine,
+        historyOfPresentIllness: oneLine,
+        reviewOfSystems: '',
+        examination: '',
+        patientAdvice: '',
+        safetyNet: '',
+      },
       diagnosesMentioned,
       medicationsMentioned,
       uncertainties: medicationsMentioned.some((item) => !item.strength || !item.frequency)
@@ -484,6 +497,7 @@ export default function EncounterNote({
       assessment: dictationDraft.assessment ?? prev.assessment,
       plan: dictationDraft.plan ?? prev.plan,
       followUp: dictationDraft.followUp ?? prev.followUp,
+      structuredNote: dictationDraft.clinicalDetail ?? prev.structuredNote,
       diagnoses: dictationDraft.diagnosesMentioned?.length
         ? [
             ...prev.diagnoses,
@@ -511,6 +525,7 @@ export default function EncounterNote({
         assessment: dictationDraft.assessment ?? '',
         plan: dictationDraft.plan ?? '',
         followUp: dictationDraft.followUp ?? '',
+        structuredNote: dictationDraft.clinicalDetail ?? {},
         diagnoses: dictationDraft.diagnosesMentioned?.map(({ code, label }) => ({ code, label })) ?? [],
       });
       if (result.encounter && onDictationApproved) {
@@ -525,12 +540,35 @@ export default function EncounterNote({
     }
   };
 
-  const approveMedication = async (medication) => {
+  const updateDictatedMedication = (index, key, value) => {
+    setDictationDraft((prev) => ({
+      ...prev,
+      medicationsMentioned: prev.medicationsMentioned.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [key]: value } : item
+      )),
+    }));
+  };
+
+  const approveMedications = async () => {
     if (!dictation?.id || !isLive()) return;
     setDictationStatus('Approving prescription');
     setDictationError('');
     try {
-      await api.dictations.approvePrescription(dictation.id, { ...medication, allergiesReviewed });
+      const medications = dictationDraft.medicationsMentioned.map((medication, index) => ({
+        ...medication,
+        sourceIndex: index,
+        durationDays: medication.durationDays ? Number(medication.durationDays) : null,
+        quantity: medication.quantity ? Number(medication.quantity) : null,
+        refills: medication.refills ? Number(medication.refills) : 0,
+        substitutionAllowed: medication.substitutionAllowed === '' || medication.substitutionAllowed == null
+          ? null
+          : medication.substitutionAllowed === true || medication.substitutionAllowed === 'true',
+      }));
+      await api.dictations.approvePrescriptions(dictation.id, {
+        medications,
+        allergiesReviewed,
+      });
+      setApprovedMedicationIndexes(new Set(medications.map((item) => item.sourceIndex)));
       setDictationStatus('Prescription approved');
     } catch (error) {
       setDictationStatus('Failed');
@@ -550,6 +588,14 @@ export default function EncounterNote({
     { key: 'objective', label: 'Objective', hint: 'Examination findings, observations, and results.' },
     { key: 'assessment', label: 'Assessment', hint: 'Clinical impression and reasoning.' },
     { key: 'plan', label: 'Plan', hint: 'Treatment, investigations, follow up, and advice given.' },
+  ];
+  const clinicalDetailSections = [
+    ['Chief complaint', 'chiefComplaint'],
+    ['History of presenting illness', 'historyOfPresentIllness'],
+    ['Review of systems', 'reviewOfSystems'],
+    ['Examination', 'examination'],
+    ['Patient advice', 'patientAdvice'],
+    ['Safety-net instructions', 'safetyNet'],
   ];
 
   return (
@@ -814,6 +860,29 @@ export default function EncounterNote({
                     />
                   </Field>
                 ))}
+                <div className="rounded-lg border border-line bg-surface/60 p-3.5">
+                  <p className="mb-3 text-caption font-semibold text-muted">Structured clinical detail</p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      ['Chief complaint', 'chiefComplaint'],
+                      ['History of presenting illness', 'historyOfPresentIllness'],
+                      ['Review of systems', 'reviewOfSystems'],
+                      ['Examination', 'examination'],
+                      ['Patient advice', 'patientAdvice'],
+                      ['Safety-net instructions', 'safetyNet'],
+                    ].map(([label, key]) => (
+                      <Field key={key} label={label}>
+                        <Textarea
+                          value={dictationDraft.clinicalDetail?.[key] || ''}
+                          onChange={(event) => setDictationDraft((prev) => ({
+                            ...prev,
+                            clinicalDetail: { ...prev.clinicalDetail, [key]: event.target.value },
+                          }))}
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                </div>
                 <div className="rounded-lg bg-surface/60 p-3.5">
                   <p className="text-caption font-semibold text-muted">Diagnosis suggestions</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -831,20 +900,91 @@ export default function EncounterNote({
                   <div className="mt-2 space-y-2">
                     {(dictationDraft.medicationsMentioned || []).length === 0 ? (
                       <p className="text-sm text-muted">No medication suggested.</p>
-                    ) : dictationDraft.medicationsMentioned.map((item, index) => (
-                      <div key={`${item.drug}-${index}`} className="flex flex-wrap items-center justify-between gap-2 rounded border border-line bg-surface px-3 py-2">
-                        <div>
-                          <p className="text-sm font-semibold text-ink">{item.drug} {item.strength || ''}</p>
-                          <p className="text-xs text-muted">{[item.route, item.frequency, item.durationDays ? `${item.durationDays} days` : ''].filter(Boolean).join(' | ') || 'Details incomplete'}</p>
+                    ) : dictationDraft.medicationsMentioned.map((item, index) => {
+                      const approved = approvedMedicationIndexes.has(index);
+                      return (
+                        <div key={`${item.drug}-${index}`} className="rounded border border-line bg-surface p-3">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="sm:col-span-2">
+                              <Field label="Medication" required>
+                                <Input disabled={approved} value={item.drug || ''} onChange={(event) => updateDictatedMedication(index, 'drug', event.target.value)} />
+                              </Field>
+                            </div>
+                            <Field label="Form">
+                              <Input disabled={approved} value={item.form || ''} onChange={(event) => updateDictatedMedication(index, 'form', event.target.value)} placeholder="e.g. tablet" />
+                            </Field>
+                            <Field label="Strength" required>
+                              <Input disabled={approved} value={item.strength || ''} onChange={(event) => updateDictatedMedication(index, 'strength', event.target.value)} placeholder="e.g. 500 mg" />
+                            </Field>
+                            <Field label="Dose">
+                              <Input disabled={approved} value={item.dose || ''} onChange={(event) => updateDictatedMedication(index, 'dose', event.target.value)} placeholder="e.g. 1 tablet" />
+                            </Field>
+                            <Field label="Route" required>
+                              <Select
+                                disabled={approved}
+                                value={item.route || ''}
+                                onChange={(event) => updateDictatedMedication(index, 'route', event.target.value)}
+                                options={['', 'oral', 'topical', 'IM', 'IV', 'subcutaneous', 'inhaled', 'rectal', 'ophthalmic', 'other']}
+                                render={(value) => value || 'Choose a route...'}
+                              />
+                            </Field>
+                            <Field label="Frequency / directions" required>
+                              <Input disabled={approved} value={item.frequency || ''} onChange={(event) => updateDictatedMedication(index, 'frequency', event.target.value)} />
+                            </Field>
+                            <Field label="Duration (days)" required>
+                              <Input disabled={approved} type="number" min="1" value={item.durationDays || ''} onChange={(event) => updateDictatedMedication(index, 'durationDays', event.target.value)} />
+                            </Field>
+                            <Field label="Quantity to dispense">
+                              <Input disabled={approved} type="number" min="1" value={item.quantity || ''} onChange={(event) => updateDictatedMedication(index, 'quantity', event.target.value)} />
+                            </Field>
+                            <Field label="Refills">
+                              <Input disabled={approved} type="number" min="0" max="12" value={item.refills ?? 0} onChange={(event) => updateDictatedMedication(index, 'refills', event.target.value)} />
+                            </Field>
+                            <Field label="Substitution">
+                              <Select
+                                disabled={approved}
+                                value={item.substitutionAllowed == null ? '' : String(item.substitutionAllowed)}
+                                onChange={(event) => updateDictatedMedication(index, 'substitutionAllowed', event.target.value)}
+                                options={['', 'true', 'false']}
+                                render={(value) => (value === 'true' ? 'Substitution allowed' : value === 'false' ? 'Do not substitute' : 'Per pharmacist judgement')}
+                              />
+                            </Field>
+                            <div className="sm:col-span-2">
+                              <Field label="Indication">
+                                <Input disabled={approved} value={item.indication || ''} onChange={(event) => updateDictatedMedication(index, 'indication', event.target.value)} />
+                              </Field>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Field label="Pharmacy">
+                                <Input disabled={approved} value={item.pharmacy || ''} onChange={(event) => updateDictatedMedication(index, 'pharmacy', event.target.value)} placeholder="Optional dispensing pharmacy" />
+                              </Field>
+                            </div>
+                            <div className="sm:col-span-2">
+                              <Field label="Additional instructions">
+                                <Textarea disabled={approved} value={item.instructions || ''} onChange={(event) => updateDictatedMedication(index, 'instructions', event.target.value)} />
+                              </Field>
+                            </div>
+                          </div>
+                          {item.sourceText && <p className="mt-2 text-xs text-muted">From transcript: {item.sourceText}</p>}
+                          {approved && <p className="mt-2 text-right text-xs font-semibold text-success">Issued</p>}
                         </div>
-                        {isLive() && (
-                          <Button variant="secondary" type="button" onClick={() => approveMedication(item)}>
-                            Approve Rx
-                          </Button>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                  {isLive() && dictationDraft.medicationsMentioned.length > 0 && (
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        variant="secondary"
+                        type="button"
+                        disabled={approvedMedicationIndexes.size > 0}
+                        onClick={approveMedications}
+                      >
+                        {approvedMedicationIndexes.size > 0
+                          ? 'Prescription issued'
+                          : `Review and issue prescription (${dictationDraft.medicationsMentioned.length} medication${dictationDraft.medicationsMentioned.length === 1 ? '' : 's'})`}
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {dictationDraft.uncertainties?.length > 0 && (
                   <div className="rounded border border-warning-line bg-warning-soft p-3">
@@ -1113,6 +1253,28 @@ export default function EncounterNote({
               </div>
             </div>
           </section>
+
+          {(canWrite || Object.values(draft.structuredNote || {}).some(Boolean)) && (
+            <section className="lh-card-pad">
+              <h2 className="mb-3 text-copy font-semibold text-ink">Structured clinical detail</h2>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {clinicalDetailSections.map(([label, key]) => (
+                  <Field key={key} label={label}>
+                    {canWrite ? (
+                      <Textarea
+                        value={draft.structuredNote?.[key] || ''}
+                        onChange={setStructuredNote(key)}
+                      />
+                    ) : (
+                      <p className="min-h-[3rem] whitespace-pre-wrap rounded-lg bg-surface/70 p-3 text-sm text-ink">
+                        {draft.structuredNote?.[key] || <span className="italic text-muted">Not documented</span>}
+                      </p>
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </section>
+          )}
 
           {draft.addenda?.length > 0 && (
             <section className="lh-card-pad">

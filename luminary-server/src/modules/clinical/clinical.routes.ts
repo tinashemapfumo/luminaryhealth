@@ -66,6 +66,14 @@ const dictationDraft = z.object({
   assessment: z.string().nullable().default(null),
   plan: z.string().nullable().default(null),
   followUp: z.string().nullable().default(null),
+  clinicalDetail: z.object({
+    chiefComplaint: z.string().nullable().default(null),
+    historyOfPresentIllness: z.string().nullable().default(null),
+    reviewOfSystems: z.string().nullable().default(null),
+    examination: z.string().nullable().default(null),
+    patientAdvice: z.string().nullable().default(null),
+    safetyNet: z.string().nullable().default(null),
+  }).default({}),
   diagnosesMentioned: z.array(z.object({
     code: z.string().min(1),
     label: z.string().min(1),
@@ -73,16 +81,42 @@ const dictationDraft = z.object({
   })).default([]),
   medicationsMentioned: z.array(z.object({
     drug: z.string().min(1),
+    form: z.string().nullable().optional(),
     strength: z.string().nullable().optional(),
+    dose: z.string().nullable().optional(),
     route: z.string().nullable().optional(),
     frequency: z.string().nullable().optional(),
     durationDays: z.number().nullable().optional(),
+    quantity: z.number().nullable().optional(),
+    refills: z.number().int().min(0).max(12).nullable().optional(),
+    indication: z.string().nullable().optional(),
+    pharmacy: z.string().nullable().optional(),
+    substitutionAllowed: z.boolean().nullable().optional(),
+    instructions: z.string().nullable().optional(),
     sourceText: z.string().optional(),
   })).default([]),
   uncertainties: z.array(z.object({
     text: z.string().min(1),
     reason: z.string().min(1),
   })).default([]),
+});
+
+const dictatedMedication = z.object({
+  sourceIndex: z.number().int().nonnegative(),
+  drug: z.string().trim().min(1).max(180),
+  form: z.string().trim().max(80).nullable().optional(),
+  strength: z.string().trim().min(1).max(120),
+  dose: z.string().trim().max(120).nullable().optional(),
+  route: z.string().trim().min(1).max(80),
+  frequency: z.string().trim().min(1).max(240),
+  durationDays: z.number().int().positive(),
+  quantity: z.number().int().positive().nullable().optional(),
+  refills: z.number().int().min(0).max(12).nullable().optional(),
+  indication: z.string().trim().max(500).nullable().optional(),
+  pharmacy: z.string().trim().max(180).nullable().optional(),
+  substitutionAllowed: z.boolean().nullable().optional(),
+  instructions: z.string().trim().max(1000).nullable().optional(),
+  sourceText: z.string().max(2000).optional(),
 });
 
 export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
@@ -271,6 +305,14 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
         assessment: z.string().optional(),
         plan: z.string().optional(),
         follow_up: z.string().optional(),
+        structured_note: z.object({
+          chiefComplaint: z.string().nullable().optional(),
+          historyOfPresentIllness: z.string().nullable().optional(),
+          reviewOfSystems: z.string().nullable().optional(),
+          examination: z.string().nullable().optional(),
+          patientAdvice: z.string().nullable().optional(),
+          safetyNet: z.string().nullable().optional(),
+        }).optional(),
         follow_up_required: z.boolean().optional(),
         follow_up_scheduled_for: z.string().datetime({ offset: true }).nullable().optional(),
         diagnoses: z.array(diagnosis).optional(),
@@ -436,6 +478,14 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
         assessment: z.string().nullable().optional(),
         plan: z.string().nullable().optional(),
         followUp: z.string().nullable().optional(),
+        structuredNote: z.object({
+          chiefComplaint: z.string().nullable().optional(),
+          historyOfPresentIllness: z.string().nullable().optional(),
+          reviewOfSystems: z.string().nullable().optional(),
+          examination: z.string().nullable().optional(),
+          patientAdvice: z.string().nullable().optional(),
+          safetyNet: z.string().nullable().optional(),
+        }).optional(),
         diagnoses: z.array(diagnosis).optional(),
       }).parse(request.body ?? {});
       const actor = actorOf(request);
@@ -447,17 +497,29 @@ export async function clinicalRoutes(app: FastifyInstance): Promise<void> {
     preHandler: requirePermission('prescribe'),
     handler: async (request, reply) => {
       const { id } = idParams.parse(request.params);
-      const body = z.object({
-        drug: z.string().min(1),
-        strength: z.string().nullable().optional(),
-        route: z.string().nullable().optional(),
-        frequency: z.string().nullable().optional(),
-        durationDays: z.number().int().positive().nullable().optional(),
+      const body = dictatedMedication.extend({
+        sourceIndex: z.number().int().nonnegative().default(0),
         allergiesReviewed: z.boolean().optional(),
       }).parse(request.body);
       const actor = actorOf(request);
       const result = await run(actor, (client) =>
         dictationService.approvePrescription(client, actor, id, body),
+      );
+      return reply.code(201).send(result);
+    },
+  });
+
+  app.post('/dictations/:id/approve-prescriptions', {
+    preHandler: requirePermission('prescribe'),
+    handler: async (request, reply) => {
+      const { id } = idParams.parse(request.params);
+      const body = z.object({
+        medications: z.array(dictatedMedication).min(1).max(20),
+        allergiesReviewed: z.boolean().optional(),
+      }).parse(request.body);
+      const actor = actorOf(request);
+      const result = await run(actor, (client) =>
+        dictationService.approvePrescriptions(client, actor, id, body),
       );
       return reply.code(201).send(result);
     },

@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   FileCheck2,
   FileText,
   Fingerprint,
@@ -81,6 +82,109 @@ const MODULES = [
     detailTabs: ['Summary', 'Adjudication', 'Lines', 'Timeline'],
   },
 ];
+
+const PREVIEW_ROUTE_STAGES = {
+  switch: {
+    approved: [
+      { key: 'package', label: 'Ready package', moduleId: 'submit', tab: 'Submission', status: 'Ready for submission', detail: 'Review the payload and submit it to the claims switch.' },
+      { key: 'sent', label: 'Submitted', moduleId: 'track', tab: 'Timeline', status: 'Submitted', detail: 'The switch has received the claim and assigned a transmission reference.' },
+      { key: 'acknowledged', label: 'Acknowledged', moduleId: 'track', tab: 'Timeline', status: 'Acknowledged', detail: 'The payer has accepted the claim into adjudication.' },
+      { key: 'approved', label: 'Approved', moduleId: 'remit', tab: 'Adjudication', status: 'Approved', detail: 'The adjudication response records the approved and member portions.' },
+      { key: 'remitted', label: 'Remitted', moduleId: 'remit', tab: 'Timeline', status: 'Remitted', detail: 'The payment is posted and reconciled against the source invoice.' },
+    ],
+    rejected: [
+      { key: 'package', label: 'Ready package', moduleId: 'submit', tab: 'Submission', status: 'Ready for submission', detail: 'Review the payload and submit it to the claims switch.' },
+      { key: 'sent', label: 'Submitted', moduleId: 'track', tab: 'Timeline', status: 'Submitted', detail: 'The switch has received the claim and assigned a transmission reference.' },
+      { key: 'acknowledged', label: 'Acknowledged', moduleId: 'track', tab: 'Timeline', status: 'Acknowledged', detail: 'The payer has accepted the claim into adjudication.' },
+      { key: 'rejected', label: 'Rejected', moduleId: 'resolve', tab: 'Adjudication', status: 'Rejected', detail: 'The payer response includes a rejection code and an actionable reason.' },
+      { key: 'resolve', label: 'Resolve', moduleId: 'resolve', tab: 'Validation', status: 'Requires action', detail: 'Correct the rejected information or move an eligible balance to the patient.' },
+      { key: 'resubmit', label: 'Resubmitted', moduleId: 'track', tab: 'Timeline', status: 'Submitted', detail: 'The corrected claim returns to tracking as a new transmission attempt.' },
+    ],
+  },
+  email: {
+    approved: [
+      { key: 'pack', label: 'Claim pack', moduleId: 'email', tab: 'Email pack', status: 'Form prepared', detail: 'Review the form, attachments, member message, and insurer email.' },
+      { key: 'member', label: 'Member review', moduleId: 'email', tab: 'Email pack', status: 'Awaiting client authentication', detail: 'The member receives a secure review link and one-time-code challenge.' },
+      { key: 'authorised', label: 'Authorised', moduleId: 'email', tab: 'Email pack', status: 'Client authenticated', detail: 'Member authorisation locks the reviewed pack before submission.' },
+      { key: 'sent', label: 'Insurer email', moduleId: 'email', tab: 'Email pack', status: 'Email submitted', detail: 'The authorised pack is emailed and its message reference is recorded.' },
+      { key: 'approved', label: 'Approved', moduleId: 'remit', tab: 'Adjudication', status: 'Approved', detail: 'The insurer response records the approved and member portions.' },
+      { key: 'remitted', label: 'Remitted', moduleId: 'remit', tab: 'Timeline', status: 'Remitted', detail: 'The payment is posted and reconciled against the source invoice.' },
+    ],
+    rejected: [
+      { key: 'pack', label: 'Claim pack', moduleId: 'email', tab: 'Email pack', status: 'Form prepared', detail: 'Review the form, attachments, member message, and insurer email.' },
+      { key: 'member', label: 'Member review', moduleId: 'email', tab: 'Email pack', status: 'Awaiting client authentication', detail: 'The member receives a secure review link and one-time-code challenge.' },
+      { key: 'authorised', label: 'Authorised', moduleId: 'email', tab: 'Email pack', status: 'Client authenticated', detail: 'Member authorisation locks the reviewed pack before submission.' },
+      { key: 'sent', label: 'Insurer email', moduleId: 'email', tab: 'Email pack', status: 'Email submitted', detail: 'The authorised pack is emailed and its message reference is recorded.' },
+      { key: 'rejected', label: 'Rejected', moduleId: 'resolve', tab: 'Adjudication', status: 'Rejected', detail: 'The insurer response is logged with its rejection reason.' },
+      { key: 'follow-up', label: 'Follow-up', moduleId: 'resolve', tab: 'Validation', status: 'Requires action', detail: 'The claim returns to the work queue for correction and insurer follow-up.' },
+    ],
+  },
+};
+
+function previewStages(preview) {
+  return PREVIEW_ROUTE_STAGES[preview.route][preview.outcome];
+}
+
+function previewClaim(source, preview, stage) {
+  const claimed = moneyNumber(source, 'claimed', 125) || 125;
+  const approved = ['Approved', 'Remitted'].includes(stage.status) ? claimed * 0.8 : 0;
+  const rejected = stage.status === 'Rejected' ? claimed : 0;
+  const memberLiability = approved ? claimed - approved : 0;
+  const routeLabel = preview.route === 'email' ? 'EMAIL_PDF' : 'Switch';
+  const events = previewStages(preview).slice(0, preview.step + 1).map((item, index) => ({
+    label: item.label,
+    time: index === 0 ? 'Demo journey started' : `Demo step ${index + 1}`,
+    tone: item.status === 'Rejected' || item.status === 'Requires action' ? 'alert' : ['Approved', 'Remitted', 'Acknowledged'].includes(item.status) ? 'success' : 'neutral',
+  }));
+
+  return {
+    ...source,
+    status: stage.status,
+    submissionChannel: routeLabel,
+    channel: routeLabel,
+    memberNo: source.memberNo || 'DEMO-492817',
+    eligibility: source.eligibility || 'Active (demo)',
+    biometric: source.biometric && source.biometric !== 'Not captured' ? source.biometric : 'Verified (demo)',
+    provider: source.provider || 'Dr Demo Provider',
+    icd10: source.icd10 && source.icd10 !== 'Not coded' ? source.icd10 : 'Z00.0',
+    tariff: source.tariff || 'Demo consultation',
+    claimed,
+    amount: `${source.currency || 'USD'} ${claimed.toFixed(2)}`,
+    approvedAmount: approved,
+    rejectedAmount: rejected,
+    insurerLiability: approved,
+    memberLiability,
+    rejectionCode: stage.status === 'Rejected' || stage.status === 'Requires action' ? 'R204' : '',
+    externalReference: preview.step > 0 ? `${preview.route === 'email' ? 'MAIL' : 'SW'}-DEMO-${String(source.id).replace(/\W/g, '').slice(-6) || '000001'}` : '',
+    validation: stage.status === 'Requires action'
+      ? { errors: [{ code: 'R204', field: 'member', message: 'Demo rejection: member details require correction.' }], warnings: [] }
+      : { errors: [], warnings: [] },
+    attachments: source.attachments?.length ? source.attachments : [
+      { id: 'demo-form', name: 'Claim form', status: 'Demo attachment' },
+      { id: 'demo-invoice', name: `${source.invoice || source.id} itemised invoice`, status: 'Demo attachment' },
+      { id: 'demo-notes', name: 'Clinical notes', status: 'Demo attachment' },
+    ],
+    lines: source.lines?.length ? source.lines : [{
+      id: 'demo-line', code: 'DEMO-001', description: source.tariff || 'Consultation', claimed_amount: claimed,
+      approved_amount: approved, rejected_amount: rejected, status: stage.status,
+    }],
+    events,
+    emailSubmission: {
+      ...(source.emailSubmission || {}),
+      status: 'PREPARED',
+      destinationId: '',
+      providerEmail: source.emailSubmission?.providerEmail || 'claims@example-insurer.test',
+      memberEmail: source.emailSubmission?.memberEmail || 'member@example.test',
+      claimForm: source.emailSubmission?.claimForm || 'International medical claim form',
+      memberSubject: source.emailSubmission?.memberSubject || `Action required: review claim ${source.id}`,
+      memberBody: source.emailSubmission?.memberBody || `Hello ${source.patient},\n\nPlease review the prepared medical claim using the secure link below and authorise submission with your one-time code.\n\n[Review and authorise claim]\n\nLuminary Health`,
+      insurerSubject: source.emailSubmission?.insurerSubject || `Claim submission | ${source.id} | Demo`,
+      insurerBody: source.emailSubmission?.insurerBody || `Dear Claims Team,\n\nPlease find attached the member-authorised medical claim for ${source.patient}.\n\nClaim reference: ${source.id}\nClaimed amount: ${source.currency || 'USD'} ${claimed.toFixed(2)}\n\nPlease acknowledge receipt and quote this reference in future correspondence.\n\nLuminary Health Claims Team`,
+      requiredDocuments: ['Claim form', 'Itemised invoice', 'Clinical notes'],
+      attachments: ['Claim form', 'Itemised invoice', 'Clinical notes'],
+    },
+  };
+}
 
 const text = (value) => String(value ?? '').toLowerCase();
 const moneyNumber = (claim, key, fallback = 0) => Number(claim?.[key] ?? fallback) || 0;
@@ -181,7 +285,7 @@ export default function ClaimsPage() {
   const [newClaimInvoiceId, setNewClaimInvoiceId] = useState('');
   const [newClaimQuery, setNewClaimQuery] = useState('');
   const [creatingClaim, setCreatingClaim] = useState(false);
-  const [previewSubmissionClaimId, setPreviewSubmissionClaimId] = useState('');
+  const [journeyPreview, setJourneyPreview] = useState(null);
 
   const module = MODULES.find((item) => item.id === activeModule) || MODULES[0];
   const normalizedQuery = query.trim().toLowerCase();
@@ -225,9 +329,13 @@ export default function ClaimsPage() {
   const visibleSelectedClaim = filteredClaims.find((claim) => claim.id === selectedClaim?.id)
     || filteredClaims[0]
     || null;
-  const previewingSubmission = Boolean(visibleSelectedClaim && previewSubmissionClaimId === visibleSelectedClaim.id);
-  const submissionModule = MODULES.find((item) => item.id === 'submit') || MODULES[0];
-  const detailModule = previewingSubmission ? submissionModule : searchIsActive && visibleSelectedClaim ? moduleForClaim(visibleSelectedClaim) : module;
+  const previewingJourney = Boolean(visibleSelectedClaim && journeyPreview?.claimId === visibleSelectedClaim.id);
+  const journeyStages = previewingJourney ? previewStages(journeyPreview) : [];
+  const journeyStage = journeyStages[journeyPreview?.step || 0];
+  const detailModule = previewingJourney
+    ? MODULES.find((item) => item.id === journeyStage.moduleId) || MODULES[0]
+    : searchIsActive && visibleSelectedClaim ? moduleForClaim(visibleSelectedClaim) : module;
+  const displayClaim = previewingJourney ? previewClaim(visibleSelectedClaim, journeyPreview, journeyStage) : visibleSelectedClaim;
 
   const selectedPatientClaims = useMemo(
     () => practiceClaims.filter((claim) => visibleSelectedClaim && claim.patient === visibleSelectedClaim.patient),
@@ -247,7 +355,7 @@ export default function ClaimsPage() {
     setQuery('');
     setPayerFilter('all');
     setChannelFilter('all');
-    setPreviewSubmissionClaimId('');
+    setJourneyPreview(null);
   };
 
   const coveredInvoices = useMemo(() => practiceInvoices.filter((invoice) => (
@@ -292,7 +400,7 @@ export default function ClaimsPage() {
     setActiveModule(id);
     setDetailTab(next.detailTabs[0]);
     setQueueOpen(true);
-    setPreviewSubmissionClaimId('');
+    setJourneyPreview(null);
   };
 
   if (practiceClaims.length === 0 && !newClaimOpen) {
@@ -431,11 +539,11 @@ export default function ClaimsPage() {
             setSelectedClaimId(claim.id);
             setDetailTab(nextModule.detailTabs[0]);
             setQueueOpen(false);
-            setPreviewSubmissionClaimId('');
+            setJourneyPreview(null);
           }}
         />
 
-        {visibleSelectedClaim && !previewingSubmission && detailModule.id === 'prepare' ? (
+        {visibleSelectedClaim && !previewingJourney && detailModule.id === 'prepare' ? (
           <ClaimPreparationWorkspace
             claim={visibleSelectedClaim}
             access={access}
@@ -443,13 +551,13 @@ export default function ClaimsPage() {
             reloadWorkspace={reloadWorkspace}
             setQueueOpen={setQueueOpen}
             onPreviewSubmission={() => {
-              setPreviewSubmissionClaimId(visibleSelectedClaim.id);
+              setJourneyPreview({ claimId: visibleSelectedClaim.id, route: 'switch', outcome: 'approved', step: 0 });
               setDetailTab('Submission');
             }}
           />
         ) : visibleSelectedClaim ? (
           <ClaimModuleDetail
-            claim={visibleSelectedClaim}
+            claim={displayClaim}
             module={detailModule}
             patientClaims={selectedPatientClaims}
             detailTab={detailTab}
@@ -475,9 +583,26 @@ export default function ClaimsPage() {
             proposePatientResponsibility={proposePatientResponsibility}
             rejectionReasons={REJECTION_REASONS}
             live={live}
-            testPreview={previewingSubmission}
+            testPreview={previewingJourney}
+            journeyPreview={journeyPreview}
+            journeyStages={journeyStages}
+            onJourneyRouteChange={(route) => {
+              const next = { ...journeyPreview, route, step: 0 };
+              setJourneyPreview(next);
+              setDetailTab(previewStages(next)[0].tab);
+            }}
+            onJourneyOutcomeChange={(outcome) => {
+              const next = { ...journeyPreview, outcome, step: Math.min(journeyPreview.step, PREVIEW_ROUTE_STAGES[journeyPreview.route][outcome].length - 1) };
+              const nextStage = previewStages(next)[next.step];
+              setJourneyPreview(next);
+              setDetailTab(nextStage.tab);
+            }}
+            onJourneyStepChange={(step) => {
+              setJourneyPreview((current) => ({ ...current, step }));
+              setDetailTab(journeyStages[step].tab);
+            }}
             onExitPreview={() => {
-              setPreviewSubmissionClaimId('');
+              setJourneyPreview(null);
               setDetailTab('Summary');
             }}
           />
@@ -1020,9 +1145,9 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
             ) : null}
             {requiredRemaining > 0 ? (
               <div className="mt-5 border-t border-line pt-4">
-                <p className="text-xs font-semibold text-ink">Test architecture preview</p>
-                <p className="mt-2 text-xs text-body">Open the submit architecture while these readiness errors stay in place. This does not mark the claim ready or enable real submission.</p>
-                <button type="button" onClick={onPreviewSubmission} className="lh-secondary-button mt-3 w-full justify-center"><UploadCloud size={15} />Preview submit path</button>
+                <p className="text-xs font-semibold text-ink">Full demo journey</p>
+                <p className="mt-2 text-xs text-body">Explore switch and email submission, tracking, outcomes, resolution, and remittance while these readiness errors stay in place.</p>
+                <button type="button" onClick={onPreviewSubmission} className="lh-secondary-button mt-3 w-full justify-center"><UploadCloud size={15} />Open demo journey</button>
               </div>
             ) : null}
           </div>
@@ -1075,6 +1200,11 @@ function ClaimModuleDetail({
   rejectionReasons,
   live,
   testPreview = false,
+  journeyPreview,
+  journeyStages = [],
+  onJourneyRouteChange,
+  onJourneyOutcomeChange,
+  onJourneyStepChange,
   onExitPreview,
 }) {
   const blockers = blockerCount(claim);
@@ -1118,17 +1248,14 @@ function ClaimModuleDetail({
         />
       </div>
 
-      {testPreview ? (
-        <div className="rounded-lg border border-warning/35 bg-warning-wash p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-ink">Test preview only</p>
-              <p className="mt-1 text-xs text-body">You are viewing the submit architecture before readiness has passed. The claim status and server validation have not been changed.</p>
-            </div>
-            <button type="button" onClick={onExitPreview} className="lh-secondary-button self-start sm:self-center"><ArrowLeft size={15} />Back to preparation</button>
-          </div>
-        </div>
-      ) : null}
+      {testPreview ? <ClaimJourneyNavigator
+        preview={journeyPreview}
+        stages={journeyStages}
+        onRouteChange={onJourneyRouteChange}
+        onOutcomeChange={onJourneyOutcomeChange}
+        onStepChange={onJourneyStepChange}
+        onExit={onExitPreview}
+      /> : null}
 
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryTile label="Claimed" value={claimAmount(claim)} detail={claim.tariff || 'Claim total'} tone="neutral" />
@@ -1162,7 +1289,7 @@ function ClaimModuleDetail({
         <IssueList claim={claim} />
       ) : null}
       {detailTab === 'Submission' ? (
-        <SubmissionPanel claim={claim} access={access} captureBiometric={captureBiometric} submitClaimToSwitch={submitClaimToSwitch} testPreview={testPreview} />
+        <SubmissionPanel claim={claim} access={access} captureBiometric={captureBiometric} submitClaimToSwitch={submitClaimToSwitch} testPreview={testPreview} onPreviewNext={() => onJourneyStepChange(Math.min(journeyPreview.step + 1, journeyStages.length - 1))} />
       ) : null}
       {detailTab === 'Email pack' ? (
         <EmailPackPanel
@@ -1173,6 +1300,7 @@ function ClaimModuleDetail({
           authenticateEmailClaim={authenticateEmailClaim}
           submitEmailClaim={submitEmailClaim}
           live={live}
+          testPreview={testPreview}
         />
       ) : null}
       {detailTab === 'Timeline' ? (
@@ -1187,6 +1315,70 @@ function ClaimModuleDetail({
       {detailTab === 'Adjudication' ? (
         <AdjudicationPanel claim={claim} insurerLiability={insurerLiability} memberLiability={memberLiability} rejectionReasons={rejectionReasons} />
       ) : null}
+    </section>
+  );
+}
+
+function ClaimJourneyNavigator({ preview, stages, onRouteChange, onOutcomeChange, onStepChange, onExit }) {
+  const current = stages[preview.step];
+  const atStart = preview.step === 0;
+  const atEnd = preview.step === stages.length - 1;
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-warning/35 bg-warning-wash">
+      <div className="flex flex-col gap-4 border-b border-warning/25 p-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-ink">Demo journey</p>
+            <StatusPill label="No data is saved" tone="warm" />
+          </div>
+          <p className="mt-1 max-w-2xl text-xs text-body">Sample values let you inspect every downstream screen while the real claim and its readiness errors remain unchanged.</p>
+        </div>
+        <button type="button" onClick={onExit} className="lh-secondary-button self-start"><ArrowLeft size={15} />Back to preparation</button>
+      </div>
+
+      <div className="grid gap-4 bg-white/55 p-4 xl:grid-cols-[auto_auto_minmax(0,1fr)] xl:items-end">
+        <div>
+          <p className="mb-2 text-xs font-semibold text-ink">Submission route</p>
+          <div className="inline-flex rounded-md border border-line bg-white p-1" role="group" aria-label="Demo submission route">
+            {['switch', 'email'].map((route) => (
+              <button key={route} type="button" onClick={() => onRouteChange(route)} className={`h-8 rounded-sm px-3 text-xs font-semibold ${preview.route === route ? 'bg-ink text-white' : 'text-body hover:bg-surface'}`}>
+                {route === 'switch' ? 'Claims switch' : 'Email claim'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-semibold text-ink">Outcome branch</p>
+          <div className="inline-flex rounded-md border border-line bg-white p-1" role="group" aria-label="Demo claim outcome">
+            {['approved', 'rejected'].map((outcome) => (
+              <button key={outcome} type="button" onClick={() => onOutcomeChange(outcome)} className={`h-8 rounded-sm px-3 text-xs font-semibold ${preview.outcome === outcome ? 'bg-ink text-white' : 'text-body hover:bg-surface'}`}>
+                {outcome === 'approved' ? 'Approved path' : 'Rejected path'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="xl:text-right">
+          <p className="text-xs font-semibold text-ink">{current.label}</p>
+          <p className="mt-1 text-xs text-body">{current.detail}</p>
+        </div>
+      </div>
+
+      <div className="border-t border-warning/25 bg-white p-4">
+        <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          {stages.map((stage, index) => (
+            <button key={stage.key} type="button" onClick={() => onStepChange(index)} aria-current={preview.step === index ? 'step' : undefined} className={`min-h-[58px] rounded-md border px-3 py-2 text-left transition ${preview.step === index ? 'border-teal bg-teal-soft text-teal-deep' : index < preview.step ? 'border-success/30 bg-success-soft text-ink' : 'border-line bg-white text-body hover:border-teal/50'}`}>
+              <span className="block text-2xs font-semibold uppercase text-muted">Step {index + 1}</span>
+              <span className="mt-1 block text-xs font-semibold">{stage.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <button type="button" disabled={atStart} onClick={() => onStepChange(preview.step - 1)} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-40"><ChevronLeft size={15} />Previous</button>
+          <p className="text-center text-xs text-body">Explore the tabs below at any stage.</p>
+          <button type="button" disabled={atEnd} onClick={() => onStepChange(preview.step + 1)} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-40">Next<ChevronRight size={15} /></button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -1206,11 +1398,10 @@ function ModuleActions({
   proposePatientResponsibility,
   testPreview = false,
 }) {
+  if (testPreview) return null;
+
   return (
     <div className="flex flex-wrap gap-2">
-      {testPreview ? (
-        <ActionButton onClick={() => notify(`${claim.id} is in test preview; resolve readiness before real submission`)} icon={AlertTriangle}>Preview only</ActionButton>
-      ) : null}
       {moduleId === 'prepare' && claim.status === 'Draft' && access.can.captureBiometric ? (
         <ActionButton onClick={() => captureBiometric(claim.id)} icon={Fingerprint}>Capture</ActionButton>
       ) : null}
@@ -1307,7 +1498,7 @@ function CodingPanel({ claim }) {
   );
 }
 
-function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch, testPreview = false }) {
+function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch, testPreview = false, onPreviewNext }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <InfoList
@@ -1324,8 +1515,8 @@ function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch,
         <div className="mt-3 flex flex-wrap gap-2">
           {testPreview ? (
             <>
-              <button type="button" disabled className="lh-primary-button cursor-not-allowed opacity-50"><UploadCloud size={15} />Submit to switch</button>
-              <p className="basis-full text-sm text-body">Preview mode shows where submission, switch acknowledgement, transmission logging, and timeline updates will appear after readiness passes.</p>
+              <button type="button" onClick={onPreviewNext} className="lh-primary-button"><UploadCloud size={15} />Simulate submit to switch</button>
+              <p className="basis-full text-sm text-body">This moves only the demo journey to tracking. It does not submit or update the real claim.</p>
             </>
           ) : null}
           {!testPreview && claim.status === 'Draft' && access.can.captureBiometric ? (
@@ -1350,6 +1541,7 @@ function EmailPackPanel({
   authenticateEmailClaim,
   submitEmailClaim,
   live,
+  testPreview = false,
 }) {
   const makeDraft = (sourceClaim) => {
     const existing = sourceClaim.emailSubmission || {};
@@ -1387,7 +1579,7 @@ function EmailPackPanel({
 
   useEffect(() => {
     let active = true;
-    if (!live) return undefined;
+    if (!live || testPreview) return undefined;
     api.claims.emailDestinations(claim.apiId || claim.id).then((rows) => {
       if (!active) return;
       setDestinations(rows || []);
@@ -1400,13 +1592,13 @@ function EmailPackPanel({
       }
     }).catch(() => setDestinations([]));
     return () => { active = false; };
-  }, [claim.apiId, claim.emailSubmission?.destinationId, claim.emailSubmission?.providerEmail, claim.id, live]);
+  }, [claim.apiId, claim.emailSubmission?.destinationId, claim.emailSubmission?.providerEmail, claim.id, live, testPreview]);
 
   const pack = claim.emailSubmission || {};
   const packPrepared = pack.status === 'PREPARED' || claim.status === 'Form prepared';
   const authenticated = claim.status === 'Client authenticated' || claim.status === 'Email submitted';
   const sent = claim.status === 'Email submitted';
-  const locked = authenticated || sent;
+  const locked = authenticated || sent || testPreview;
   const selectedDocument = (document) => draft.attachments.some((attachment) => String(attachment.name || attachment).toLowerCase().includes(document.toLowerCase().split(' ')[0]));
   const configuredDestination = destinations.find((item) => item.id === draft.destinationId);
   const missing = [
@@ -1499,8 +1691,11 @@ function EmailPackPanel({
           {activeEditor === 'insurer' ? <MessageEditor recipient={draft.providerEmail || 'Insurer email required'} subject={draft.insurerSubject} body={draft.insurerBody} disabled={locked} onSubjectChange={(value) => updateDraft('insurerSubject', value)} onBodyChange={(value) => updateDraft('insurerBody', value)} footer={`${draft.attachments.length} attachments will accompany this email after member authorisation.`} /> : null}
 
           <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-line pt-4">
-            {!locked ? <button type="button" onClick={saveDraft} disabled={saved || working} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />{working ? 'Saving...' : saved ? 'Saved' : 'Save changes'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-success" />Content locked after member authorisation</p>}
-            {!packPrepared ? <button type="button" onClick={preparePack} disabled={missing.length > 0 || working} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><FileCheck2 size={15} />{working ? 'Preparing...' : 'Prepare pack'}</button> : <p className="flex items-center gap-2 text-xs font-medium text-success"><CheckCircle2 size={15} />Pack prepared and saved</p>}
+            {testPreview ? <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-warning" />Demo content is read-only and is never sent or saved.</p> : null}
+            {!testPreview && !locked ? <button type="button" onClick={saveDraft} disabled={saved || working} className="lh-secondary-button disabled:cursor-not-allowed disabled:opacity-50"><Save size={15} />{working ? 'Saving...' : saved ? 'Saved' : 'Save changes'}</button> : null}
+            {!testPreview && locked ? <p className="flex items-center gap-2 text-xs font-medium text-body"><ShieldCheck size={15} className="text-success" />Content locked after member authorisation</p> : null}
+            {!testPreview && !packPrepared ? <button type="button" onClick={preparePack} disabled={missing.length > 0 || working} className="lh-primary-button disabled:cursor-not-allowed disabled:opacity-50"><FileCheck2 size={15} />{working ? 'Preparing...' : 'Prepare pack'}</button> : null}
+            {!testPreview && packPrepared ? <p className="flex items-center gap-2 text-xs font-medium text-success"><CheckCircle2 size={15} />Pack prepared and saved</p> : null}
           </div>
         </div>
 
@@ -1514,15 +1709,16 @@ function EmailPackPanel({
             <p className="text-sm font-semibold text-ink">Claim pack progress</p>
             <div className="mt-3 space-y-2 text-sm">
               <ChecklistItem done={packPrepared} label="Pack prepared" />
-              <ChecklistItem done={!live && claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Member review requested" />
+              <ChecklistItem done={(testPreview || !live) && claim.status !== 'Form prepared' && claim.status !== 'Draft'} label="Member review requested" />
               <ChecklistItem done={authenticated} label="Member authorisation recorded" />
               <ChecklistItem done={sent} label="Insurer email recorded" />
             </div>
             <div className="mt-4 flex flex-col gap-2">
-              {live && packPrepared ? <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-deep">Email delivery and secure member authorisation are not connected yet. This pack is saved and ready for that integration.</p> : null}
-              {!live && claim.status === 'Form prepared' ? <button type="button" onClick={() => sendClaimForClientAuthentication(claim.id)} disabled={missing.length > 0 || !saved} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50"><Send size={15} />Send member review</button> : null}
-              {!live && claim.status === 'Awaiting client authentication' ? <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton> : null}
-              {!live && claim.status === 'Client authenticated' ? <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Email insurer</ActionButton> : null}
+              {testPreview ? <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-deep">Use Next in the demo journey to simulate member review, authorisation, and insurer delivery.</p> : null}
+              {!testPreview && live && packPrepared ? <p className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning-deep">Email delivery and secure member authorisation are not connected yet. This pack is saved and ready for that integration.</p> : null}
+              {!testPreview && !live && claim.status === 'Form prepared' ? <button type="button" onClick={() => sendClaimForClientAuthentication(claim.id)} disabled={missing.length > 0 || !saved} className="lh-primary-button justify-center disabled:cursor-not-allowed disabled:opacity-50"><Send size={15} />Send member review</button> : null}
+              {!testPreview && !live && claim.status === 'Awaiting client authentication' ? <ActionButton onClick={() => authenticateEmailClaim(claim.id)} icon={ShieldCheck}>Record authentication</ActionButton> : null}
+              {!testPreview && !live && claim.status === 'Client authenticated' ? <ActionButton onClick={() => submitEmailClaim(claim.id)} icon={Mail}>Email insurer</ActionButton> : null}
               {sent ? <p className="rounded-md border border-success/25 bg-success-soft px-3 py-2 text-xs text-success-deep">Submission reference: {claim.externalReference || 'Email message id pending'}</p> : null}
             </div>
           </div>

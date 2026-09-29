@@ -181,6 +181,7 @@ export default function ClaimsPage() {
   const [newClaimInvoiceId, setNewClaimInvoiceId] = useState('');
   const [newClaimQuery, setNewClaimQuery] = useState('');
   const [creatingClaim, setCreatingClaim] = useState(false);
+  const [previewSubmissionClaimId, setPreviewSubmissionClaimId] = useState('');
 
   const module = MODULES.find((item) => item.id === activeModule) || MODULES[0];
   const normalizedQuery = query.trim().toLowerCase();
@@ -224,7 +225,9 @@ export default function ClaimsPage() {
   const visibleSelectedClaim = filteredClaims.find((claim) => claim.id === selectedClaim?.id)
     || filteredClaims[0]
     || null;
-  const detailModule = searchIsActive && visibleSelectedClaim ? moduleForClaim(visibleSelectedClaim) : module;
+  const previewingSubmission = Boolean(visibleSelectedClaim && previewSubmissionClaimId === visibleSelectedClaim.id);
+  const submissionModule = MODULES.find((item) => item.id === 'submit') || MODULES[0];
+  const detailModule = previewingSubmission ? submissionModule : searchIsActive && visibleSelectedClaim ? moduleForClaim(visibleSelectedClaim) : module;
 
   const selectedPatientClaims = useMemo(
     () => practiceClaims.filter((claim) => visibleSelectedClaim && claim.patient === visibleSelectedClaim.patient),
@@ -244,6 +247,7 @@ export default function ClaimsPage() {
     setQuery('');
     setPayerFilter('all');
     setChannelFilter('all');
+    setPreviewSubmissionClaimId('');
   };
 
   const coveredInvoices = useMemo(() => practiceInvoices.filter((invoice) => (
@@ -288,6 +292,7 @@ export default function ClaimsPage() {
     setActiveModule(id);
     setDetailTab(next.detailTabs[0]);
     setQueueOpen(true);
+    setPreviewSubmissionClaimId('');
   };
 
   if (practiceClaims.length === 0 && !newClaimOpen) {
@@ -426,16 +431,21 @@ export default function ClaimsPage() {
             setSelectedClaimId(claim.id);
             setDetailTab(nextModule.detailTabs[0]);
             setQueueOpen(false);
+            setPreviewSubmissionClaimId('');
           }}
         />
 
-        {visibleSelectedClaim && detailModule.id === 'prepare' ? (
+        {visibleSelectedClaim && !previewingSubmission && detailModule.id === 'prepare' ? (
           <ClaimPreparationWorkspace
             claim={visibleSelectedClaim}
             access={access}
             notify={notify}
             reloadWorkspace={reloadWorkspace}
             setQueueOpen={setQueueOpen}
+            onPreviewSubmission={() => {
+              setPreviewSubmissionClaimId(visibleSelectedClaim.id);
+              setDetailTab('Submission');
+            }}
           />
         ) : visibleSelectedClaim ? (
           <ClaimModuleDetail
@@ -465,6 +475,11 @@ export default function ClaimsPage() {
             proposePatientResponsibility={proposePatientResponsibility}
             rejectionReasons={REJECTION_REASONS}
             live={live}
+            testPreview={previewingSubmission}
+            onExitPreview={() => {
+              setPreviewSubmissionClaimId('');
+              setDetailTab('Summary');
+            }}
           />
         ) : (
           <EmptyState title={`No claims in ${module.label}`} detail="Change module, search, or reset filters to find the claim you need." />
@@ -663,7 +678,7 @@ function preparationChecks(context, draft) {
   ];
 }
 
-function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, setQueueOpen }) {
+function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, setQueueOpen, onPreviewSubmission }) {
   const [context, setContext] = useState(null);
   const [draft, setDraft] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1003,6 +1018,13 @@ function ClaimPreparationWorkspace({ claim, access, notify, reloadWorkspace, set
             {validation?.warnings?.length ? (
               <div className="mt-5 border-t border-line pt-4"><p className="text-xs font-semibold text-warning">Recommended information</p>{validation.warnings.map((item) => <p key={`${item.code}-${item.field}`} className="mt-2 text-xs text-body">{item.message}</p>)}</div>
             ) : null}
+            {requiredRemaining > 0 ? (
+              <div className="mt-5 border-t border-line pt-4">
+                <p className="text-xs font-semibold text-ink">Test architecture preview</p>
+                <p className="mt-2 text-xs text-body">Open the submit architecture while these readiness errors stay in place. This does not mark the claim ready or enable real submission.</p>
+                <button type="button" onClick={onPreviewSubmission} className="lh-secondary-button mt-3 w-full justify-center"><UploadCloud size={15} />Preview submit path</button>
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>
@@ -1052,6 +1074,8 @@ function ClaimModuleDetail({
   proposePatientResponsibility,
   rejectionReasons,
   live,
+  testPreview = false,
+  onExitPreview,
 }) {
   const blockers = blockerCount(claim);
   const channel = claim.submissionChannel || claim.channel || 'Manual';
@@ -1090,8 +1114,21 @@ function ClaimModuleDetail({
           submitEmailClaim={submitEmailClaim}
           recordAdjudication={recordAdjudication}
           proposePatientResponsibility={proposePatientResponsibility}
+          testPreview={testPreview}
         />
       </div>
+
+      {testPreview ? (
+        <div className="rounded-lg border border-warning/35 bg-warning-wash p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-ink">Test preview only</p>
+              <p className="mt-1 text-xs text-body">You are viewing the submit architecture before readiness has passed. The claim status and server validation have not been changed.</p>
+            </div>
+            <button type="button" onClick={onExitPreview} className="lh-secondary-button self-start sm:self-center"><ArrowLeft size={15} />Back to preparation</button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryTile label="Claimed" value={claimAmount(claim)} detail={claim.tariff || 'Claim total'} tone="neutral" />
@@ -1125,7 +1162,7 @@ function ClaimModuleDetail({
         <IssueList claim={claim} />
       ) : null}
       {detailTab === 'Submission' ? (
-        <SubmissionPanel claim={claim} access={access} captureBiometric={captureBiometric} submitClaimToSwitch={submitClaimToSwitch} />
+        <SubmissionPanel claim={claim} access={access} captureBiometric={captureBiometric} submitClaimToSwitch={submitClaimToSwitch} testPreview={testPreview} />
       ) : null}
       {detailTab === 'Email pack' ? (
         <EmailPackPanel
@@ -1167,16 +1204,20 @@ function ModuleActions({
   submitEmailClaim,
   recordAdjudication,
   proposePatientResponsibility,
+  testPreview = false,
 }) {
   return (
     <div className="flex flex-wrap gap-2">
+      {testPreview ? (
+        <ActionButton onClick={() => notify(`${claim.id} is in test preview; resolve readiness before real submission`)} icon={AlertTriangle}>Preview only</ActionButton>
+      ) : null}
       {moduleId === 'prepare' && claim.status === 'Draft' && access.can.captureBiometric ? (
         <ActionButton onClick={() => captureBiometric(claim.id)} icon={Fingerprint}>Capture</ActionButton>
       ) : null}
       {moduleId === 'prepare' && !isEmailChannel(claim.submissionChannel || claim.channel) ? (
         <ActionButton onClick={() => prepareEmailClaimForm(claim.id)} icon={Mail}>Prepare email route</ActionButton>
       ) : null}
-      {moduleId === 'submit' && READY_STATUSES.has(claim.status) && access.can.submitClaims ? (
+      {moduleId === 'submit' && !testPreview && READY_STATUSES.has(claim.status) && access.can.submitClaims ? (
         <ActionButton onClick={() => submitClaimToSwitch(claim.id)} icon={UploadCloud}>Submit</ActionButton>
       ) : null}
       {moduleId === 'email' && claim.status === 'Form prepared' ? (
@@ -1266,7 +1307,7 @@ function CodingPanel({ claim }) {
   );
 }
 
-function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch }) {
+function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch, testPreview = false }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <InfoList
@@ -1281,14 +1322,20 @@ function SubmissionPanel({ claim, access, captureBiometric, submitClaimToSwitch 
       <div className="rounded-lg bg-surface/60 p-4">
         <p className="text-sm font-semibold text-ink">Next action</p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {claim.status === 'Draft' && access.can.captureBiometric ? (
+          {testPreview ? (
+            <>
+              <button type="button" disabled className="lh-primary-button cursor-not-allowed opacity-50"><UploadCloud size={15} />Submit to switch</button>
+              <p className="basis-full text-sm text-body">Preview mode shows where submission, switch acknowledgement, transmission logging, and timeline updates will appear after readiness passes.</p>
+            </>
+          ) : null}
+          {!testPreview && claim.status === 'Draft' && access.can.captureBiometric ? (
             <ActionButton onClick={() => captureBiometric(claim.id)} icon={Fingerprint}>Capture biometric</ActionButton>
           ) : null}
-          {READY_STATUSES.has(claim.status) && access.can.submitClaims ? (
+          {!testPreview && READY_STATUSES.has(claim.status) && access.can.submitClaims ? (
             <ActionButton onClick={() => submitClaimToSwitch(claim.id)} icon={UploadCloud}>Submit to switch</ActionButton>
-          ) : (
+          ) : !testPreview ? (
             <p className="text-sm text-body">This claim is not currently in a submit-ready state.</p>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
